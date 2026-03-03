@@ -25,7 +25,14 @@ import {
   useUpdateAssessmentStep,
 } from "@/hooks/useQueries";
 import { cn } from "@/lib/utils";
-import { LayoutDashboard, Loader2, Save } from "lucide-react";
+import {
+  ChevronDown,
+  LayoutDashboard,
+  Loader2,
+  Plus,
+  Save,
+  X,
+} from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import type { PracticeRating } from "../backend.d";
@@ -37,6 +44,7 @@ interface PracticeState {
   strengths: string;
   weaknesses: string;
   workProductsInspected: string;
+  evidences: string[];
 }
 
 // key: `${processId}_${level}_${practiceId}`
@@ -117,19 +125,25 @@ function PracticeCard({
   id,
   title,
   text,
+  notes,
   state,
   onChange,
   showWorkProducts,
+  showEvidences,
   index,
 }: {
   id: string;
   title: string;
   text: string;
+  notes?: string[];
   state: PracticeState;
   onChange: (patch: Partial<PracticeState>) => void;
   showWorkProducts: boolean;
+  showEvidences: boolean;
   index: number;
 }) {
+  const [notesOpen, setNotesOpen] = useState(false);
+
   return (
     <Card className="border-border/60">
       <CardHeader className="pb-3">
@@ -152,6 +166,39 @@ function PracticeCard({
           <p className="text-xs text-muted-foreground font-body leading-relaxed">
             {text}
           </p>
+          {notes && notes.length > 0 && (
+            <>
+              <button
+                type="button"
+                onClick={() => setNotesOpen((v) => !v)}
+                className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1 mt-1"
+                data-ocid={`perform.notes_toggle.${index}`}
+              >
+                <ChevronDown
+                  className={cn(
+                    "h-3 w-3 transition-transform",
+                    notesOpen && "rotate-180",
+                  )}
+                />
+                {notesOpen ? "Hide Notes" : "Show Notes"}
+              </button>
+              {notesOpen && (
+                <div className="mt-2 p-3 rounded-md bg-muted/50 border border-border/40 space-y-1.5">
+                  {notes.map((note, i) => (
+                    <p
+                      key={note.slice(0, 40)}
+                      className="text-xs text-muted-foreground font-body italic leading-relaxed"
+                    >
+                      <span className="font-semibold not-italic">
+                        Note {i + 1}:
+                      </span>{" "}
+                      {note}
+                    </p>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
         </div>
       </CardHeader>
       <CardContent className="space-y-3 pt-0">
@@ -196,6 +243,58 @@ function PracticeCard({
             />
           </div>
         )}
+        {showEvidences && (
+          <div className="space-y-1.5">
+            <Label className="font-body text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              Evidences Checked
+            </Label>
+            <div className="space-y-2">
+              {(state.evidences ?? []).map((ev, i) => (
+                <div
+                  key={`evidence-${i}-${ev.slice(0, 20)}`}
+                  className="flex gap-2 items-center"
+                >
+                  <Input
+                    value={ev}
+                    onChange={(e) => {
+                      const updated = [...(state.evidences ?? [])];
+                      updated[i] = e.target.value;
+                      onChange({ evidences: updated });
+                    }}
+                    placeholder={`Evidence ${i + 1}`}
+                    className="font-body text-sm flex-1"
+                    data-ocid={`perform.evidence_input.${index}`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const updated = (state.evidences ?? []).filter(
+                        (_, idx) => idx !== i,
+                      );
+                      onChange({ evidences: updated });
+                    }}
+                    className="text-muted-foreground hover:text-destructive transition-colors"
+                    data-ocid={`perform.evidence_remove.${index}`}
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              ))}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  onChange({ evidences: [...(state.evidences ?? []), ""] })
+                }
+                className="font-body text-xs gap-1"
+                data-ocid={`perform.evidence_add_button.${index}`}
+              >
+                <Plus className="h-3.5 w-3.5" /> Add Evidence
+              </Button>
+            </div>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
@@ -230,6 +329,7 @@ const defaultPracticeState = (): PracticeState => ({
   strengths: "",
   weaknesses: "",
   workProductsInspected: "",
+  evidences: [],
 });
 
 export function PerformAssessment() {
@@ -267,11 +367,27 @@ export function PerformAssessment() {
       const map: RatingsMap = {};
       for (const r of savedRatings as PracticeRating[]) {
         const key = `${r.processId}_${Number(r.level)}_${r.practiceId}`;
+        let workProductsInspected = r.workProductsInspected;
+        let evidences: string[] = [];
+        try {
+          const parsed = JSON.parse(r.workProductsInspected) as unknown;
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+            const p = parsed as Record<string, unknown>;
+            workProductsInspected =
+              typeof p.workProducts === "string" ? p.workProducts : "";
+            evidences = Array.isArray(p.evidences)
+              ? (p.evidences as string[])
+              : [];
+          }
+        } catch {
+          // plain string, no evidences
+        }
         map[key] = {
           rating: r.rating as Rating,
           strengths: r.strengths,
           weaknesses: r.weaknesses,
-          workProductsInspected: r.workProductsInspected,
+          workProductsInspected,
+          evidences,
         };
       }
       setRatings((prev) => ({ ...map, ...prev }));
@@ -340,7 +456,10 @@ export function PerformAssessment() {
                 rating: state.rating,
                 strengths: state.strengths,
                 weaknesses: state.weaknesses,
-                workProductsInspected: state.workProductsInspected,
+                workProductsInspected: JSON.stringify({
+                  workProducts: state.workProductsInspected,
+                  evidences: state.evidences,
+                }),
               }),
             );
           }
@@ -690,6 +809,7 @@ export function PerformAssessment() {
                                       id={bp.id}
                                       title={bp.title}
                                       text={bp.text}
+                                      notes={bp.notes}
                                       state={getPracticeState(
                                         selectedProcess,
                                         1,
@@ -704,6 +824,7 @@ export function PerformAssessment() {
                                         )
                                       }
                                       showWorkProducts={true}
+                                      showEvidences={true}
                                       index={idx}
                                     />
                                   );
@@ -749,6 +870,7 @@ export function PerformAssessment() {
                                         id={gp.id}
                                         title={gp.title}
                                         text={gp.text}
+                                        notes={gp.notes}
                                         state={getPracticeState(
                                           selectedProcess,
                                           2,
@@ -763,6 +885,7 @@ export function PerformAssessment() {
                                           )
                                         }
                                         showWorkProducts={false}
+                                        showEvidences={false}
                                         index={idx}
                                       />
                                     );
@@ -799,6 +922,7 @@ export function PerformAssessment() {
                                         id={gp.id}
                                         title={gp.title}
                                         text={gp.text}
+                                        notes={gp.notes}
                                         state={getPracticeState(
                                           selectedProcess,
                                           3,
@@ -813,6 +937,7 @@ export function PerformAssessment() {
                                           )
                                         }
                                         showWorkProducts={false}
+                                        showEvidences={false}
                                         index={idx}
                                       />
                                     );

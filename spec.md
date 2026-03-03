@@ -1,35 +1,39 @@
-# Infineon Smart Assessments
+# Infineon ASPICE Assessment Tool
 
 ## Current State
-The ViewResults page exists but shows a generic score-card layout (ScoreRing, findings/recommendations cards) based on a legacy `assessmentResults` backend table. It has no connection to the actual BP/GP ratings stored via `savePracticeRating`. The `useGetAllPracticeRatingsForAssessment` hook and `useGetProcessGroupConfig` hooks already exist and supply all required data.
+The Perform Assessment page displays BP and GP practice cards via `PracticeCard` in `PerformAssessment.tsx`. Each card shows the full `text` field from `aspiceData.ts`, which currently contains both the main requirement text and all numbered Notes concatenated together (e.g. "...software requirements.\n\nNote 1: ...\nNote 2: ..."). There is no way to hide/show notes, and there is no "Evidences Checked" section per BP.
 
 ## Requested Changes (Diff)
 
 ### Add
-- Assessment selector dropdown at the top of View Results (selects which assessment to display results for; defaults to `currentAssessmentId` from context)
-- Summary bar: counts of total BPs/GPs rated, and breakdown of N / P / L / F across all processes
-- Results table:
-  - Rows grouped by process (e.g. SWE.1, SWE.2, SUP.8, MAN.3) — only processes where target level is NOT "NA"
-  - Sub-rows per BP/GP: practice ID, title, rating badge (N/P/L/F color-coded)
-  - Rollup row per process: count and % of N / P / L / F across all rated practices in that process
-- Stacked bar chart (using existing recharts/shadcn chart component) per process showing N / P / L / F counts
-- Radar/spider chart showing one data point per process (% F — fully satisfied) for maturity overview
-- Exclude processes with target level "NA" from all tables and charts
-- Empty state when no assessment is selected or no ratings are found
+- **Notes toggle per practice card**: A collapsible "Notes" section at the bottom of each `PracticeCard`. Hidden by default, revealed when the user clicks a "Notes" button/link. Notes should be visually distinct (e.g. lighter background, italic text, note numbers preserved).
+- **Evidences Checked section per BP (Level 1 only)**: A new multi-entry field below Strengths/Weaknesses/Work Products on every Level 1 Base Practice card, allowing the assessor to add one or more evidence items (text entries). Each evidence entry should be addable ("+Add Evidence") and removable (×). This is specific to BP cards (`showWorkProducts=true`), not GPs.
+- Update `PracticeState` interface to include an `evidences: string[]` field.
+- Wire evidences into save/load logic (stored as JSON string in `workProductsInspected` field or as a new field – use a new top-level `evidences` field in state serialized to the existing `workProductsInspected` column via JSON, keeping backward compat).
 
 ### Modify
-- Replace the existing ViewResults component entirely with the new implementation
-- No backend changes needed — all data comes from existing `getAllPracticeRatingsForAssessment` and `getProcessGroupConfig` endpoints
+- **`aspiceData.ts`**: Split the `text` field into two parts for every BP and GP:
+  - `text`: main requirement text only (no Note lines)
+  - `notes`: array of note strings (each note as a plain string without the "Note N:" prefix, but preserve the note number in display)
+  - Update `BasePractice` and `GenericPractice` interfaces to add `notes?: string[]`.
+- **`PracticeCard`**: 
+  - Render only `text` (main body) in the description area.
+  - Add a "Notes" toggle button below the description. Clicking it expands/collapses the notes list. Each note displayed as "Note N: <text>".
+  - Add "Evidences Checked" section when `showWorkProducts` is true (Level 1 BPs).
+- **`PracticeState`**: Add `evidences: string[]`.
+- **Save logic** (`saveProcessRatings`): Serialize `evidences` array alongside existing fields. Store as JSON in `workProductsInspected` to avoid backend schema change, or handle gracefully.
+- **Load logic**: Deserialize evidences from saved data.
 
 ### Remove
-- Old ScoreRing component and score-card grid layout
-- Dependency on `useGetAllAssessmentResults` (legacy result objects) in ViewResults
+- Notes text from the inline `text` field of all BP/GP entries in `aspiceData.ts` (moved to `notes` array).
 
 ## Implementation Plan
-1. Rewrite `ViewResults.tsx` to:
-   a. Use `useGetAllAssessments` + `useGetProcessGroupConfig` + `useGetAllPracticeRatingsForAssessment` for data
-   b. Build a `buildProcessResults` utility that, given config + ratings + aspiceData, produces per-process aggregates
-   c. Render assessment selector, summary cards, results table with sub-rows and rollup rows, stacked bar chart, and radar chart
-   d. Apply "NA" exclusion rule throughout
-2. Use `recharts` (already bundled via shadcn chart.tsx) for both charts
-3. Apply deterministic `data-ocid` markers on all interactive surfaces
+1. Update `BasePractice` and `GenericPractice` interfaces in `aspiceData.ts` to add `notes?: string[]`.
+2. Refactor all BP and GP entries in `aspiceData.ts`: strip Note lines from `text`, populate `notes` array for each entry that has notes.
+3. Update `PracticeState` to include `evidences: string[]`.
+4. Update `defaultPracticeState()` to include `evidences: []`.
+5. Update `PracticeCard` props to accept `notes` and `showEvidences` (or derive from `showWorkProducts`).
+6. In `PracticeCard`, add a local `notesOpen` state toggle with a "Notes" button. Render notes in a collapsible panel.
+7. In `PracticeCard`, add the Evidences Checked section (when `showWorkProducts` is true): a list of text inputs with remove buttons, and an "+ Add Evidence" button below.
+8. Update save/load serialization to handle `evidences` field (serialize to/from `workProductsInspected` as JSON object `{ workProducts: string, evidences: string[] }`).
+9. Validate, typecheck, and build.
