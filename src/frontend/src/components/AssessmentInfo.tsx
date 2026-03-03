@@ -1,9 +1,9 @@
-import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -11,282 +11,601 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-  DialogFooter,
-} from "@/components/ui/dialog";
+import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Pencil, Trash2, Loader2 } from "lucide-react";
-import { toast } from "sonner";
+import { Textarea } from "@/components/ui/textarea";
+import { useAppContext } from "@/context/AppContext";
 import {
   useGetAllAssessments,
-  useCreateAssessment,
-  useUpdateAssessment,
-  useDeleteAssessment,
+  useGetAssessmentInfoData,
+  useSaveAssessmentInfoData,
+  useUpdateAssessmentStep,
 } from "@/hooks/useQueries";
-import type { Assessment } from "../backend.d";
+import { LayoutDashboard, Loader2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
+import type { AssessmentInfoData } from "../backend.d";
 
 function StatusBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
-    Active: "bg-blue-100 text-blue-700 border-blue-200",
-    Completed: "bg-emerald-100 text-emerald-700 border-emerald-200",
-    Pending: "bg-amber-100 text-amber-700 border-amber-200",
+    Active: "bg-blue-50 text-blue-700 border-blue-200",
+    Completed: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    Draft: "bg-gray-50 text-gray-600 border-gray-200",
   };
   return (
-    <Badge variant="outline" className={styles[status] ?? "bg-gray-100 text-gray-700"}>
+    <Badge
+      variant="outline"
+      className={`font-body text-xs ${styles[status] ?? "bg-gray-50 text-gray-600 border-gray-200"}`}
+    >
       {status}
     </Badge>
   );
 }
 
-function formatDate(time: bigint): string {
-  const ms = Number(time / BigInt(1_000_000));
-  return new Date(ms).toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-}
+const defaultFormData = {
+  startDate: "",
+  endDate: "",
+  sponsor: "",
+  leadAssessor: "",
+  coAssessor: "",
+  intacsId: "",
+  assessorBody: "",
+  assessedParty: "",
+  assessedSite: "",
+  unitDepartment: "",
+  projectContactSWDev: "",
+  projectContactSWQuality: "",
+  projectName: "",
+  projectScope: "",
+  modelBasedDev: false,
+  agileEnvironments: false,
+  developmentExternal: false,
+  pamVersion: "Automotive SPICE 4.0",
+  vdaVersion: "VDA Guideline 2.0",
+  assessmentClass: "",
+  targetCapabilityLevel: "",
+  functionalSafetyLevel: "",
+  cybersecurityLevel: "",
+  additionalRemarks: "",
+};
 
-function AssessmentForm({
-  initial,
-  onSubmit,
-  isPending,
-  onClose,
-}: {
-  initial?: Assessment;
-  onSubmit: (data: { name: string; description: string; status: string }) => void;
-  isPending: boolean;
-  onClose: () => void;
-}) {
-  const [name, setName] = useState(initial?.name ?? "");
-  const [description, setDescription] = useState(initial?.description ?? "");
-  const [status, setStatus] = useState(initial?.status ?? "Active");
+type FormData = typeof defaultFormData;
 
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!name.trim()) {
-      toast.error("Name is required");
-      return;
-    }
-    onSubmit({ name: name.trim(), description: description.trim(), status });
-  }
-
+function FormSection({
+  title,
+  children,
+}: { title: string; children: React.ReactNode }) {
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="space-y-2">
-        <Label htmlFor="name">Assessment Name</Label>
-        <Input
-          id="name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Enter assessment name"
-          required
-        />
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="description">Description</Label>
-        <Textarea
-          id="description"
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          placeholder="Describe the assessment purpose"
-          rows={3}
-        />
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="status">Status</Label>
-        <Select value={status} onValueChange={setStatus}>
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="Active">Active</SelectItem>
-            <SelectItem value="Completed">Completed</SelectItem>
-            <SelectItem value="Pending">Pending</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-      <DialogFooter>
-        <Button type="button" variant="outline" onClick={onClose}>
-          Cancel
-        </Button>
-        <Button type="submit" disabled={isPending} className="spice-gradient text-white border-0">
-          {isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          {initial ? "Update" : "Create"}
-        </Button>
-      </DialogFooter>
-    </form>
+    <Card className="border-border/60">
+      <CardHeader className="pb-4">
+        <CardTitle className="text-sm font-heading font-semibold text-foreground uppercase tracking-wide">
+          {title}
+        </CardTitle>
+        <Separator />
+      </CardHeader>
+      <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {children}
+      </CardContent>
+    </Card>
   );
 }
 
 export function AssessmentInfo() {
-  const { data: assessments, isLoading } = useGetAllAssessments();
-  const createMutation = useCreateAssessment();
-  const updateMutation = useUpdateAssessment();
-  const deleteMutation = useDeleteAssessment();
+  const { currentAssessmentId, currentAssessmentTitle, navigateTo } =
+    useAppContext();
+  const { data: assessments } = useGetAllAssessments();
+  const { data: infoData, isLoading } =
+    useGetAssessmentInfoData(currentAssessmentId);
+  const saveMutation = useSaveAssessmentInfoData();
+  const updateStepMutation = useUpdateAssessmentStep();
 
-  const [createOpen, setCreateOpen] = useState(false);
-  const [editTarget, setEditTarget] = useState<Assessment | null>(null);
+  const [formData, setFormData] = useState<FormData>(defaultFormData);
 
-  async function handleCreate(data: { name: string; description: string; status: string }) {
+  const currentAssessment = assessments?.find(
+    (a) => a.id === currentAssessmentId,
+  );
+
+  useEffect(() => {
+    if (infoData) {
+      setFormData({
+        startDate: infoData.startDate || "",
+        endDate: infoData.endDate || "",
+        sponsor: infoData.sponsor || "",
+        leadAssessor: infoData.leadAssessor || "",
+        coAssessor: infoData.coAssessor || "",
+        intacsId: infoData.intacsId || "",
+        assessorBody: infoData.assessorBody || "",
+        assessedParty: infoData.assessedParty || "",
+        assessedSite: infoData.assessedSite || "",
+        unitDepartment: infoData.unitDepartment || "",
+        projectContactSWDev: infoData.projectContactSWDev || "",
+        projectContactSWQuality: infoData.projectContactSWQuality || "",
+        projectName: infoData.projectName || "",
+        projectScope: infoData.projectScope || "",
+        modelBasedDev: infoData.modelBasedDev || false,
+        agileEnvironments: infoData.agileEnvironments || false,
+        developmentExternal: infoData.developmentExternal || false,
+        pamVersion: infoData.pamVersion || "Automotive SPICE 4.0",
+        vdaVersion: infoData.vdaVersion || "VDA Guideline 2.0",
+        assessmentClass: infoData.assessmentClass || "",
+        targetCapabilityLevel: infoData.targetCapabilityLevel || "",
+        functionalSafetyLevel: infoData.functionalSafetyLevel || "",
+        cybersecurityLevel: infoData.cybersecurityLevel || "",
+        additionalRemarks: infoData.additionalRemarks || "",
+      });
+    }
+  }, [infoData]);
+
+  function update(field: keyof FormData, value: string | boolean) {
+    setFormData((prev) => ({ ...prev, [field]: value }));
+  }
+
+  function buildPayload(): AssessmentInfoData {
+    return {
+      assessmentId: currentAssessmentId!,
+      ...formData,
+    };
+  }
+
+  async function handleSaveDraft() {
+    if (!currentAssessmentId) return;
     try {
-      await createMutation.mutateAsync(data);
-      toast.success("Assessment created successfully");
-      setCreateOpen(false);
+      await Promise.all([
+        saveMutation.mutateAsync(buildPayload()),
+        updateStepMutation.mutateAsync({
+          id: currentAssessmentId,
+          step: "assessment-info",
+        }),
+      ]);
+      toast.success("Draft saved successfully");
     } catch {
-      toast.error("Failed to create assessment");
+      toast.error("Failed to save draft");
     }
   }
 
-  async function handleUpdate(data: { name: string; description: string; status: string }) {
-    if (!editTarget) return;
+  async function handleSaveAndContinue() {
+    if (!currentAssessmentId) return;
     try {
-      await updateMutation.mutateAsync({ id: editTarget.id, ...data });
-      toast.success("Assessment updated successfully");
-      setEditTarget(null);
+      await Promise.all([
+        saveMutation.mutateAsync(buildPayload()),
+        updateStepMutation.mutateAsync({
+          id: currentAssessmentId,
+          step: "target-profile",
+        }),
+      ]);
+      toast.success("Saved — navigating to Define Target Profile");
+      navigateTo("target-profile");
     } catch {
-      toast.error("Failed to update assessment");
+      toast.error("Failed to save");
     }
   }
 
-  async function handleDelete(id: bigint) {
-    if (!confirm("Are you sure you want to delete this assessment?")) return;
-    try {
-      await deleteMutation.mutateAsync(id);
-      toast.success("Assessment deleted");
-    } catch {
-      toast.error("Failed to delete assessment");
-    }
+  const isSaving = saveMutation.isPending || updateStepMutation.isPending;
+
+  if (!currentAssessmentId) {
+    return (
+      <div className="page-enter flex flex-col items-center justify-center py-20 text-center space-y-4">
+        <LayoutDashboard className="h-12 w-12 text-muted-foreground/40" />
+        <div>
+          <p className="text-lg font-semibold font-heading text-foreground">
+            No Assessment Selected
+          </p>
+          <p className="text-muted-foreground text-sm mt-1 font-body">
+            Please select or create an assessment from the Dashboard to
+            continue.
+          </p>
+        </div>
+        <Button
+          onClick={() => navigateTo("dashboard")}
+          className="spice-gradient text-white border-0 gap-2"
+        >
+          <LayoutDashboard className="h-4 w-4" />
+          Go to Dashboard
+        </Button>
+      </div>
+    );
   }
 
   return (
     <div className="page-enter space-y-6">
-      <div className="flex items-center justify-between">
+      {/* Page Header */}
+      <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold font-heading text-foreground">Assessment Info</h1>
-          <p className="text-muted-foreground text-sm mt-1 font-body">Manage all assessments</p>
+          <p className="text-xs text-muted-foreground font-body mb-1 uppercase tracking-wide">
+            Current Assessment
+          </p>
+          <h1 className="text-2xl font-bold font-heading text-foreground">
+            {currentAssessmentTitle}
+          </h1>
         </div>
-        <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-          <DialogTrigger asChild>
-            <Button className="spice-gradient text-white border-0 gap-2">
-              <Plus className="h-4 w-4" />
-              New Assessment
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle className="font-heading">Create New Assessment</DialogTitle>
-            </DialogHeader>
-            <AssessmentForm
-              onSubmit={handleCreate}
-              isPending={createMutation.isPending}
-              onClose={() => setCreateOpen(false)}
-            />
-          </DialogContent>
-        </Dialog>
+        {currentAssessment && <StatusBadge status={currentAssessment.status} />}
       </div>
 
-      <Card className="border-border/60">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base font-heading">All Assessments</CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          {isLoading ? (
-            <div className="p-6 space-y-3">
-              {[1, 2, 3].map((i) => <Skeleton key={i} className="h-12 w-full" />)}
+      {isLoading ? (
+        <div className="space-y-4">
+          {[1, 2, 3].map((i) => (
+            <Skeleton key={i} className="h-48 w-full rounded-xl" />
+          ))}
+        </div>
+      ) : (
+        <div className="space-y-6">
+          {/* Section 1: Assessment Timeline */}
+          <FormSection title="Assessment Timeline">
+            <div className="space-y-2">
+              <Label className="font-body font-medium">
+                Assessment Start Date
+              </Label>
+              <Input
+                type="date"
+                value={formData.startDate}
+                onChange={(e) => update("startDate", e.target.value)}
+                className="font-body"
+                data-ocid="assessment_info.start_date_input"
+              />
             </div>
-          ) : assessments && assessments.length > 0 ? (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="font-heading">Name</TableHead>
-                  <TableHead className="font-heading">Description</TableHead>
-                  <TableHead className="font-heading">Status</TableHead>
-                  <TableHead className="font-heading">Created</TableHead>
-                  <TableHead className="font-heading text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {assessments.map((assessment) => (
-                  <TableRow key={String(assessment.id)} className="hover:bg-muted/40">
-                    <TableCell className="font-medium font-body">{assessment.name}</TableCell>
-                    <TableCell className="text-muted-foreground font-body max-w-xs truncate">{assessment.description || "—"}</TableCell>
-                    <TableCell><StatusBadge status={assessment.status} /></TableCell>
-                    <TableCell className="text-muted-foreground font-body text-sm">{formatDate(assessment.createdAt)}</TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-8 w-8 hover:bg-blue-50 hover:text-blue-600"
-                          onClick={() => setEditTarget(assessment)}
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-8 w-8 hover:bg-red-50 hover:text-red-600"
-                          onClick={() => handleDelete(assessment.id)}
-                          disabled={deleteMutation.isPending}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          ) : (
-            <div className="flex flex-col items-center justify-center py-16 text-center">
-              <ClipboardListIcon className="h-10 w-10 text-muted-foreground/40 mb-3" />
-              <p className="text-muted-foreground font-body text-sm">No assessments yet.</p>
-              <p className="text-muted-foreground/60 font-body text-xs mt-1">Click "New Assessment" to get started.</p>
+            <div className="space-y-2">
+              <Label className="font-body font-medium">
+                Assessment End Date
+              </Label>
+              <Input
+                type="date"
+                value={formData.endDate}
+                onChange={(e) => update("endDate", e.target.value)}
+                className="font-body"
+                data-ocid="assessment_info.end_date_input"
+              />
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </FormSection>
 
-      {/* Edit Dialog */}
-      <Dialog open={!!editTarget} onOpenChange={(open) => !open && setEditTarget(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="font-heading">Edit Assessment</DialogTitle>
-          </DialogHeader>
-          {editTarget && (
-            <AssessmentForm
-              initial={editTarget}
-              onSubmit={handleUpdate}
-              isPending={updateMutation.isPending}
-              onClose={() => setEditTarget(null)}
-            />
-          )}
-        </DialogContent>
-      </Dialog>
+          {/* Section 2: Assessment Team */}
+          <FormSection title="Assessment Team">
+            <div className="space-y-2">
+              <Label className="font-body font-medium">
+                Assessment Sponsor
+              </Label>
+              <Input
+                value={formData.sponsor}
+                onChange={(e) => update("sponsor", e.target.value)}
+                placeholder="Enter sponsor name"
+                className="font-body"
+                data-ocid="assessment_info.sponsor_input"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="font-body font-medium">Lead Assessor</Label>
+              <Input
+                value={formData.leadAssessor}
+                onChange={(e) => update("leadAssessor", e.target.value)}
+                placeholder="Enter lead assessor name"
+                className="font-body"
+                data-ocid="assessment_info.lead_assessor_input"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="font-body font-medium">Co-Assessor</Label>
+              <Input
+                value={formData.coAssessor}
+                onChange={(e) => update("coAssessor", e.target.value)}
+                placeholder="Enter co-assessor name"
+                className="font-body"
+                data-ocid="assessment_info.co_assessor_input"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="font-body font-medium">INTACS ID</Label>
+              <Input
+                value={formData.intacsId}
+                onChange={(e) => update("intacsId", e.target.value)}
+                placeholder="Enter INTACS ID"
+                className="font-body"
+                data-ocid="assessment_info.intacs_id_input"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="font-body font-medium">Assessor Body</Label>
+              <Input
+                value={formData.assessorBody}
+                onChange={(e) => update("assessorBody", e.target.value)}
+                placeholder="Enter assessor body"
+                className="font-body"
+                data-ocid="assessment_info.assessor_body_input"
+              />
+            </div>
+          </FormSection>
+
+          {/* Section 3: Organization Details */}
+          <FormSection title="Organization Details">
+            <div className="space-y-2">
+              <Label className="font-body font-medium">Assessed Party</Label>
+              <Input
+                value={formData.assessedParty}
+                onChange={(e) => update("assessedParty", e.target.value)}
+                placeholder="Enter assessed party"
+                className="font-body"
+                data-ocid="assessment_info.assessed_party_input"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="font-body font-medium">Assessed Site</Label>
+              <Input
+                value={formData.assessedSite}
+                onChange={(e) => update("assessedSite", e.target.value)}
+                placeholder="Enter assessed site"
+                className="font-body"
+                data-ocid="assessment_info.assessed_site_input"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="font-body font-medium">Unit / Department</Label>
+              <Input
+                value={formData.unitDepartment}
+                onChange={(e) => update("unitDepartment", e.target.value)}
+                placeholder="Enter unit or department"
+                className="font-body"
+                data-ocid="assessment_info.unit_dept_input"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="font-body font-medium">
+                Project Contact (SW Development)
+              </Label>
+              <Input
+                value={formData.projectContactSWDev}
+                onChange={(e) => update("projectContactSWDev", e.target.value)}
+                placeholder="Enter contact name"
+                className="font-body"
+                data-ocid="assessment_info.contact_sw_dev_input"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="font-body font-medium">
+                Project Contact (SW Quality)
+              </Label>
+              <Input
+                value={formData.projectContactSWQuality}
+                onChange={(e) =>
+                  update("projectContactSWQuality", e.target.value)
+                }
+                placeholder="Enter contact name"
+                className="font-body"
+                data-ocid="assessment_info.contact_sw_quality_input"
+              />
+            </div>
+          </FormSection>
+
+          {/* Section 4: Project Information */}
+          <Card className="border-border/60">
+            <CardHeader className="pb-4">
+              <CardTitle className="text-sm font-heading font-semibold text-foreground uppercase tracking-wide">
+                Project Information
+              </CardTitle>
+              <Separator />
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2 md:col-span-2">
+                  <Label className="font-body font-medium">Project Name</Label>
+                  <Input
+                    value={formData.projectName}
+                    onChange={(e) => update("projectName", e.target.value)}
+                    placeholder="Enter project name"
+                    className="font-body"
+                    data-ocid="assessment_info.project_name_input"
+                  />
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label className="font-body font-medium">Project Scope</Label>
+                  <Textarea
+                    value={formData.projectScope}
+                    onChange={(e) => update("projectScope", e.target.value)}
+                    placeholder="Describe the project scope..."
+                    rows={4}
+                    className="font-body"
+                    data-ocid="assessment_info.project_scope_textarea"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-3 pt-2">
+                <p className="text-sm font-medium font-body text-foreground">
+                  Application Parameters
+                </p>
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center gap-3">
+                    <Checkbox
+                      id="model-based"
+                      checked={formData.modelBasedDev}
+                      onCheckedChange={(v) => update("modelBasedDev", !!v)}
+                      data-ocid="assessment_info.model_based_dev_checkbox"
+                    />
+                    <Label
+                      htmlFor="model-based"
+                      className="font-body text-sm cursor-pointer"
+                    >
+                      Model Based Development
+                    </Label>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Checkbox
+                      id="agile"
+                      checked={formData.agileEnvironments}
+                      onCheckedChange={(v) => update("agileEnvironments", !!v)}
+                      data-ocid="assessment_info.agile_environments_checkbox"
+                    />
+                    <Label
+                      htmlFor="agile"
+                      className="font-body text-sm cursor-pointer"
+                    >
+                      Agile Environments
+                    </Label>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Checkbox
+                      id="dev-external"
+                      checked={formData.developmentExternal}
+                      onCheckedChange={(v) =>
+                        update("developmentExternal", !!v)
+                      }
+                      data-ocid="assessment_info.development_external_checkbox"
+                    />
+                    <Label
+                      htmlFor="dev-external"
+                      className="font-body text-sm cursor-pointer"
+                    >
+                      Development External
+                    </Label>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Section 5: Standards & Classification */}
+          <FormSection title="Standards & Classification">
+            <div className="space-y-2">
+              <Label className="font-body font-medium">PAM Version</Label>
+              <Select
+                value={formData.pamVersion}
+                onValueChange={(v) => update("pamVersion", v)}
+              >
+                <SelectTrigger
+                  className="font-body"
+                  data-ocid="assessment_info.pam_version_select"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Automotive SPICE 3.1">
+                    Automotive SPICE 3.1
+                  </SelectItem>
+                  <SelectItem value="Automotive SPICE 4.0">
+                    Automotive SPICE 4.0
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label className="font-body font-medium">VDA Version</Label>
+              <Select
+                value={formData.vdaVersion}
+                onValueChange={(v) => update("vdaVersion", v)}
+              >
+                <SelectTrigger
+                  className="font-body"
+                  data-ocid="assessment_info.vda_version_select"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="VDA Guideline 1.0">
+                    VDA Guideline 1.0
+                  </SelectItem>
+                  <SelectItem value="VDA Guideline 2.0">
+                    VDA Guideline 2.0
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label className="font-body font-medium">Assessment Class</Label>
+              <Input
+                value={formData.assessmentClass}
+                onChange={(e) => update("assessmentClass", e.target.value)}
+                placeholder="e.g., Class 1, Class 2"
+                className="font-body"
+                data-ocid="assessment_info.assessment_class_input"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="font-body font-medium">
+                Target Capability Level
+              </Label>
+              <Input
+                value={formData.targetCapabilityLevel}
+                onChange={(e) =>
+                  update("targetCapabilityLevel", e.target.value)
+                }
+                placeholder="e.g., Level 2"
+                className="font-body"
+                data-ocid="assessment_info.target_capability_level_input"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="font-body font-medium">
+                Functional Safety Level
+              </Label>
+              <Input
+                value={formData.functionalSafetyLevel}
+                onChange={(e) =>
+                  update("functionalSafetyLevel", e.target.value)
+                }
+                placeholder="e.g., ASIL B"
+                className="font-body"
+                data-ocid="assessment_info.functional_safety_level_input"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label className="font-body font-medium">
+                Cybersecurity Level
+              </Label>
+              <Input
+                value={formData.cybersecurityLevel}
+                onChange={(e) => update("cybersecurityLevel", e.target.value)}
+                placeholder="e.g., CAL 3"
+                className="font-body"
+                data-ocid="assessment_info.cybersecurity_level_input"
+              />
+            </div>
+          </FormSection>
+
+          {/* Section 6: Additional Information */}
+          <Card className="border-border/60">
+            <CardHeader className="pb-4">
+              <CardTitle className="text-sm font-heading font-semibold text-foreground uppercase tracking-wide">
+                Additional Information
+              </CardTitle>
+              <Separator />
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2">
+                <Label className="font-body font-medium">
+                  Additional Remarks
+                </Label>
+                <Textarea
+                  value={formData.additionalRemarks}
+                  onChange={(e) => update("additionalRemarks", e.target.value)}
+                  placeholder="Any additional remarks or notes..."
+                  rows={4}
+                  className="font-body"
+                  data-ocid="assessment_info.additional_remarks_textarea"
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Action Buttons */}
+          <div className="flex items-center gap-3 pt-2 pb-6">
+            <Button
+              variant="outline"
+              onClick={handleSaveDraft}
+              disabled={isSaving}
+              data-ocid="assessment_info.save_draft_button"
+            >
+              {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Save Draft
+            </Button>
+            <Button
+              onClick={handleSaveAndContinue}
+              disabled={isSaving}
+              className="spice-gradient text-white border-0"
+              data-ocid="assessment_info.save_continue_button"
+            >
+              {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Save and Continue →
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
-  );
-}
-
-function ClipboardListIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-label="No assessments">
-      <title>No assessments</title>
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-    </svg>
   );
 }

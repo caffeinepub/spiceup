@@ -1,25 +1,80 @@
+import Map "mo:core/Map";
+import Nat "mo:core/Nat";
+import Text "mo:core/Text";
+import Time "mo:core/Time";
 import Iter "mo:core/Iter";
 import Order "mo:core/Order";
-import Time "mo:core/Time";
-import Array "mo:core/Array";
-import Map "mo:core/Map";
 import Runtime "mo:core/Runtime";
 
+
+
 actor {
-  type Assessment = {
+  public type Assessment = {
     id : Nat;
     name : Text;
-    description : Text;
     status : Text;
+    currentStep : Text;
+    updatedAt : Time.Time;
     createdAt : Time.Time;
   };
 
-  module Assessment {
-    public func compare(a1 : Assessment, a2 : Assessment) : Order.Order {
-      Nat.compare(a1.id, a2.id);
-    };
+  public type AssessmentInfoData = {
+    assessmentId : Nat;
+    startDate : Text;
+    endDate : Text;
+    sponsor : Text;
+    leadAssessor : Text;
+    coAssessor : Text;
+    intacsId : Text;
+    assessorBody : Text;
+    assessedParty : Text;
+    assessedSite : Text;
+    unitDepartment : Text;
+    projectContactSWDev : Text;
+    projectContactSWQuality : Text;
+    projectName : Text;
+    projectScope : Text;
+    modelBasedDev : Bool;
+    agileEnvironments : Bool;
+    developmentExternal : Bool;
+    pamVersion : Text;
+    vdaVersion : Text;
+    assessmentClass : Text;
+    targetCapabilityLevel : Text;
+    functionalSafetyLevel : Text;
+    cybersecurityLevel : Text;
+    additionalRemarks : Text;
   };
 
+  public type ProcessGroupConfig = {
+    assessmentId : Nat;
+    enabledGroups : Text;
+    processLevels : Text;
+  };
+
+  public type AssessmentDay = {
+    id : Nat;
+    assessmentId : Nat;
+    dayNumber : Nat;
+    date : Text;
+    timeFrom : Text;
+    timeTo : Text;
+    sessions : Text;
+  };
+
+  public type PracticeRating = {
+    id : Nat;
+    assessmentId : Nat;
+    processId : Text;
+    level : Nat;
+    practiceId : Text;
+    rating : Text;
+    strengths : Text;
+    weaknesses : Text;
+    workProductsInspected : Text;
+  };
+
+  // Re-add old types
   type TargetProfile = {
     id : Nat;
     assessmentId : Nat;
@@ -31,20 +86,6 @@ actor {
   module TargetProfile {
     public func compare(tp1 : TargetProfile, tp2 : TargetProfile) : Order.Order {
       Nat.compare(tp1.id, tp2.id);
-    };
-  };
-
-  type AssessmentPlan = {
-    id : Nat;
-    assessmentId : Nat;
-    planDetails : Text;
-    scheduledDate : Time.Time;
-    status : Text;
-  };
-
-  module AssessmentPlan {
-    public func compare(ap1 : AssessmentPlan, ap2 : AssessmentPlan) : Order.Order {
-      Nat.compare(ap1.id, ap2.id);
     };
   };
 
@@ -60,6 +101,20 @@ actor {
   module WorkProduct {
     public func compare(wp1 : WorkProduct, wp2 : WorkProduct) : Order.Order {
       Nat.compare(wp1.id, wp2.id);
+    };
+  };
+
+  type AssessmentPlan = {
+    id : Nat;
+    assessmentId : Nat;
+    planDetails : Text;
+    scheduledDate : Time.Time;
+    status : Text;
+  };
+
+  module AssessmentPlan {
+    public func compare(ap1 : AssessmentPlan, ap2 : AssessmentPlan) : Order.Order {
+      Nat.compare(ap1.id, ap2.id);
     };
   };
 
@@ -94,6 +149,12 @@ actor {
   var nextId = 1;
 
   let assessments = Map.empty<Nat, Assessment>();
+  let assessmentInfoData = Map.empty<Nat, AssessmentInfoData>();
+  let processGroupConfigs = Map.empty<Nat, ProcessGroupConfig>();
+  let assessmentDays = Map.empty<Nat, AssessmentDay>();
+  let practiceRatings = Map.empty<Nat, PracticeRating>();
+
+  // Restore old persistent maps
   let targetProfiles = Map.empty<Nat, TargetProfile>();
   let assessmentPlans = Map.empty<Nat, AssessmentPlan>();
   let workProducts = Map.empty<Nat, WorkProduct>();
@@ -101,18 +162,26 @@ actor {
   let reports = Map.empty<Nat, Report>();
 
   // Assessment CRUD
-  public shared ({ caller }) func createAssessment(name : Text, description : Text, status : Text) : async Nat {
+  public shared ({ caller }) func createAssessment(name : Text) : async Nat {
     let id = nextId;
     nextId += 1;
+
+    let now = Time.now();
     let assessment : Assessment = {
       id;
       name;
-      description;
-      status;
-      createdAt = Time.now();
+      status = "Active";
+      currentStep = "assessment-info";
+      updatedAt = now;
+      createdAt = now;
     };
+
     assessments.add(id, assessment);
     id;
+  };
+
+  public query ({ caller }) func getAllAssessments() : async [Assessment] {
+    assessments.values().toArray();
   };
 
   public query ({ caller }) func getAssessment(id : Nat) : async Assessment {
@@ -122,161 +191,132 @@ actor {
     };
   };
 
-  public query ({ caller }) func getAllAssessments() : async [Assessment] {
-    assessments.values().toArray().sort();
-  };
-
-  public shared ({ caller }) func updateAssessment(id : Nat, name : Text, description : Text, status : Text) : async () {
+  public shared ({ caller }) func updateAssessmentStatus(id : Nat, status : Text) : async () {
     switch (assessments.get(id)) {
       case (null) { Runtime.trap("Assessment not found") };
-      case (?existing) {
-        let updated : Assessment = {
-          id;
-          name;
-          description;
+      case (?assessment) {
+        let updatedAssessment = {
+          assessment with
           status;
-          createdAt = existing.createdAt;
+          updatedAt = Time.now();
         };
-        assessments.add(id, updated);
+        assessments.add(id, updatedAssessment);
       };
     };
   };
 
-  public shared ({ caller }) func deleteAssessment(id : Nat) : async () {
-    if (not assessments.containsKey(id)) {
-      Runtime.trap("Assessment not found");
-    };
-    assessments.remove(id);
+  public shared ({ caller }) func markAssessmentCompleted(id : Nat) : async () {
+    await updateAssessmentStatus(id, "Completed");
   };
 
-  // TargetProfile
-  public shared ({ caller }) func createTargetProfile(assessmentId : Nat, name : Text, criteria : Text, skillLevel : Text) : async Nat {
+  public shared ({ caller }) func updateAssessmentStep(id : Nat, step : Text) : async () {
+    switch (assessments.get(id)) {
+      case (null) { Runtime.trap("Assessment not found") };
+      case (?assessment) {
+        let updatedAssessment = {
+          assessment with
+          currentStep = step;
+          updatedAt = Time.now();
+        };
+        assessments.add(id, updatedAssessment);
+      };
+    };
+  };
+
+  // Assessment Info Data
+  public shared ({ caller }) func saveAssessmentInfoData(data : AssessmentInfoData) : async () {
+    assessmentInfoData.add(data.assessmentId, data);
+  };
+
+  public query ({ caller }) func getAssessmentInfoData(assessmentId : Nat) : async AssessmentInfoData {
+    switch (assessmentInfoData.get(assessmentId)) {
+      case (null) { Runtime.trap("Assessment Info Data not found") };
+      case (?data) { data };
+    };
+  };
+
+  // Process Group Config
+  public shared ({ caller }) func saveProcessGroupConfig(assessmentId : Nat, enabledGroups : Text, processLevels : Text) : async () {
+    let config : ProcessGroupConfig = {
+      assessmentId;
+      enabledGroups;
+      processLevels;
+    };
+    processGroupConfigs.add(assessmentId, config);
+  };
+
+  public query ({ caller }) func getProcessGroupConfig(assessmentId : Nat) : async ProcessGroupConfig {
+    switch (processGroupConfigs.get(assessmentId)) {
+      case (null) { Runtime.trap("Process Group Config not found") };
+      case (?config) { config };
+    };
+  };
+
+  // Assessment Days
+  public shared ({ caller }) func saveAssessmentDay(assessmentId : Nat, dayNumber : Nat, date : Text, timeFrom : Text, timeTo : Text, sessions : Text) : async Nat {
     let id = nextId;
     nextId += 1;
-    let targetProfile : TargetProfile = {
+
+    let day : AssessmentDay = {
       id;
       assessmentId;
-      name;
-      criteria;
-      skillLevel;
+      dayNumber;
+      date;
+      timeFrom;
+      timeTo;
+      sessions;
     };
-    targetProfiles.add(id, targetProfile);
+
+    assessmentDays.add(id, day);
     id;
   };
 
-  public query ({ caller }) func getTargetProfile(id : Nat) : async TargetProfile {
-    switch (targetProfiles.get(id)) {
-      case (null) { Runtime.trap("TargetProfile not found") };
-      case (?tp) { tp };
+  public query ({ caller }) func getAssessmentDays(assessmentId : Nat) : async [AssessmentDay] {
+    let filteredDays = assessmentDays.values().filter(
+      func(day) { day.assessmentId == assessmentId }
+    );
+    filteredDays.toArray();
+  };
+
+  public shared ({ caller }) func deleteAssessmentDay(id : Nat) : async () {
+    if (not assessmentDays.containsKey(id)) {
+      Runtime.trap("Assessment Day not found");
     };
+    assessmentDays.remove(id);
   };
 
-  public query ({ caller }) func getAllTargetProfiles() : async [TargetProfile] {
-    targetProfiles.values().toArray().sort();
-  };
-
-  // AssessmentPlan
-  public shared ({ caller }) func createAssessmentPlan(assessmentId : Nat, planDetails : Text, scheduledDate : Time.Time, status : Text) : async Nat {
+  // Practice Ratings
+  public shared ({ caller }) func savePracticeRating(assessmentId : Nat, processId : Text, level : Nat, practiceId : Text, rating : Text, strengths : Text, weaknesses : Text, workProductsInspected : Text) : async Nat {
     let id = nextId;
     nextId += 1;
-    let plan : AssessmentPlan = {
+
+    let ratingData : PracticeRating = {
       id;
       assessmentId;
-      planDetails;
-      scheduledDate;
-      status;
+      processId;
+      level;
+      practiceId;
+      rating;
+      strengths;
+      weaknesses;
+      workProductsInspected;
     };
-    assessmentPlans.add(id, plan);
+
+    practiceRatings.add(id, ratingData);
     id;
   };
 
-  public query ({ caller }) func getAssessmentPlan(id : Nat) : async AssessmentPlan {
-    switch (assessmentPlans.get(id)) {
-      case (null) { Runtime.trap("AssessmentPlan not found") };
-      case (?plan) { plan };
-    };
+  public query ({ caller }) func getPracticeRatings(assessmentId : Nat, processId : Text) : async [PracticeRating] {
+    let filteredRatings = practiceRatings.values().filter(
+      func(rating) { rating.assessmentId == assessmentId and rating.processId == processId }
+    );
+    filteredRatings.toArray();
   };
 
-  public query ({ caller }) func getAllAssessmentPlans() : async [AssessmentPlan] {
-    assessmentPlans.values().toArray().sort();
-  };
-
-  // WorkProduct
-  public shared ({ caller }) func addWorkProduct(assessmentId : Nat, name : Text, fileType : Text, notes : Text) : async Nat {
-    let id = nextId;
-    nextId += 1;
-    let product : WorkProduct = {
-      id;
-      assessmentId;
-      name;
-      fileType;
-      uploadedAt = Time.now();
-      notes;
-    };
-    workProducts.add(id, product);
-    id;
-  };
-
-  public query ({ caller }) func getWorkProduct(id : Nat) : async WorkProduct {
-    switch (workProducts.get(id)) {
-      case (null) { Runtime.trap("WorkProduct not found") };
-      case (?product) { product };
-    };
-  };
-
-  public query ({ caller }) func getAllWorkProducts() : async [WorkProduct] {
-    workProducts.values().toArray().sort();
-  };
-
-  // AssessmentResult
-  public shared ({ caller }) func addAssessmentResult(assessmentId : Nat, score : Nat, findings : Text, recommendations : Text) : async Nat {
-    let id = nextId;
-    nextId += 1;
-    let result : AssessmentResult = {
-      id;
-      assessmentId;
-      score;
-      findings;
-      recommendations;
-      completedAt = Time.now();
-    };
-    assessmentResults.add(id, result);
-    id;
-  };
-
-  public query ({ caller }) func getAssessmentResult(id : Nat) : async AssessmentResult {
-    switch (assessmentResults.get(id)) {
-      case (null) { Runtime.trap("AssessmentResult not found") };
-      case (?result) { result };
-    };
-  };
-
-  public query ({ caller }) func getAllAssessmentResults() : async [AssessmentResult] {
-    assessmentResults.values().toArray().sort();
-  };
-
-  // Report
-  public shared ({ caller }) func generateReport(assessmentId : Nat, reportContent : Text) : async Nat {
-    let id = nextId;
-    nextId += 1;
-    let report : Report = {
-      id;
-      assessmentId;
-      reportContent;
-      generatedAt = Time.now();
-    };
-    reports.add(id, report);
-    id;
-  };
-
-  public query ({ caller }) func getReport(id : Nat) : async Report {
-    switch (reports.get(id)) {
-      case (null) { Runtime.trap("Report not found") };
-      case (?report) { report };
-    };
-  };
-
-  public query ({ caller }) func getAllReports() : async [Report] {
-    reports.values().toArray().sort();
+  public query ({ caller }) func getAllPracticeRatingsForAssessment(assessmentId : Nat) : async [PracticeRating] {
+    let filteredRatings = practiceRatings.values().filter(
+      func(rating) { rating.assessmentId == assessmentId }
+    );
+    filteredRatings.toArray();
   };
 };

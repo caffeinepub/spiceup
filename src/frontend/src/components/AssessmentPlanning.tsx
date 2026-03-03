@@ -1,9 +1,8 @@
-import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -11,206 +10,606 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, CalendarDays, Loader2 } from "lucide-react";
-import { toast } from "sonner";
+import { useAppContext } from "@/context/AppContext";
+import { PROCESS_GROUPS } from "@/data/aspiceData";
 import {
-  useGetAllAssessmentPlans,
-  useCreateAssessmentPlan,
+  useDeleteAssessmentDay,
   useGetAllAssessments,
+  useGetAssessmentDays,
+  useGetProcessGroupConfig,
+  useSaveAssessmentDay,
+  useUpdateAssessmentStep,
 } from "@/hooks/useQueries";
+import {
+  ChevronDown,
+  ChevronUp,
+  Copy,
+  LayoutDashboard,
+  Loader2,
+  Plus,
+  Save,
+  Trash2,
+} from "lucide-react";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
+import type { AssessmentDay } from "../backend.d";
 
-function formatDate(time: bigint): string {
-  const ms = Number(time / BigInt(1_000_000));
-  return new Date(ms).toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
+interface SessionData {
+  sid: string;
+  processId: string;
+  notes: string;
 }
 
-const planStatusColors: Record<string, string> = {
-  Active: "bg-blue-100 text-blue-700 border-blue-200",
-  Completed: "bg-emerald-100 text-emerald-700 border-emerald-200",
-  Pending: "bg-amber-100 text-amber-700 border-amber-200",
-  Scheduled: "bg-violet-100 text-violet-700 border-violet-200",
-};
+interface DayData {
+  backendId: bigint | null;
+  dayNumber: number;
+  date: string;
+  timeFrom: string;
+  timeTo: string;
+  sessions: SessionData[];
+  collapsed: boolean;
+  saving: boolean;
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const styles: Record<string, string> = {
+    Active: "bg-blue-50 text-blue-700 border-blue-200",
+    Completed: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    Draft: "bg-gray-50 text-gray-600 border-gray-200",
+  };
+  return (
+    <Badge
+      variant="outline"
+      className={`font-body text-xs ${styles[status] ?? "bg-gray-50 text-gray-600 border-gray-200"}`}
+    >
+      {status}
+    </Badge>
+  );
+}
+
+function buildEnabledProcessList(
+  config: { enabledGroups: string; processLevels: string } | null,
+): string[] {
+  if (!config) return [];
+  try {
+    const enabledGroups = JSON.parse(config.enabledGroups) as string[];
+    const processes: string[] = [];
+    for (const group of PROCESS_GROUPS) {
+      if (enabledGroups.includes(group.id)) {
+        for (const p of group.processes) {
+          processes.push(p.id);
+        }
+      }
+    }
+    return processes;
+  } catch {
+    return [];
+  }
+}
 
 export function AssessmentPlanning() {
-  const { data: plans, isLoading } = useGetAllAssessmentPlans();
+  const { currentAssessmentId, currentAssessmentTitle, navigateTo } =
+    useAppContext();
   const { data: assessments } = useGetAllAssessments();
-  const createMutation = useCreateAssessmentPlan();
+  const { data: savedDays, isLoading: loadingDays } =
+    useGetAssessmentDays(currentAssessmentId);
+  const { data: processConfig, isLoading: loadingConfig } =
+    useGetProcessGroupConfig(currentAssessmentId);
+  const saveDayMutation = useSaveAssessmentDay();
+  const deleteDayMutation = useDeleteAssessmentDay();
+  const updateStepMutation = useUpdateAssessmentStep();
 
-  const [showForm, setShowForm] = useState(false);
-  const [assessmentId, setAssessmentId] = useState("");
-  const [planDetails, setPlanDetails] = useState("");
-  const [scheduledDate, setScheduledDate] = useState("");
-  const [status, setStatus] = useState("Scheduled");
+  const [days, setDays] = useState<DayData[]>([]);
+  const [saveAllPending, setSaveAllPending] = useState(false);
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!assessmentId) {
-      toast.error("Please select an assessment");
-      return;
-    }
-    if (!planDetails.trim()) {
-      toast.error("Plan details are required");
-      return;
-    }
-    const dateMs = scheduledDate ? new Date(scheduledDate).getTime() : Date.now();
-    const dateNano = BigInt(dateMs) * BigInt(1_000_000);
-    try {
-      await createMutation.mutateAsync({
-        assessmentId: BigInt(assessmentId),
-        planDetails: planDetails.trim(),
-        scheduledDate: dateNano,
-        status,
+  const currentAssessment = assessments?.find(
+    (a) => a.id === currentAssessmentId,
+  );
+  const enabledProcesses = buildEnabledProcessList(processConfig ?? null);
+
+  // Load saved days into local state
+  useEffect(() => {
+    if (savedDays && savedDays.length > 0) {
+      const loaded: DayData[] = savedDays.map((d: AssessmentDay) => {
+        let sessions: SessionData[] = [];
+        try {
+          const raw = JSON.parse(d.sessions) as Array<{
+            processId: string;
+            notes: string;
+            sid?: string;
+          }>;
+          sessions = raw.map((s, i) => ({
+            sid: s.sid ?? `loaded-${i}`,
+            processId: s.processId,
+            notes: s.notes,
+          }));
+        } catch {
+          sessions = [];
+        }
+        return {
+          backendId: d.id,
+          dayNumber: Number(d.dayNumber),
+          date: d.date,
+          timeFrom: d.timeFrom,
+          timeTo: d.timeTo,
+          sessions,
+          collapsed: false,
+          saving: false,
+        };
       });
-      toast.success("Assessment plan created");
-      setPlanDetails("");
-      setScheduledDate("");
-      setAssessmentId("");
-      setStatus("Scheduled");
-      setShowForm(false);
+      setDays(loaded);
+    }
+  }, [savedDays]);
+
+  function addDay() {
+    const maxNum = days.reduce((max, d) => Math.max(max, d.dayNumber), 0);
+    setDays((prev) => [
+      ...prev,
+      {
+        backendId: null,
+        dayNumber: maxNum + 1,
+        date: "",
+        timeFrom: "",
+        timeTo: "",
+        sessions: [],
+        collapsed: false,
+        saving: false,
+      },
+    ]);
+  }
+
+  function updateDay(index: number, patch: Partial<DayData>) {
+    setDays((prev) =>
+      prev.map((d, i) => (i === index ? { ...d, ...patch } : d)),
+    );
+  }
+
+  function removeDay(index: number) {
+    const day = days[index];
+    if (day.backendId && currentAssessmentId) {
+      deleteDayMutation.mutate({
+        id: day.backendId,
+        assessmentId: currentAssessmentId,
+      });
+    }
+    setDays((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function copyDay(index: number) {
+    const day = days[index];
+    const maxNum = days.reduce((max, d) => Math.max(max, d.dayNumber), 0);
+    setDays((prev) => [
+      ...prev,
+      {
+        ...day,
+        backendId: null,
+        dayNumber: maxNum + 1,
+        collapsed: false,
+      },
+    ]);
+  }
+
+  function addSession(dayIndex: number) {
+    setDays((prev) =>
+      prev.map((d, i) =>
+        i === dayIndex
+          ? {
+              ...d,
+              sessions: [
+                ...d.sessions,
+                {
+                  sid: `${Date.now()}-${Math.random()}`,
+                  processId: enabledProcesses[0] ?? "",
+                  notes: "",
+                },
+              ],
+            }
+          : d,
+      ),
+    );
+  }
+
+  function updateSession(
+    dayIndex: number,
+    sessionIndex: number,
+    patch: Partial<SessionData>,
+  ) {
+    setDays((prev) =>
+      prev.map((d, i) =>
+        i === dayIndex
+          ? {
+              ...d,
+              sessions: d.sessions.map((s, si) =>
+                si === sessionIndex ? { ...s, ...patch } : s,
+              ),
+            }
+          : d,
+      ),
+    );
+  }
+
+  function removeSession(dayIndex: number, sessionIndex: number) {
+    setDays((prev) =>
+      prev.map((d, i) =>
+        i === dayIndex
+          ? {
+              ...d,
+              sessions: d.sessions.filter((_, si) => si !== sessionIndex),
+            }
+          : d,
+      ),
+    );
+  }
+
+  async function saveDay(index: number) {
+    if (!currentAssessmentId) return;
+    const day = days[index];
+    updateDay(index, { saving: true });
+    try {
+      // Delete old record if exists
+      if (day.backendId) {
+        await deleteDayMutation.mutateAsync({
+          id: day.backendId,
+          assessmentId: currentAssessmentId,
+        });
+      }
+      const newId = await saveDayMutation.mutateAsync({
+        assessmentId: currentAssessmentId,
+        dayNumber: BigInt(day.dayNumber),
+        date: day.date,
+        timeFrom: day.timeFrom,
+        timeTo: day.timeTo,
+        sessions: JSON.stringify(day.sessions),
+      });
+      updateDay(index, { saving: false, backendId: newId });
+      toast.success(`Day ${day.dayNumber} saved`);
     } catch {
-      toast.error("Failed to create plan");
+      updateDay(index, { saving: false });
+      toast.error(`Failed to save Day ${day.dayNumber}`);
     }
   }
 
-  function getAssessmentName(id: bigint) {
-    return assessments?.find((a) => a.id === id)?.name ?? `Assessment #${String(id)}`;
+  async function handleSaveAll() {
+    if (!currentAssessmentId) return;
+    setSaveAllPending(true);
+    try {
+      await Promise.all(days.map((_, i) => saveDay(i)));
+      toast.success("All days saved");
+    } catch {
+      toast.error("Some days failed to save");
+    } finally {
+      setSaveAllPending(false);
+    }
   }
+
+  async function handleContinue() {
+    if (!currentAssessmentId) return;
+    try {
+      await handleSaveAll();
+      await updateStepMutation.mutateAsync({
+        id: currentAssessmentId,
+        step: "perform",
+      });
+      toast.success("Navigating to Perform Assessment");
+      navigateTo("perform");
+    } catch {
+      toast.error("Failed to save and continue");
+    }
+  }
+
+  if (!currentAssessmentId) {
+    return (
+      <div className="page-enter flex flex-col items-center justify-center py-20 text-center space-y-4">
+        <LayoutDashboard className="h-12 w-12 text-muted-foreground/40" />
+        <div>
+          <p className="text-lg font-semibold font-heading text-foreground">
+            No Assessment Selected
+          </p>
+          <p className="text-muted-foreground text-sm mt-1 font-body">
+            Please select or create an assessment from the Dashboard.
+          </p>
+        </div>
+        <Button
+          onClick={() => navigateTo("dashboard")}
+          className="spice-gradient text-white border-0 gap-2"
+        >
+          <LayoutDashboard className="h-4 w-4" />
+          Go to Dashboard
+        </Button>
+      </div>
+    );
+  }
+
+  const isLoading = loadingDays || loadingConfig;
 
   return (
     <div className="page-enter space-y-6">
-      <div className="flex items-center justify-between">
+      {/* Page Header */}
+      <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold font-heading text-foreground">Assessment Planning</h1>
-          <p className="text-muted-foreground text-sm mt-1 font-body">Schedule and organize assessment activities</p>
+          <p className="text-xs text-muted-foreground font-body mb-1 uppercase tracking-wide">
+            Current Assessment
+          </p>
+          <h1 className="text-2xl font-bold font-heading text-foreground">
+            {currentAssessmentTitle}
+          </h1>
+          <p className="text-muted-foreground text-sm mt-1 font-body">
+            Assessment Planning
+          </p>
         </div>
-        <Button
-          onClick={() => setShowForm(!showForm)}
-          className="spice-gradient text-white border-0 gap-2"
-        >
-          <Plus className="h-4 w-4" />
-          New Plan
-        </Button>
+        {currentAssessment && <StatusBadge status={currentAssessment.status} />}
       </div>
 
-      {/* Create Form */}
-      {showForm && (
-        <Card className="border-accent/30 bg-accent/5">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base font-heading">Create Assessment Plan</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Assessment</Label>
-                  <Select value={assessmentId} onValueChange={setAssessmentId}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select assessment" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {assessments?.map((a) => (
-                        <SelectItem key={String(a.id)} value={String(a.id)}>
-                          {a.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Scheduled Date</Label>
-                  <Input
-                    type="date"
-                    value={scheduledDate}
-                    onChange={(e) => setScheduledDate(e.target.value)}
-                  />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label>Plan Details</Label>
-                <Textarea
-                  value={planDetails}
-                  onChange={(e) => setPlanDetails(e.target.value)}
-                  placeholder="Describe the assessment plan, milestones, and activities..."
-                  rows={4}
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Status</Label>
-                <Select value={status} onValueChange={setStatus}>
-                  <SelectTrigger className="w-48">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Scheduled">Scheduled</SelectItem>
-                    <SelectItem value="Active">Active</SelectItem>
-                    <SelectItem value="Pending">Pending</SelectItem>
-                    <SelectItem value="Completed">Completed</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex gap-3 pt-2">
-                <Button type="submit" disabled={createMutation.isPending} className="spice-gradient text-white border-0">
-                  {createMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Create Plan
-                </Button>
-                <Button type="button" variant="outline" onClick={() => setShowForm(false)}>
-                  Cancel
-                </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
-      )}
+      <div>
+        <p className="text-sm text-muted-foreground font-body">
+          Manage your assessment sessions with enhanced planning tools
+        </p>
+      </div>
 
-      {/* Plans List */}
       {isLoading ? (
         <div className="space-y-4">
-          {[1, 2, 3].map((i) => <Skeleton key={i} className="h-32 w-full rounded-xl" />)}
-        </div>
-      ) : plans && plans.length > 0 ? (
-        <div className="space-y-4">
-          {plans.map((plan) => (
-            <Card key={String(plan.id)} className="border-border/60 hover:border-accent/30 transition-colors">
-              <CardContent className="py-5">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <p className="font-semibold font-heading text-foreground text-sm">
-                        {getAssessmentName(plan.assessmentId)}
-                      </p>
-                      <Badge
-                        variant="outline"
-                        className={planStatusColors[plan.status] ?? "bg-gray-100 text-gray-700"}
-                      >
-                        {plan.status}
-                      </Badge>
-                    </div>
-                    <p className="text-sm text-foreground/80 font-body mt-2">{plan.planDetails}</p>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-muted-foreground text-xs shrink-0">
-                    <CalendarDays className="h-3.5 w-3.5" />
-                    <span className="font-body">{formatDate(plan.scheduledDate)}</span>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+          {[1, 2].map((i) => (
+            <Skeleton key={i} className="h-48 w-full rounded-xl" />
           ))}
         </div>
       ) : (
-        <Card className="border-dashed border-border/60">
-          <CardContent className="flex flex-col items-center justify-center py-16">
-            <CalendarDays className="h-10 w-10 text-muted-foreground/40 mb-3" />
-            <p className="text-muted-foreground font-body text-sm">No plans created yet.</p>
-            <p className="text-muted-foreground/60 font-body text-xs mt-1">Create plans to schedule assessments.</p>
-          </CardContent>
-        </Card>
+        <div className="space-y-4">
+          {/* Day Cards */}
+          {days.map((day, dayIndex) => (
+            <Card
+              key={`day-${day.dayNumber}`}
+              className="border-border/60"
+              data-ocid={`planning.day_card.${dayIndex + 1}`}
+            >
+              {/* Day Header */}
+              <CardHeader className="pb-0">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full spice-gradient flex items-center justify-center shrink-0">
+                      <span className="text-white text-xs font-bold font-heading">
+                        {day.dayNumber}
+                      </span>
+                    </div>
+                    <div>
+                      <p className="font-semibold font-heading text-sm text-foreground">
+                        Day {day.dayNumber}
+                      </p>
+                      <p className="text-xs text-muted-foreground font-body">
+                        {day.sessions.length} session
+                        {day.sessions.length !== 1 ? "s" : ""}
+                        {day.date && ` · ${day.date}`}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                      onClick={() => saveDay(dayIndex)}
+                      disabled={day.saving}
+                      title="Save day"
+                      data-ocid={`planning.day_save_button.${dayIndex + 1}`}
+                    >
+                      {day.saving ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Save className="h-4 w-4" />
+                      )}
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                      onClick={() => copyDay(dayIndex)}
+                      title="Copy day"
+                    >
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                      onClick={() => removeDay(dayIndex)}
+                      title="Delete day"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                      onClick={() =>
+                        updateDay(dayIndex, { collapsed: !day.collapsed })
+                      }
+                      data-ocid={`planning.day_collapse_button.${dayIndex + 1}`}
+                    >
+                      {day.collapsed ? (
+                        <ChevronDown className="h-4 w-4" />
+                      ) : (
+                        <ChevronUp className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              </CardHeader>
+
+              {/* Day Content (collapsible) */}
+              {!day.collapsed && (
+                <CardContent className="pt-4 space-y-4">
+                  {/* Date & Time */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="font-body text-xs font-medium">
+                        Date
+                      </Label>
+                      <Input
+                        type="date"
+                        value={day.date}
+                        onChange={(e) =>
+                          updateDay(dayIndex, { date: e.target.value })
+                        }
+                        className="font-body h-9"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="font-body text-xs font-medium">
+                        Time From
+                      </Label>
+                      <Input
+                        type="time"
+                        value={day.timeFrom}
+                        onChange={(e) =>
+                          updateDay(dayIndex, { timeFrom: e.target.value })
+                        }
+                        className="font-body h-9"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="font-body text-xs font-medium">
+                        Time To
+                      </Label>
+                      <Input
+                        type="time"
+                        value={day.timeTo}
+                        onChange={(e) =>
+                          updateDay(dayIndex, { timeTo: e.target.value })
+                        }
+                        className="font-body h-9"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Sessions */}
+                  {day.sessions.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-xs font-medium font-body text-muted-foreground uppercase tracking-wide">
+                        Sessions
+                      </p>
+                      {day.sessions.map((session, sessionIndex) => (
+                        <div
+                          key={session.sid}
+                          className="flex items-center gap-2 p-2.5 rounded-lg bg-muted/40 border border-border/40"
+                        >
+                          <span className="text-xs font-body text-muted-foreground w-4 shrink-0">
+                            {sessionIndex + 1}
+                          </span>
+                          <div className="flex-1 grid grid-cols-2 gap-2">
+                            {enabledProcesses.length > 0 ? (
+                              <Select
+                                value={session.processId}
+                                onValueChange={(v) =>
+                                  updateSession(dayIndex, sessionIndex, {
+                                    processId: v,
+                                  })
+                                }
+                              >
+                                <SelectTrigger className="h-8 text-xs font-body">
+                                  <SelectValue placeholder="Select process" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {enabledProcesses.map((pid) => (
+                                    <SelectItem
+                                      key={pid}
+                                      value={pid}
+                                      className="text-xs"
+                                    >
+                                      {pid}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            ) : (
+                              <Input
+                                value={session.processId}
+                                onChange={(e) =>
+                                  updateSession(dayIndex, sessionIndex, {
+                                    processId: e.target.value,
+                                  })
+                                }
+                                placeholder="Process ID"
+                                className="h-8 text-xs font-body"
+                              />
+                            )}
+                            <Input
+                              value={session.notes}
+                              onChange={(e) =>
+                                updateSession(dayIndex, sessionIndex, {
+                                  notes: e.target.value,
+                                })
+                              }
+                              placeholder="Session notes"
+                              className="h-8 text-xs font-body"
+                            />
+                          </div>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
+                            onClick={() =>
+                              removeSession(dayIndex, sessionIndex)
+                            }
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Add Session */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5 text-xs h-8"
+                    onClick={() => addSession(dayIndex)}
+                    data-ocid={`planning.add_session_button.${dayIndex + 1}`}
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Add Session
+                  </Button>
+                </CardContent>
+              )}
+            </Card>
+          ))}
+
+          {/* Add Day Button */}
+          <Button
+            variant="outline"
+            className="w-full gap-2 border-dashed"
+            onClick={addDay}
+            data-ocid="planning.add_day_button"
+          >
+            <Plus className="h-4 w-4" />
+            Add Day
+          </Button>
+
+          {/* Action Buttons */}
+          <div className="flex items-center gap-3 pt-2 pb-6">
+            <Button
+              variant="outline"
+              onClick={handleSaveAll}
+              disabled={saveAllPending}
+            >
+              {saveAllPending && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
+              Save All
+            </Button>
+            <Button
+              onClick={handleContinue}
+              disabled={saveAllPending}
+              className="spice-gradient text-white border-0"
+              data-ocid="planning.continue_button"
+            >
+              {saveAllPending && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
+              Continue to Perform Assessment →
+            </Button>
+          </div>
+        </div>
       )}
     </div>
   );

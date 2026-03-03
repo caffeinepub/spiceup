@@ -1,9 +1,8 @@
-import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -11,15 +10,24 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Upload, FileText, FileImage, FileCode, File, Loader2 } from "lucide-react";
-import { toast } from "sonner";
+import { Textarea } from "@/components/ui/textarea";
 import {
-  useGetAllWorkProducts,
   useAddWorkProduct,
   useGetAllAssessments,
+  useGetAllWorkProducts,
 } from "@/hooks/useQueries";
+import {
+  File,
+  FileCode,
+  FileImage,
+  FileText,
+  Loader2,
+  Plus,
+  Upload,
+} from "lucide-react";
+import { useState } from "react";
+import { toast } from "sonner";
 
 function formatDate(time: bigint): string {
   const ms = Number(time / BigInt(1_000_000));
@@ -32,7 +40,18 @@ function formatDate(time: bigint): string {
   });
 }
 
-const FILE_TYPES = ["PDF", "DOCX", "XLSX", "PPTX", "PNG", "JPG", "CSV", "TXT", "ZIP", "Other"];
+const FILE_TYPES = [
+  "PDF",
+  "DOCX",
+  "XLSX",
+  "PPTX",
+  "PNG",
+  "JPG",
+  "CSV",
+  "TXT",
+  "ZIP",
+  "Other",
+];
 
 function FileTypeIcon({ fileType }: { fileType: string }) {
   if (["PNG", "JPG", "GIF", "SVG"].includes(fileType.toUpperCase()))
@@ -93,15 +112,21 @@ export function UploadWorkProducts() {
   }
 
   function getAssessmentName(id: bigint) {
-    return assessments?.find((a) => a.id === id)?.name ?? `Assessment #${String(id)}`;
+    return (
+      assessments?.find((a) => a.id === id)?.name ?? `Assessment #${String(id)}`
+    );
   }
 
   return (
     <div className="page-enter space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold font-heading text-foreground">Upload Work Products</h1>
-          <p className="text-muted-foreground text-sm mt-1 font-body">Manage evidence and work artifacts</p>
+          <h1 className="text-2xl font-bold font-heading text-foreground">
+            Upload Work Products
+          </h1>
+          <p className="text-muted-foreground text-sm mt-1 font-body">
+            Manage evidence and work artifacts
+          </p>
         </div>
         <Button
           onClick={() => setShowForm(!showForm)}
@@ -116,7 +141,9 @@ export function UploadWorkProducts() {
       {showForm && (
         <Card className="border-accent/30 bg-accent/5">
           <CardHeader className="pb-3">
-            <CardTitle className="text-base font-heading">Add Work Product</CardTitle>
+            <CardTitle className="text-base font-heading">
+              Add Work Product
+            </CardTitle>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -144,7 +171,9 @@ export function UploadWorkProducts() {
                     </SelectTrigger>
                     <SelectContent>
                       {FILE_TYPES.map((ft) => (
-                        <SelectItem key={ft} value={ft}>{ft}</SelectItem>
+                        <SelectItem key={ft} value={ft}>
+                          {ft}
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -169,11 +198,21 @@ export function UploadWorkProducts() {
                 />
               </div>
               <div className="flex gap-3 pt-2">
-                <Button type="submit" disabled={addMutation.isPending} className="spice-gradient text-white border-0">
-                  {addMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                <Button
+                  type="submit"
+                  disabled={addMutation.isPending}
+                  className="spice-gradient text-white border-0"
+                >
+                  {addMutation.isPending && (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  )}
                   Add Work Product
                 </Button>
-                <Button type="button" variant="outline" onClick={() => setShowForm(false)}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setShowForm(false)}
+                >
                   Cancel
                 </Button>
               </div>
@@ -185,12 +224,17 @@ export function UploadWorkProducts() {
       {/* Work Products List */}
       {isLoading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-32 rounded-xl" />)}
+          {[1, 2, 3, 4].map((i) => (
+            <Skeleton key={i} className="h-32 rounded-xl" />
+          ))}
         </div>
       ) : workProducts && workProducts.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {workProducts.map((wp) => (
-            <Card key={String(wp.id)} className="border-border/60 hover:border-accent/30 transition-colors">
+            <Card
+              key={String(wp.id)}
+              className="border-border/60 hover:border-accent/30 transition-colors"
+            >
               <CardContent className="py-4">
                 <div className="flex items-start gap-3">
                   <div className="p-2 rounded-lg bg-muted text-muted-foreground">
@@ -198,10 +242,15 @@ export function UploadWorkProducts() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
-                      <p className="font-semibold font-heading text-foreground text-sm truncate">{wp.name}</p>
+                      <p className="font-semibold font-heading text-foreground text-sm truncate">
+                        {wp.name}
+                      </p>
                       <Badge
                         variant="outline"
-                        className={fileTypeColors[wp.fileType.toUpperCase()] ?? "bg-gray-100 text-gray-700 border-gray-200"}
+                        className={
+                          fileTypeColors[wp.fileType.toUpperCase()] ??
+                          "bg-gray-100 text-gray-700 border-gray-200"
+                        }
                       >
                         {wp.fileType}
                       </Badge>
@@ -210,7 +259,9 @@ export function UploadWorkProducts() {
                       {getAssessmentName(wp.assessmentId)}
                     </p>
                     {wp.notes && (
-                      <p className="text-xs text-foreground/70 font-body line-clamp-2">{wp.notes}</p>
+                      <p className="text-xs text-foreground/70 font-body line-clamp-2">
+                        {wp.notes}
+                      </p>
                     )}
                     <p className="text-xs text-muted-foreground/60 font-body mt-2">
                       {formatDate(wp.uploadedAt)}
@@ -225,8 +276,12 @@ export function UploadWorkProducts() {
         <Card className="border-dashed border-border/60">
           <CardContent className="flex flex-col items-center justify-center py-16">
             <Upload className="h-10 w-10 text-muted-foreground/40 mb-3" />
-            <p className="text-muted-foreground font-body text-sm">No work products yet.</p>
-            <p className="text-muted-foreground/60 font-body text-xs mt-1">Add evidence and artifacts for your assessments.</p>
+            <p className="text-muted-foreground font-body text-sm">
+              No work products yet.
+            </p>
+            <p className="text-muted-foreground/60 font-body text-xs mt-1">
+              Add evidence and artifacts for your assessments.
+            </p>
           </CardContent>
         </Card>
       )}

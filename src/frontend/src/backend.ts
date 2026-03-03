@@ -89,12 +89,46 @@ export class ExternalBlob {
         return this;
     }
 }
-export interface AssessmentPlan {
-    id: bigint;
-    status: string;
-    scheduledDate: Time;
-    planDetails: string;
+export interface ProcessGroupConfig {
+    enabledGroups: string;
+    processLevels: string;
     assessmentId: bigint;
+}
+export interface AssessmentInfoData {
+    unitDepartment: string;
+    projectName: string;
+    endDate: string;
+    agileEnvironments: boolean;
+    modelBasedDev: boolean;
+    additionalRemarks: string;
+    cybersecurityLevel: string;
+    coAssessor: string;
+    leadAssessor: string;
+    projectContactSWQuality: string;
+    sponsor: string;
+    pamVersion: string;
+    developmentExternal: boolean;
+    projectContactSWDev: string;
+    assessmentId: bigint;
+    intacsId: string;
+    functionalSafetyLevel: string;
+    assessedParty: string;
+    assessmentClass: string;
+    projectScope: string;
+    targetCapabilityLevel: string;
+    assessedSite: string;
+    assessorBody: string;
+    startDate: string;
+    vdaVersion: string;
+}
+export interface AssessmentDay {
+    id: bigint;
+    timeTo: string;
+    date: string;
+    dayNumber: bigint;
+    sessions: string;
+    assessmentId: bigint;
+    timeFrom: string;
 }
 export type Time = bigint;
 export interface Assessment {
@@ -102,184 +136,65 @@ export interface Assessment {
     status: string;
     name: string;
     createdAt: Time;
-    description: string;
+    updatedAt: Time;
+    currentStep: string;
 }
-export interface AssessmentResult {
+export interface PracticeRating {
     id: bigint;
-    completedAt: Time;
-    recommendations: string;
-    score: bigint;
-    findings: string;
+    weaknesses: string;
+    strengths: string;
+    workProductsInspected: string;
+    level: bigint;
+    rating: string;
     assessmentId: bigint;
-}
-export interface TargetProfile {
-    id: bigint;
-    name: string;
-    criteria: string;
-    skillLevel: string;
-    assessmentId: bigint;
-}
-export interface Report {
-    id: bigint;
-    generatedAt: Time;
-    reportContent: string;
-    assessmentId: bigint;
-}
-export interface WorkProduct {
-    id: bigint;
-    name: string;
-    fileType: string;
-    notes: string;
-    assessmentId: bigint;
-    uploadedAt: Time;
+    processId: string;
+    practiceId: string;
 }
 export interface backendInterface {
-    addAssessmentResult(assessmentId: bigint, score: bigint, findings: string, recommendations: string): Promise<bigint>;
-    addWorkProduct(assessmentId: bigint, name: string, fileType: string, notes: string): Promise<bigint>;
-    createAssessment(name: string, description: string, status: string): Promise<bigint>;
-    createAssessmentPlan(assessmentId: bigint, planDetails: string, scheduledDate: Time, status: string): Promise<bigint>;
-    createTargetProfile(assessmentId: bigint, name: string, criteria: string, skillLevel: string): Promise<bigint>;
-    deleteAssessment(id: bigint): Promise<void>;
-    generateReport(assessmentId: bigint, reportContent: string): Promise<bigint>;
-    getAllAssessmentPlans(): Promise<Array<AssessmentPlan>>;
-    getAllAssessmentResults(): Promise<Array<AssessmentResult>>;
+    createAssessment(name: string): Promise<bigint>;
+    deleteAssessmentDay(id: bigint): Promise<void>;
     getAllAssessments(): Promise<Array<Assessment>>;
-    getAllReports(): Promise<Array<Report>>;
-    getAllTargetProfiles(): Promise<Array<TargetProfile>>;
-    getAllWorkProducts(): Promise<Array<WorkProduct>>;
+    getAllPracticeRatingsForAssessment(assessmentId: bigint): Promise<Array<PracticeRating>>;
     getAssessment(id: bigint): Promise<Assessment>;
-    getAssessmentPlan(id: bigint): Promise<AssessmentPlan>;
-    getAssessmentResult(id: bigint): Promise<AssessmentResult>;
-    getReport(id: bigint): Promise<Report>;
-    getTargetProfile(id: bigint): Promise<TargetProfile>;
-    getWorkProduct(id: bigint): Promise<WorkProduct>;
-    updateAssessment(id: bigint, name: string, description: string, status: string): Promise<void>;
+    getAssessmentDays(assessmentId: bigint): Promise<Array<AssessmentDay>>;
+    getAssessmentInfoData(assessmentId: bigint): Promise<AssessmentInfoData>;
+    getPracticeRatings(assessmentId: bigint, processId: string): Promise<Array<PracticeRating>>;
+    getProcessGroupConfig(assessmentId: bigint): Promise<ProcessGroupConfig>;
+    markAssessmentCompleted(id: bigint): Promise<void>;
+    saveAssessmentDay(assessmentId: bigint, dayNumber: bigint, date: string, timeFrom: string, timeTo: string, sessions: string): Promise<bigint>;
+    saveAssessmentInfoData(data: AssessmentInfoData): Promise<void>;
+    savePracticeRating(assessmentId: bigint, processId: string, level: bigint, practiceId: string, rating: string, strengths: string, weaknesses: string, workProductsInspected: string): Promise<bigint>;
+    saveProcessGroupConfig(assessmentId: bigint, enabledGroups: string, processLevels: string): Promise<void>;
+    updateAssessmentStatus(id: bigint, status: string): Promise<void>;
+    updateAssessmentStep(id: bigint, step: string): Promise<void>;
 }
 export class Backend implements backendInterface {
     constructor(private actor: ActorSubclass<_SERVICE>, private _uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, private _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, private processError?: (error: unknown) => never){}
-    async addAssessmentResult(arg0: bigint, arg1: bigint, arg2: string, arg3: string): Promise<bigint> {
+    async createAssessment(arg0: string): Promise<bigint> {
         if (this.processError) {
             try {
-                const result = await this.actor.addAssessmentResult(arg0, arg1, arg2, arg3);
+                const result = await this.actor.createAssessment(arg0);
                 return result;
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
-            const result = await this.actor.addAssessmentResult(arg0, arg1, arg2, arg3);
+            const result = await this.actor.createAssessment(arg0);
             return result;
         }
     }
-    async addWorkProduct(arg0: bigint, arg1: string, arg2: string, arg3: string): Promise<bigint> {
+    async deleteAssessmentDay(arg0: bigint): Promise<void> {
         if (this.processError) {
             try {
-                const result = await this.actor.addWorkProduct(arg0, arg1, arg2, arg3);
+                const result = await this.actor.deleteAssessmentDay(arg0);
                 return result;
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
-            const result = await this.actor.addWorkProduct(arg0, arg1, arg2, arg3);
-            return result;
-        }
-    }
-    async createAssessment(arg0: string, arg1: string, arg2: string): Promise<bigint> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.createAssessment(arg0, arg1, arg2);
-                return result;
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.createAssessment(arg0, arg1, arg2);
-            return result;
-        }
-    }
-    async createAssessmentPlan(arg0: bigint, arg1: string, arg2: Time, arg3: string): Promise<bigint> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.createAssessmentPlan(arg0, arg1, arg2, arg3);
-                return result;
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.createAssessmentPlan(arg0, arg1, arg2, arg3);
-            return result;
-        }
-    }
-    async createTargetProfile(arg0: bigint, arg1: string, arg2: string, arg3: string): Promise<bigint> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.createTargetProfile(arg0, arg1, arg2, arg3);
-                return result;
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.createTargetProfile(arg0, arg1, arg2, arg3);
-            return result;
-        }
-    }
-    async deleteAssessment(arg0: bigint): Promise<void> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.deleteAssessment(arg0);
-                return result;
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.deleteAssessment(arg0);
-            return result;
-        }
-    }
-    async generateReport(arg0: bigint, arg1: string): Promise<bigint> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.generateReport(arg0, arg1);
-                return result;
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.generateReport(arg0, arg1);
-            return result;
-        }
-    }
-    async getAllAssessmentPlans(): Promise<Array<AssessmentPlan>> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.getAllAssessmentPlans();
-                return result;
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.getAllAssessmentPlans();
-            return result;
-        }
-    }
-    async getAllAssessmentResults(): Promise<Array<AssessmentResult>> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.getAllAssessmentResults();
-                return result;
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.getAllAssessmentResults();
+            const result = await this.actor.deleteAssessmentDay(arg0);
             return result;
         }
     }
@@ -297,45 +212,17 @@ export class Backend implements backendInterface {
             return result;
         }
     }
-    async getAllReports(): Promise<Array<Report>> {
+    async getAllPracticeRatingsForAssessment(arg0: bigint): Promise<Array<PracticeRating>> {
         if (this.processError) {
             try {
-                const result = await this.actor.getAllReports();
+                const result = await this.actor.getAllPracticeRatingsForAssessment(arg0);
                 return result;
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
-            const result = await this.actor.getAllReports();
-            return result;
-        }
-    }
-    async getAllTargetProfiles(): Promise<Array<TargetProfile>> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.getAllTargetProfiles();
-                return result;
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.getAllTargetProfiles();
-            return result;
-        }
-    }
-    async getAllWorkProducts(): Promise<Array<WorkProduct>> {
-        if (this.processError) {
-            try {
-                const result = await this.actor.getAllWorkProducts();
-                return result;
-            } catch (e) {
-                this.processError(e);
-                throw new Error("unreachable");
-            }
-        } else {
-            const result = await this.actor.getAllWorkProducts();
+            const result = await this.actor.getAllPracticeRatingsForAssessment(arg0);
             return result;
         }
     }
@@ -353,87 +240,157 @@ export class Backend implements backendInterface {
             return result;
         }
     }
-    async getAssessmentPlan(arg0: bigint): Promise<AssessmentPlan> {
+    async getAssessmentDays(arg0: bigint): Promise<Array<AssessmentDay>> {
         if (this.processError) {
             try {
-                const result = await this.actor.getAssessmentPlan(arg0);
+                const result = await this.actor.getAssessmentDays(arg0);
                 return result;
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
-            const result = await this.actor.getAssessmentPlan(arg0);
+            const result = await this.actor.getAssessmentDays(arg0);
             return result;
         }
     }
-    async getAssessmentResult(arg0: bigint): Promise<AssessmentResult> {
+    async getAssessmentInfoData(arg0: bigint): Promise<AssessmentInfoData> {
         if (this.processError) {
             try {
-                const result = await this.actor.getAssessmentResult(arg0);
+                const result = await this.actor.getAssessmentInfoData(arg0);
                 return result;
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
-            const result = await this.actor.getAssessmentResult(arg0);
+            const result = await this.actor.getAssessmentInfoData(arg0);
             return result;
         }
     }
-    async getReport(arg0: bigint): Promise<Report> {
+    async getPracticeRatings(arg0: bigint, arg1: string): Promise<Array<PracticeRating>> {
         if (this.processError) {
             try {
-                const result = await this.actor.getReport(arg0);
+                const result = await this.actor.getPracticeRatings(arg0, arg1);
                 return result;
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
-            const result = await this.actor.getReport(arg0);
+            const result = await this.actor.getPracticeRatings(arg0, arg1);
             return result;
         }
     }
-    async getTargetProfile(arg0: bigint): Promise<TargetProfile> {
+    async getProcessGroupConfig(arg0: bigint): Promise<ProcessGroupConfig> {
         if (this.processError) {
             try {
-                const result = await this.actor.getTargetProfile(arg0);
+                const result = await this.actor.getProcessGroupConfig(arg0);
                 return result;
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
-            const result = await this.actor.getTargetProfile(arg0);
+            const result = await this.actor.getProcessGroupConfig(arg0);
             return result;
         }
     }
-    async getWorkProduct(arg0: bigint): Promise<WorkProduct> {
+    async markAssessmentCompleted(arg0: bigint): Promise<void> {
         if (this.processError) {
             try {
-                const result = await this.actor.getWorkProduct(arg0);
+                const result = await this.actor.markAssessmentCompleted(arg0);
                 return result;
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
-            const result = await this.actor.getWorkProduct(arg0);
+            const result = await this.actor.markAssessmentCompleted(arg0);
             return result;
         }
     }
-    async updateAssessment(arg0: bigint, arg1: string, arg2: string, arg3: string): Promise<void> {
+    async saveAssessmentDay(arg0: bigint, arg1: bigint, arg2: string, arg3: string, arg4: string, arg5: string): Promise<bigint> {
         if (this.processError) {
             try {
-                const result = await this.actor.updateAssessment(arg0, arg1, arg2, arg3);
+                const result = await this.actor.saveAssessmentDay(arg0, arg1, arg2, arg3, arg4, arg5);
                 return result;
             } catch (e) {
                 this.processError(e);
                 throw new Error("unreachable");
             }
         } else {
-            const result = await this.actor.updateAssessment(arg0, arg1, arg2, arg3);
+            const result = await this.actor.saveAssessmentDay(arg0, arg1, arg2, arg3, arg4, arg5);
+            return result;
+        }
+    }
+    async saveAssessmentInfoData(arg0: AssessmentInfoData): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.saveAssessmentInfoData(arg0);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.saveAssessmentInfoData(arg0);
+            return result;
+        }
+    }
+    async savePracticeRating(arg0: bigint, arg1: string, arg2: bigint, arg3: string, arg4: string, arg5: string, arg6: string, arg7: string): Promise<bigint> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.savePracticeRating(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.savePracticeRating(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7);
+            return result;
+        }
+    }
+    async saveProcessGroupConfig(arg0: bigint, arg1: string, arg2: string): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.saveProcessGroupConfig(arg0, arg1, arg2);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.saveProcessGroupConfig(arg0, arg1, arg2);
+            return result;
+        }
+    }
+    async updateAssessmentStatus(arg0: bigint, arg1: string): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.updateAssessmentStatus(arg0, arg1);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.updateAssessmentStatus(arg0, arg1);
+            return result;
+        }
+    }
+    async updateAssessmentStep(arg0: bigint, arg1: string): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.updateAssessmentStep(arg0, arg1);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.updateAssessmentStep(arg0, arg1);
             return result;
         }
     }

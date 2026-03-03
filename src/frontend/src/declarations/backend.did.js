@@ -9,198 +9,242 @@
 import { IDL } from '@icp-sdk/core/candid';
 
 export const Time = IDL.Int;
-export const AssessmentPlan = IDL.Record({
-  'id' : IDL.Nat,
-  'status' : IDL.Text,
-  'scheduledDate' : Time,
-  'planDetails' : IDL.Text,
-  'assessmentId' : IDL.Nat,
-});
-export const AssessmentResult = IDL.Record({
-  'id' : IDL.Nat,
-  'completedAt' : Time,
-  'recommendations' : IDL.Text,
-  'score' : IDL.Nat,
-  'findings' : IDL.Text,
-  'assessmentId' : IDL.Nat,
-});
 export const Assessment = IDL.Record({
   'id' : IDL.Nat,
   'status' : IDL.Text,
   'name' : IDL.Text,
   'createdAt' : Time,
-  'description' : IDL.Text,
+  'updatedAt' : Time,
+  'currentStep' : IDL.Text,
 });
-export const Report = IDL.Record({
+export const PracticeRating = IDL.Record({
   'id' : IDL.Nat,
-  'generatedAt' : Time,
-  'reportContent' : IDL.Text,
+  'weaknesses' : IDL.Text,
+  'strengths' : IDL.Text,
+  'workProductsInspected' : IDL.Text,
+  'level' : IDL.Nat,
+  'rating' : IDL.Text,
   'assessmentId' : IDL.Nat,
+  'processId' : IDL.Text,
+  'practiceId' : IDL.Text,
 });
-export const TargetProfile = IDL.Record({
+export const AssessmentDay = IDL.Record({
   'id' : IDL.Nat,
-  'name' : IDL.Text,
-  'criteria' : IDL.Text,
-  'skillLevel' : IDL.Text,
+  'timeTo' : IDL.Text,
+  'date' : IDL.Text,
+  'dayNumber' : IDL.Nat,
+  'sessions' : IDL.Text,
   'assessmentId' : IDL.Nat,
+  'timeFrom' : IDL.Text,
 });
-export const WorkProduct = IDL.Record({
-  'id' : IDL.Nat,
-  'name' : IDL.Text,
-  'fileType' : IDL.Text,
-  'notes' : IDL.Text,
+export const AssessmentInfoData = IDL.Record({
+  'unitDepartment' : IDL.Text,
+  'projectName' : IDL.Text,
+  'endDate' : IDL.Text,
+  'agileEnvironments' : IDL.Bool,
+  'modelBasedDev' : IDL.Bool,
+  'additionalRemarks' : IDL.Text,
+  'cybersecurityLevel' : IDL.Text,
+  'coAssessor' : IDL.Text,
+  'leadAssessor' : IDL.Text,
+  'projectContactSWQuality' : IDL.Text,
+  'sponsor' : IDL.Text,
+  'pamVersion' : IDL.Text,
+  'developmentExternal' : IDL.Bool,
+  'projectContactSWDev' : IDL.Text,
   'assessmentId' : IDL.Nat,
-  'uploadedAt' : Time,
+  'intacsId' : IDL.Text,
+  'functionalSafetyLevel' : IDL.Text,
+  'assessedParty' : IDL.Text,
+  'assessmentClass' : IDL.Text,
+  'projectScope' : IDL.Text,
+  'targetCapabilityLevel' : IDL.Text,
+  'assessedSite' : IDL.Text,
+  'assessorBody' : IDL.Text,
+  'startDate' : IDL.Text,
+  'vdaVersion' : IDL.Text,
+});
+export const ProcessGroupConfig = IDL.Record({
+  'enabledGroups' : IDL.Text,
+  'processLevels' : IDL.Text,
+  'assessmentId' : IDL.Nat,
 });
 
 export const idlService = IDL.Service({
-  'addAssessmentResult' : IDL.Func(
-      [IDL.Nat, IDL.Nat, IDL.Text, IDL.Text],
+  'createAssessment' : IDL.Func([IDL.Text], [IDL.Nat], []),
+  'deleteAssessmentDay' : IDL.Func([IDL.Nat], [], []),
+  'getAllAssessments' : IDL.Func([], [IDL.Vec(Assessment)], ['query']),
+  'getAllPracticeRatingsForAssessment' : IDL.Func(
       [IDL.Nat],
-      [],
-    ),
-  'addWorkProduct' : IDL.Func(
-      [IDL.Nat, IDL.Text, IDL.Text, IDL.Text],
-      [IDL.Nat],
-      [],
-    ),
-  'createAssessment' : IDL.Func([IDL.Text, IDL.Text, IDL.Text], [IDL.Nat], []),
-  'createAssessmentPlan' : IDL.Func(
-      [IDL.Nat, IDL.Text, Time, IDL.Text],
-      [IDL.Nat],
-      [],
-    ),
-  'createTargetProfile' : IDL.Func(
-      [IDL.Nat, IDL.Text, IDL.Text, IDL.Text],
-      [IDL.Nat],
-      [],
-    ),
-  'deleteAssessment' : IDL.Func([IDL.Nat], [], []),
-  'generateReport' : IDL.Func([IDL.Nat, IDL.Text], [IDL.Nat], []),
-  'getAllAssessmentPlans' : IDL.Func([], [IDL.Vec(AssessmentPlan)], ['query']),
-  'getAllAssessmentResults' : IDL.Func(
-      [],
-      [IDL.Vec(AssessmentResult)],
+      [IDL.Vec(PracticeRating)],
       ['query'],
     ),
-  'getAllAssessments' : IDL.Func([], [IDL.Vec(Assessment)], ['query']),
-  'getAllReports' : IDL.Func([], [IDL.Vec(Report)], ['query']),
-  'getAllTargetProfiles' : IDL.Func([], [IDL.Vec(TargetProfile)], ['query']),
-  'getAllWorkProducts' : IDL.Func([], [IDL.Vec(WorkProduct)], ['query']),
   'getAssessment' : IDL.Func([IDL.Nat], [Assessment], ['query']),
-  'getAssessmentPlan' : IDL.Func([IDL.Nat], [AssessmentPlan], ['query']),
-  'getAssessmentResult' : IDL.Func([IDL.Nat], [AssessmentResult], ['query']),
-  'getReport' : IDL.Func([IDL.Nat], [Report], ['query']),
-  'getTargetProfile' : IDL.Func([IDL.Nat], [TargetProfile], ['query']),
-  'getWorkProduct' : IDL.Func([IDL.Nat], [WorkProduct], ['query']),
-  'updateAssessment' : IDL.Func(
-      [IDL.Nat, IDL.Text, IDL.Text, IDL.Text],
-      [],
+  'getAssessmentDays' : IDL.Func(
+      [IDL.Nat],
+      [IDL.Vec(AssessmentDay)],
+      ['query'],
+    ),
+  'getAssessmentInfoData' : IDL.Func(
+      [IDL.Nat],
+      [AssessmentInfoData],
+      ['query'],
+    ),
+  'getPracticeRatings' : IDL.Func(
+      [IDL.Nat, IDL.Text],
+      [IDL.Vec(PracticeRating)],
+      ['query'],
+    ),
+  'getProcessGroupConfig' : IDL.Func(
+      [IDL.Nat],
+      [ProcessGroupConfig],
+      ['query'],
+    ),
+  'markAssessmentCompleted' : IDL.Func([IDL.Nat], [], []),
+  'saveAssessmentDay' : IDL.Func(
+      [IDL.Nat, IDL.Nat, IDL.Text, IDL.Text, IDL.Text, IDL.Text],
+      [IDL.Nat],
       [],
     ),
+  'saveAssessmentInfoData' : IDL.Func([AssessmentInfoData], [], []),
+  'savePracticeRating' : IDL.Func(
+      [
+        IDL.Nat,
+        IDL.Text,
+        IDL.Nat,
+        IDL.Text,
+        IDL.Text,
+        IDL.Text,
+        IDL.Text,
+        IDL.Text,
+      ],
+      [IDL.Nat],
+      [],
+    ),
+  'saveProcessGroupConfig' : IDL.Func([IDL.Nat, IDL.Text, IDL.Text], [], []),
+  'updateAssessmentStatus' : IDL.Func([IDL.Nat, IDL.Text], [], []),
+  'updateAssessmentStep' : IDL.Func([IDL.Nat, IDL.Text], [], []),
 });
 
 export const idlInitArgs = [];
 
 export const idlFactory = ({ IDL }) => {
   const Time = IDL.Int;
-  const AssessmentPlan = IDL.Record({
-    'id' : IDL.Nat,
-    'status' : IDL.Text,
-    'scheduledDate' : Time,
-    'planDetails' : IDL.Text,
-    'assessmentId' : IDL.Nat,
-  });
-  const AssessmentResult = IDL.Record({
-    'id' : IDL.Nat,
-    'completedAt' : Time,
-    'recommendations' : IDL.Text,
-    'score' : IDL.Nat,
-    'findings' : IDL.Text,
-    'assessmentId' : IDL.Nat,
-  });
   const Assessment = IDL.Record({
     'id' : IDL.Nat,
     'status' : IDL.Text,
     'name' : IDL.Text,
     'createdAt' : Time,
-    'description' : IDL.Text,
+    'updatedAt' : Time,
+    'currentStep' : IDL.Text,
   });
-  const Report = IDL.Record({
+  const PracticeRating = IDL.Record({
     'id' : IDL.Nat,
-    'generatedAt' : Time,
-    'reportContent' : IDL.Text,
+    'weaknesses' : IDL.Text,
+    'strengths' : IDL.Text,
+    'workProductsInspected' : IDL.Text,
+    'level' : IDL.Nat,
+    'rating' : IDL.Text,
     'assessmentId' : IDL.Nat,
+    'processId' : IDL.Text,
+    'practiceId' : IDL.Text,
   });
-  const TargetProfile = IDL.Record({
+  const AssessmentDay = IDL.Record({
     'id' : IDL.Nat,
-    'name' : IDL.Text,
-    'criteria' : IDL.Text,
-    'skillLevel' : IDL.Text,
+    'timeTo' : IDL.Text,
+    'date' : IDL.Text,
+    'dayNumber' : IDL.Nat,
+    'sessions' : IDL.Text,
     'assessmentId' : IDL.Nat,
+    'timeFrom' : IDL.Text,
   });
-  const WorkProduct = IDL.Record({
-    'id' : IDL.Nat,
-    'name' : IDL.Text,
-    'fileType' : IDL.Text,
-    'notes' : IDL.Text,
+  const AssessmentInfoData = IDL.Record({
+    'unitDepartment' : IDL.Text,
+    'projectName' : IDL.Text,
+    'endDate' : IDL.Text,
+    'agileEnvironments' : IDL.Bool,
+    'modelBasedDev' : IDL.Bool,
+    'additionalRemarks' : IDL.Text,
+    'cybersecurityLevel' : IDL.Text,
+    'coAssessor' : IDL.Text,
+    'leadAssessor' : IDL.Text,
+    'projectContactSWQuality' : IDL.Text,
+    'sponsor' : IDL.Text,
+    'pamVersion' : IDL.Text,
+    'developmentExternal' : IDL.Bool,
+    'projectContactSWDev' : IDL.Text,
     'assessmentId' : IDL.Nat,
-    'uploadedAt' : Time,
+    'intacsId' : IDL.Text,
+    'functionalSafetyLevel' : IDL.Text,
+    'assessedParty' : IDL.Text,
+    'assessmentClass' : IDL.Text,
+    'projectScope' : IDL.Text,
+    'targetCapabilityLevel' : IDL.Text,
+    'assessedSite' : IDL.Text,
+    'assessorBody' : IDL.Text,
+    'startDate' : IDL.Text,
+    'vdaVersion' : IDL.Text,
+  });
+  const ProcessGroupConfig = IDL.Record({
+    'enabledGroups' : IDL.Text,
+    'processLevels' : IDL.Text,
+    'assessmentId' : IDL.Nat,
   });
   
   return IDL.Service({
-    'addAssessmentResult' : IDL.Func(
-        [IDL.Nat, IDL.Nat, IDL.Text, IDL.Text],
-        [IDL.Nat],
-        [],
-      ),
-    'addWorkProduct' : IDL.Func(
-        [IDL.Nat, IDL.Text, IDL.Text, IDL.Text],
-        [IDL.Nat],
-        [],
-      ),
-    'createAssessment' : IDL.Func(
-        [IDL.Text, IDL.Text, IDL.Text],
-        [IDL.Nat],
-        [],
-      ),
-    'createAssessmentPlan' : IDL.Func(
-        [IDL.Nat, IDL.Text, Time, IDL.Text],
-        [IDL.Nat],
-        [],
-      ),
-    'createTargetProfile' : IDL.Func(
-        [IDL.Nat, IDL.Text, IDL.Text, IDL.Text],
-        [IDL.Nat],
-        [],
-      ),
-    'deleteAssessment' : IDL.Func([IDL.Nat], [], []),
-    'generateReport' : IDL.Func([IDL.Nat, IDL.Text], [IDL.Nat], []),
-    'getAllAssessmentPlans' : IDL.Func(
-        [],
-        [IDL.Vec(AssessmentPlan)],
-        ['query'],
-      ),
-    'getAllAssessmentResults' : IDL.Func(
-        [],
-        [IDL.Vec(AssessmentResult)],
-        ['query'],
-      ),
+    'createAssessment' : IDL.Func([IDL.Text], [IDL.Nat], []),
+    'deleteAssessmentDay' : IDL.Func([IDL.Nat], [], []),
     'getAllAssessments' : IDL.Func([], [IDL.Vec(Assessment)], ['query']),
-    'getAllReports' : IDL.Func([], [IDL.Vec(Report)], ['query']),
-    'getAllTargetProfiles' : IDL.Func([], [IDL.Vec(TargetProfile)], ['query']),
-    'getAllWorkProducts' : IDL.Func([], [IDL.Vec(WorkProduct)], ['query']),
+    'getAllPracticeRatingsForAssessment' : IDL.Func(
+        [IDL.Nat],
+        [IDL.Vec(PracticeRating)],
+        ['query'],
+      ),
     'getAssessment' : IDL.Func([IDL.Nat], [Assessment], ['query']),
-    'getAssessmentPlan' : IDL.Func([IDL.Nat], [AssessmentPlan], ['query']),
-    'getAssessmentResult' : IDL.Func([IDL.Nat], [AssessmentResult], ['query']),
-    'getReport' : IDL.Func([IDL.Nat], [Report], ['query']),
-    'getTargetProfile' : IDL.Func([IDL.Nat], [TargetProfile], ['query']),
-    'getWorkProduct' : IDL.Func([IDL.Nat], [WorkProduct], ['query']),
-    'updateAssessment' : IDL.Func(
-        [IDL.Nat, IDL.Text, IDL.Text, IDL.Text],
-        [],
+    'getAssessmentDays' : IDL.Func(
+        [IDL.Nat],
+        [IDL.Vec(AssessmentDay)],
+        ['query'],
+      ),
+    'getAssessmentInfoData' : IDL.Func(
+        [IDL.Nat],
+        [AssessmentInfoData],
+        ['query'],
+      ),
+    'getPracticeRatings' : IDL.Func(
+        [IDL.Nat, IDL.Text],
+        [IDL.Vec(PracticeRating)],
+        ['query'],
+      ),
+    'getProcessGroupConfig' : IDL.Func(
+        [IDL.Nat],
+        [ProcessGroupConfig],
+        ['query'],
+      ),
+    'markAssessmentCompleted' : IDL.Func([IDL.Nat], [], []),
+    'saveAssessmentDay' : IDL.Func(
+        [IDL.Nat, IDL.Nat, IDL.Text, IDL.Text, IDL.Text, IDL.Text],
+        [IDL.Nat],
         [],
       ),
+    'saveAssessmentInfoData' : IDL.Func([AssessmentInfoData], [], []),
+    'savePracticeRating' : IDL.Func(
+        [
+          IDL.Nat,
+          IDL.Text,
+          IDL.Nat,
+          IDL.Text,
+          IDL.Text,
+          IDL.Text,
+          IDL.Text,
+          IDL.Text,
+        ],
+        [IDL.Nat],
+        [],
+      ),
+    'saveProcessGroupConfig' : IDL.Func([IDL.Nat, IDL.Text, IDL.Text], [], []),
+    'updateAssessmentStatus' : IDL.Func([IDL.Nat, IDL.Text], [], []),
+    'updateAssessmentStep' : IDL.Func([IDL.Nat, IDL.Text], [], []),
   });
 };
 

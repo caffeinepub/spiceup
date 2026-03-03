@@ -7,12 +7,46 @@ export interface None {
     __kind__: "None";
 }
 export type Option<T> = Some<T> | None;
-export interface AssessmentPlan {
-    id: bigint;
-    status: string;
-    scheduledDate: Time;
-    planDetails: string;
+export interface ProcessGroupConfig {
+    enabledGroups: string;
+    processLevels: string;
     assessmentId: bigint;
+}
+export interface AssessmentInfoData {
+    unitDepartment: string;
+    projectName: string;
+    endDate: string;
+    agileEnvironments: boolean;
+    modelBasedDev: boolean;
+    additionalRemarks: string;
+    cybersecurityLevel: string;
+    coAssessor: string;
+    leadAssessor: string;
+    projectContactSWQuality: string;
+    sponsor: string;
+    pamVersion: string;
+    developmentExternal: boolean;
+    projectContactSWDev: string;
+    assessmentId: bigint;
+    intacsId: string;
+    functionalSafetyLevel: string;
+    assessedParty: string;
+    assessmentClass: string;
+    projectScope: string;
+    targetCapabilityLevel: string;
+    assessedSite: string;
+    assessorBody: string;
+    startDate: string;
+    vdaVersion: string;
+}
+export interface AssessmentDay {
+    id: bigint;
+    timeTo: string;
+    date: string;
+    dayNumber: bigint;
+    sessions: string;
+    assessmentId: bigint;
+    timeFrom: string;
 }
 export type Time = bigint;
 export interface Assessment {
@@ -20,56 +54,35 @@ export interface Assessment {
     status: string;
     name: string;
     createdAt: Time;
-    description: string;
+    updatedAt: Time;
+    currentStep: string;
 }
-export interface AssessmentResult {
+export interface PracticeRating {
     id: bigint;
-    completedAt: Time;
-    recommendations: string;
-    score: bigint;
-    findings: string;
+    weaknesses: string;
+    strengths: string;
+    workProductsInspected: string;
+    level: bigint;
+    rating: string;
     assessmentId: bigint;
-}
-export interface TargetProfile {
-    id: bigint;
-    name: string;
-    criteria: string;
-    skillLevel: string;
-    assessmentId: bigint;
-}
-export interface Report {
-    id: bigint;
-    generatedAt: Time;
-    reportContent: string;
-    assessmentId: bigint;
-}
-export interface WorkProduct {
-    id: bigint;
-    name: string;
-    fileType: string;
-    notes: string;
-    assessmentId: bigint;
-    uploadedAt: Time;
+    processId: string;
+    practiceId: string;
 }
 export interface backendInterface {
-    addAssessmentResult(assessmentId: bigint, score: bigint, findings: string, recommendations: string): Promise<bigint>;
-    addWorkProduct(assessmentId: bigint, name: string, fileType: string, notes: string): Promise<bigint>;
-    createAssessment(name: string, description: string, status: string): Promise<bigint>;
-    createAssessmentPlan(assessmentId: bigint, planDetails: string, scheduledDate: Time, status: string): Promise<bigint>;
-    createTargetProfile(assessmentId: bigint, name: string, criteria: string, skillLevel: string): Promise<bigint>;
-    deleteAssessment(id: bigint): Promise<void>;
-    generateReport(assessmentId: bigint, reportContent: string): Promise<bigint>;
-    getAllAssessmentPlans(): Promise<Array<AssessmentPlan>>;
-    getAllAssessmentResults(): Promise<Array<AssessmentResult>>;
+    createAssessment(name: string): Promise<bigint>;
+    deleteAssessmentDay(id: bigint): Promise<void>;
     getAllAssessments(): Promise<Array<Assessment>>;
-    getAllReports(): Promise<Array<Report>>;
-    getAllTargetProfiles(): Promise<Array<TargetProfile>>;
-    getAllWorkProducts(): Promise<Array<WorkProduct>>;
+    getAllPracticeRatingsForAssessment(assessmentId: bigint): Promise<Array<PracticeRating>>;
     getAssessment(id: bigint): Promise<Assessment>;
-    getAssessmentPlan(id: bigint): Promise<AssessmentPlan>;
-    getAssessmentResult(id: bigint): Promise<AssessmentResult>;
-    getReport(id: bigint): Promise<Report>;
-    getTargetProfile(id: bigint): Promise<TargetProfile>;
-    getWorkProduct(id: bigint): Promise<WorkProduct>;
-    updateAssessment(id: bigint, name: string, description: string, status: string): Promise<void>;
+    getAssessmentDays(assessmentId: bigint): Promise<Array<AssessmentDay>>;
+    getAssessmentInfoData(assessmentId: bigint): Promise<AssessmentInfoData>;
+    getPracticeRatings(assessmentId: bigint, processId: string): Promise<Array<PracticeRating>>;
+    getProcessGroupConfig(assessmentId: bigint): Promise<ProcessGroupConfig>;
+    markAssessmentCompleted(id: bigint): Promise<void>;
+    saveAssessmentDay(assessmentId: bigint, dayNumber: bigint, date: string, timeFrom: string, timeTo: string, sessions: string): Promise<bigint>;
+    saveAssessmentInfoData(data: AssessmentInfoData): Promise<void>;
+    savePracticeRating(assessmentId: bigint, processId: string, level: bigint, practiceId: string, rating: string, strengths: string, weaknesses: string, workProductsInspected: string): Promise<bigint>;
+    saveProcessGroupConfig(assessmentId: bigint, enabledGroups: string, processLevels: string): Promise<void>;
+    updateAssessmentStatus(id: bigint, status: string): Promise<void>;
+    updateAssessmentStep(id: bigint, step: string): Promise<void>;
 }

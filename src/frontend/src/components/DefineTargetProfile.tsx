@@ -1,203 +1,348 @@
-import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Target, Loader2 } from "lucide-react";
-import { toast } from "sonner";
+import { Switch } from "@/components/ui/switch";
+import { useAppContext } from "@/context/AppContext";
+import { DEFAULT_ENABLED_GROUPS, PROCESS_GROUPS } from "@/data/aspiceData";
 import {
-  useGetAllTargetProfiles,
-  useCreateTargetProfile,
   useGetAllAssessments,
+  useGetProcessGroupConfig,
+  useSaveProcessGroupConfig,
+  useUpdateAssessmentStep,
 } from "@/hooks/useQueries";
+import { LayoutDashboard, Loader2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
 
-const SKILL_LEVELS = ["Beginner", "Intermediate", "Advanced", "Expert"];
+function StatusBadge({ status }: { status: string }) {
+  const styles: Record<string, string> = {
+    Active: "bg-blue-50 text-blue-700 border-blue-200",
+    Completed: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    Draft: "bg-gray-50 text-gray-600 border-gray-200",
+  };
+  return (
+    <Badge
+      variant="outline"
+      className={`font-body text-xs ${styles[status] ?? "bg-gray-50 text-gray-600 border-gray-200"}`}
+    >
+      {status}
+    </Badge>
+  );
+}
 
-const skillLevelColors: Record<string, string> = {
-  Beginner: "bg-green-100 text-green-700 border-green-200",
-  Intermediate: "bg-blue-100 text-blue-700 border-blue-200",
-  Advanced: "bg-purple-100 text-purple-700 border-purple-200",
-  Expert: "bg-rose-100 text-rose-700 border-rose-200",
-};
+type Level = "1" | "2" | "3" | "NA";
+
+const LEVELS: Level[] = ["1", "2", "3", "NA"];
+
+function LevelSelector({
+  value,
+  onChange,
+  processId,
+}: {
+  value: Level;
+  onChange: (v: Level) => void;
+  processId: string;
+}) {
+  return (
+    <div className="flex gap-1">
+      {LEVELS.map((lvl) => (
+        <button
+          key={lvl}
+          type="button"
+          onClick={() => onChange(lvl)}
+          className={`px-2.5 py-1 rounded text-xs font-medium font-body transition-all border ${
+            value === lvl
+              ? lvl === "NA"
+                ? "bg-gray-100 border-gray-300 text-gray-700"
+                : "spice-gradient text-white border-transparent"
+              : "bg-background border-border text-muted-foreground hover:bg-muted"
+          }`}
+          data-ocid={`target_profile.${processId.toLowerCase().replace(".", "_")}.level_${lvl.toLowerCase()}_button`}
+        >
+          {lvl === "NA" ? "NA" : `L${lvl}`}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 export function DefineTargetProfile() {
-  const { data: profiles, isLoading } = useGetAllTargetProfiles();
+  const { currentAssessmentId, currentAssessmentTitle, navigateTo } =
+    useAppContext();
   const { data: assessments } = useGetAllAssessments();
-  const createMutation = useCreateTargetProfile();
+  const { data: config, isLoading } =
+    useGetProcessGroupConfig(currentAssessmentId);
+  const saveMutation = useSaveProcessGroupConfig();
+  const updateStepMutation = useUpdateAssessmentStep();
 
-  const [showForm, setShowForm] = useState(false);
-  const [assessmentId, setAssessmentId] = useState("");
-  const [name, setName] = useState("");
-  const [criteria, setCriteria] = useState("");
-  const [skillLevel, setSkillLevel] = useState("Intermediate");
+  const [enabledGroups, setEnabledGroups] = useState<Set<string>>(
+    new Set(DEFAULT_ENABLED_GROUPS),
+  );
+  const [processLevels, setProcessLevels] = useState<Record<string, Level>>({});
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!assessmentId) {
-      toast.error("Please select an assessment");
-      return;
+  const currentAssessment = assessments?.find(
+    (a) => a.id === currentAssessmentId,
+  );
+
+  // Initialize default levels
+  useEffect(() => {
+    const defaults: Record<string, Level> = {};
+    for (const group of PROCESS_GROUPS) {
+      for (const process of group.processes) {
+        defaults[process.id] = "2";
+      }
     }
-    if (!name.trim()) {
-      toast.error("Profile name is required");
-      return;
+    setProcessLevels(defaults);
+  }, []);
+
+  // Load saved config
+  useEffect(() => {
+    if (config) {
+      try {
+        const groups = JSON.parse(config.enabledGroups) as string[];
+        setEnabledGroups(new Set(groups));
+      } catch {
+        setEnabledGroups(new Set(DEFAULT_ENABLED_GROUPS));
+      }
+      try {
+        const levels = JSON.parse(config.processLevels) as Record<
+          string,
+          string
+        >;
+        const typed: Record<string, Level> = {};
+        for (const [k, v] of Object.entries(levels)) {
+          if (["1", "2", "3", "NA"].includes(v)) {
+            typed[k] = v as Level;
+          }
+        }
+        setProcessLevels((prev) => ({ ...prev, ...typed }));
+      } catch {
+        // keep defaults
+      }
     }
+  }, [config]);
+
+  function toggleGroup(groupId: string) {
+    setEnabledGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(groupId)) {
+        next.delete(groupId);
+      } else {
+        next.add(groupId);
+      }
+      return next;
+    });
+  }
+
+  function setLevel(processId: string, level: Level) {
+    setProcessLevels((prev) => ({ ...prev, [processId]: level }));
+  }
+
+  async function save() {
+    if (!currentAssessmentId) return;
+    const enabledArray = Array.from(enabledGroups);
+    const enabledGroupsJson = JSON.stringify(enabledArray);
+    const processLevelsJson = JSON.stringify(processLevels);
+    await saveMutation.mutateAsync({
+      assessmentId: currentAssessmentId,
+      enabledGroups: enabledGroupsJson,
+      processLevels: processLevelsJson,
+    });
+    return updateStepMutation.mutateAsync({
+      id: currentAssessmentId,
+      step: "target-profile",
+    });
+  }
+
+  async function handleSaveDraft() {
     try {
-      await createMutation.mutateAsync({
-        assessmentId: BigInt(assessmentId),
-        name: name.trim(),
-        criteria: criteria.trim(),
-        skillLevel,
-      });
-      toast.success("Target profile created");
-      setName("");
-      setCriteria("");
-      setSkillLevel("Intermediate");
-      setAssessmentId("");
-      setShowForm(false);
+      await save();
+      toast.success("Draft saved successfully");
     } catch {
-      toast.error("Failed to create target profile");
+      toast.error("Failed to save draft");
     }
   }
 
-  function getAssessmentName(id: bigint) {
-    return assessments?.find((a) => a.id === id)?.name ?? `Assessment #${String(id)}`;
+  async function handleSaveAndContinue() {
+    if (enabledGroups.size === 0) {
+      toast.error("Please enable at least one process group");
+      return;
+    }
+    try {
+      await save();
+      await updateStepMutation.mutateAsync({
+        id: currentAssessmentId!,
+        step: "planning",
+      });
+      toast.success("Saved — navigating to Assessment Planning");
+      navigateTo("planning");
+    } catch {
+      toast.error("Failed to save");
+    }
+  }
+
+  const isSaving = saveMutation.isPending || updateStepMutation.isPending;
+
+  if (!currentAssessmentId) {
+    return (
+      <div className="page-enter flex flex-col items-center justify-center py-20 text-center space-y-4">
+        <LayoutDashboard className="h-12 w-12 text-muted-foreground/40" />
+        <div>
+          <p className="text-lg font-semibold font-heading text-foreground">
+            No Assessment Selected
+          </p>
+          <p className="text-muted-foreground text-sm mt-1 font-body">
+            Please select or create an assessment from the Dashboard.
+          </p>
+        </div>
+        <Button
+          onClick={() => navigateTo("dashboard")}
+          className="spice-gradient text-white border-0 gap-2"
+        >
+          <LayoutDashboard className="h-4 w-4" />
+          Go to Dashboard
+        </Button>
+      </div>
+    );
   }
 
   return (
     <div className="page-enter space-y-6">
-      <div className="flex items-center justify-between">
+      {/* Page Header */}
+      <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold font-heading text-foreground">Define Target Profile</h1>
-          <p className="text-muted-foreground text-sm mt-1 font-body">Set skill targets and criteria for assessments</p>
+          <p className="text-xs text-muted-foreground font-body mb-1 uppercase tracking-wide">
+            Current Assessment
+          </p>
+          <h1 className="text-2xl font-bold font-heading text-foreground">
+            {currentAssessmentTitle}
+          </h1>
+          <p className="text-muted-foreground text-sm mt-1 font-body">
+            Define Target Profile
+          </p>
         </div>
-        <Button
-          onClick={() => setShowForm(!showForm)}
-          className="spice-gradient text-white border-0 gap-2"
-        >
-          <Plus className="h-4 w-4" />
-          New Profile
-        </Button>
+        {currentAssessment && <StatusBadge status={currentAssessment.status} />}
       </div>
 
-      {/* Create Form */}
-      {showForm && (
-        <Card className="border-accent/30 bg-accent/5">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base font-heading">Create Target Profile</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Assessment</Label>
-                  <Select value={assessmentId} onValueChange={setAssessmentId}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select assessment" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {assessments?.map((a) => (
-                        <SelectItem key={String(a.id)} value={String(a.id)}>
-                          {a.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Profile Name</Label>
-                  <Input
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="e.g., Senior Developer Profile"
-                    required
-                  />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label>Criteria</Label>
-                <Textarea
-                  value={criteria}
-                  onChange={(e) => setCriteria(e.target.value)}
-                  placeholder="Describe the criteria and competencies required..."
-                  rows={3}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Skill Level</Label>
-                <Select value={skillLevel} onValueChange={setSkillLevel}>
-                  <SelectTrigger className="w-48">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {SKILL_LEVELS.map((level) => (
-                      <SelectItem key={level} value={level}>{level}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="flex gap-3 pt-2">
-                <Button type="submit" disabled={createMutation.isPending} className="spice-gradient text-white border-0">
-                  {createMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Create Profile
-                </Button>
-                <Button type="button" variant="outline" onClick={() => setShowForm(false)}>
-                  Cancel
-                </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Profiles Grid */}
       {isLoading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {[1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-40 rounded-xl" />)}
-        </div>
-      ) : profiles && profiles.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {profiles.map((profile) => (
-            <Card key={String(profile.id)} className="border-border/60 hover:border-accent/30 transition-colors stat-card-hover">
-              <CardHeader className="pb-2">
-                <div className="flex items-start justify-between">
-                  <CardTitle className="text-base font-heading">{profile.name}</CardTitle>
-                  <Badge
-                    variant="outline"
-                    className={skillLevelColors[profile.skillLevel] ?? "bg-gray-100 text-gray-700"}
-                  >
-                    {profile.skillLevel}
-                  </Badge>
-                </div>
-                <p className="text-xs text-muted-foreground font-body">
-                  {getAssessmentName(profile.assessmentId)}
-                </p>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-foreground/80 font-body line-clamp-3">
-                  {profile.criteria || <span className="text-muted-foreground italic">No criteria defined</span>}
-                </p>
-              </CardContent>
-            </Card>
+        <div className="space-y-4">
+          {[1, 2, 3].map((i) => (
+            <Skeleton key={i} className="h-32 w-full rounded-xl" />
           ))}
         </div>
       ) : (
-        <Card className="border-dashed border-border/60">
-          <CardContent className="flex flex-col items-center justify-center py-16">
-            <Target className="h-10 w-10 text-muted-foreground/40 mb-3" />
-            <p className="text-muted-foreground font-body text-sm">No target profiles yet.</p>
-            <p className="text-muted-foreground/60 font-body text-xs mt-1">Define profiles to set skill benchmarks.</p>
-          </CardContent>
-        </Card>
+        <div className="space-y-6">
+          {/* Section 1: Process Group Toggles */}
+          <Card className="border-border/60">
+            <CardHeader className="pb-4">
+              <CardTitle className="text-sm font-heading font-semibold text-foreground uppercase tracking-wide">
+                Process Group Enable / Disable
+              </CardTitle>
+              <Separator />
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {PROCESS_GROUPS.map((group, index) => (
+                  <div
+                    key={group.id}
+                    className="flex items-center justify-between p-3 rounded-lg border border-border/60 bg-card hover:bg-muted/30 transition-colors"
+                  >
+                    <div>
+                      <p className="font-medium font-body text-sm text-foreground">
+                        {group.name}
+                      </p>
+                      <p className="text-xs text-muted-foreground font-body mt-0.5">
+                        {group.processes.length} process
+                        {group.processes.length !== 1 ? "es" : ""}
+                      </p>
+                    </div>
+                    <Switch
+                      checked={enabledGroups.has(group.id)}
+                      onCheckedChange={() => toggleGroup(group.id)}
+                      data-ocid={`target_profile.group_toggle.${index + 1}`}
+                    />
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Section 2: Target Level Selection */}
+          {Array.from(enabledGroups).length > 0 && (
+            <Card className="border-border/60">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-sm font-heading font-semibold text-foreground uppercase tracking-wide">
+                  Target Level Selection
+                </CardTitle>
+                <p className="text-xs text-muted-foreground font-body">
+                  Set the target capability level for each enabled process
+                </p>
+                <Separator />
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {PROCESS_GROUPS.filter((g) => enabledGroups.has(g.id)).map(
+                  (group) => (
+                    <div key={group.id} className="space-y-3">
+                      <div className="flex items-center gap-2">
+                        <div className="h-1 w-4 rounded-full spice-gradient" />
+                        <h3 className="font-semibold font-heading text-sm text-foreground">
+                          {group.name}
+                        </h3>
+                      </div>
+                      <div className="space-y-2 pl-6">
+                        {group.processes.map((process) => (
+                          <div
+                            key={process.id}
+                            className="flex items-center justify-between py-2 px-3 rounded-lg bg-muted/30 border border-border/40"
+                          >
+                            <div>
+                              <span className="font-medium font-body text-sm text-foreground">
+                                {process.id}
+                              </span>
+                              <span className="text-muted-foreground font-body text-sm ml-2">
+                                — {process.name}
+                              </span>
+                            </div>
+                            <LevelSelector
+                              value={processLevels[process.id] ?? "2"}
+                              onChange={(v) => setLevel(process.id, v)}
+                              processId={process.id}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ),
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Action Buttons */}
+          <div className="flex items-center gap-3 pt-2 pb-6">
+            <Button
+              variant="outline"
+              onClick={handleSaveDraft}
+              disabled={isSaving}
+              data-ocid="target_profile.save_draft_button"
+            >
+              {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Save Draft
+            </Button>
+            <Button
+              onClick={handleSaveAndContinue}
+              disabled={isSaving}
+              className="spice-gradient text-white border-0"
+              data-ocid="target_profile.save_continue_button"
+            >
+              {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Save &amp; Continue →
+            </Button>
+          </div>
+        </div>
       )}
     </div>
   );

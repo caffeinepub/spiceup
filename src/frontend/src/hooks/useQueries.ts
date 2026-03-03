@@ -1,13 +1,12 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useActor } from "./useActor";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   Assessment,
-  TargetProfile,
-  AssessmentPlan,
-  WorkProduct,
-  AssessmentResult,
-  Report,
+  AssessmentDay,
+  AssessmentInfoData,
+  PracticeRating,
+  ProcessGroupConfig,
 } from "../backend.d";
+import { useActor } from "./useActor";
 
 // ─── Assessments ──────────────────────────────────────────────
 
@@ -27,17 +26,9 @@ export function useCreateAssessment() {
   const { actor } = useActor();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async ({
-      name,
-      description,
-      status,
-    }: {
-      name: string;
-      description: string;
-      status: string;
-    }) => {
+    mutationFn: async ({ name }: { name: string }) => {
       if (!actor) throw new Error("Actor not available");
-      return actor.createAssessment(name, description, status);
+      return actor.createAssessment(name);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["assessments"] });
@@ -45,37 +36,13 @@ export function useCreateAssessment() {
   });
 }
 
-export function useUpdateAssessment() {
-  const { actor } = useActor();
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async ({
-      id,
-      name,
-      description,
-      status,
-    }: {
-      id: bigint;
-      name: string;
-      description: string;
-      status: string;
-    }) => {
-      if (!actor) throw new Error("Actor not available");
-      return actor.updateAssessment(id, name, description, status);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["assessments"] });
-    },
-  });
-}
-
-export function useDeleteAssessment() {
+export function useMarkAssessmentCompleted() {
   const { actor } = useActor();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (id: bigint) => {
       if (!actor) throw new Error("Actor not available");
-      return actor.deleteAssessment(id);
+      return actor.markAssessmentCompleted(id);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["assessments"] });
@@ -83,78 +50,247 @@ export function useDeleteAssessment() {
   });
 }
 
-// ─── Target Profiles ──────────────────────────────────────────
-
-export function useGetAllTargetProfiles() {
-  const { actor, isFetching } = useActor();
-  return useQuery<TargetProfile[]>({
-    queryKey: ["targetProfiles"],
-    queryFn: async () => {
-      if (!actor) return [];
-      return actor.getAllTargetProfiles();
+export function useUpdateAssessmentStatus() {
+  const { actor } = useActor();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, status }: { id: bigint; status: string }) => {
+      if (!actor) throw new Error("Actor not available");
+      return actor.updateAssessmentStatus(id, status);
     },
-    enabled: !!actor && !isFetching,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["assessments"] });
+    },
   });
 }
 
-export function useCreateTargetProfile() {
+export function useUpdateAssessmentStep() {
+  const { actor } = useActor();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, step }: { id: bigint; step: string }) => {
+      if (!actor) throw new Error("Actor not available");
+      return actor.updateAssessmentStep(id, step);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["assessments"] });
+    },
+  });
+}
+
+// ─── Assessment Info Data ─────────────────────────────────────
+
+export function useGetAssessmentInfoData(assessmentId: bigint | null) {
+  const { actor, isFetching } = useActor();
+  return useQuery<AssessmentInfoData | null>({
+    queryKey: ["assessmentInfoData", assessmentId?.toString()],
+    queryFn: async () => {
+      if (!actor || assessmentId == null) return null;
+      try {
+        return await actor.getAssessmentInfoData(assessmentId);
+      } catch {
+        return null;
+      }
+    },
+    enabled: !!actor && !isFetching && assessmentId != null,
+  });
+}
+
+export function useSaveAssessmentInfoData() {
+  const { actor } = useActor();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: AssessmentInfoData) => {
+      if (!actor) throw new Error("Actor not available");
+      return actor.saveAssessmentInfoData(data);
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ["assessmentInfoData", variables.assessmentId.toString()],
+      });
+    },
+  });
+}
+
+// ─── Process Group Config ─────────────────────────────────────
+
+export function useGetProcessGroupConfig(assessmentId: bigint | null) {
+  const { actor, isFetching } = useActor();
+  return useQuery<ProcessGroupConfig | null>({
+    queryKey: ["processGroupConfig", assessmentId?.toString()],
+    queryFn: async () => {
+      if (!actor || assessmentId == null) return null;
+      try {
+        return await actor.getProcessGroupConfig(assessmentId);
+      } catch {
+        return null;
+      }
+    },
+    enabled: !!actor && !isFetching && assessmentId != null,
+  });
+}
+
+export function useSaveProcessGroupConfig() {
   const { actor } = useActor();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({
       assessmentId,
-      name,
-      criteria,
-      skillLevel,
+      enabledGroups,
+      processLevels,
     }: {
       assessmentId: bigint;
-      name: string;
-      criteria: string;
-      skillLevel: string;
+      enabledGroups: string;
+      processLevels: string;
     }) => {
       if (!actor) throw new Error("Actor not available");
-      return actor.createTargetProfile(assessmentId, name, criteria, skillLevel);
+      return actor.saveProcessGroupConfig(
+        assessmentId,
+        enabledGroups,
+        processLevels,
+      );
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["targetProfiles"] });
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ["processGroupConfig", variables.assessmentId.toString()],
+      });
     },
   });
 }
 
-// ─── Assessment Plans ─────────────────────────────────────────
+// ─── Assessment Days (Planning) ───────────────────────────────
 
-export function useGetAllAssessmentPlans() {
+export function useGetAssessmentDays(assessmentId: bigint | null) {
   const { actor, isFetching } = useActor();
-  return useQuery<AssessmentPlan[]>({
-    queryKey: ["assessmentPlans"],
+  return useQuery<AssessmentDay[]>({
+    queryKey: ["assessmentDays", assessmentId?.toString()],
     queryFn: async () => {
-      if (!actor) return [];
-      return actor.getAllAssessmentPlans();
+      if (!actor || assessmentId == null) return [];
+      try {
+        return await actor.getAssessmentDays(assessmentId);
+      } catch {
+        return [];
+      }
     },
-    enabled: !!actor && !isFetching,
+    enabled: !!actor && !isFetching && assessmentId != null,
   });
 }
 
-export function useCreateAssessmentPlan() {
+export function useSaveAssessmentDay() {
   const { actor } = useActor();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({
       assessmentId,
-      planDetails,
-      scheduledDate,
-      status,
+      dayNumber,
+      date,
+      timeFrom,
+      timeTo,
+      sessions,
     }: {
       assessmentId: bigint;
-      planDetails: string;
-      scheduledDate: bigint;
-      status: string;
+      dayNumber: bigint;
+      date: string;
+      timeFrom: string;
+      timeTo: string;
+      sessions: string;
     }) => {
       if (!actor) throw new Error("Actor not available");
-      return actor.createAssessmentPlan(assessmentId, planDetails, scheduledDate, status);
+      return actor.saveAssessmentDay(
+        assessmentId,
+        dayNumber,
+        date,
+        timeFrom,
+        timeTo,
+        sessions,
+      );
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["assessmentPlans"] });
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ["assessmentDays", variables.assessmentId.toString()],
+      });
+    },
+  });
+}
+
+export function useDeleteAssessmentDay() {
+  const { actor } = useActor();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      assessmentId: _assessmentId,
+    }: { id: bigint; assessmentId: bigint }) => {
+      if (!actor) throw new Error("Actor not available");
+      return actor.deleteAssessmentDay(id);
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ["assessmentDays", variables.assessmentId.toString()],
+      });
+    },
+  });
+}
+
+// ─── Practice Ratings (Perform Assessment) ────────────────────
+
+export function useGetAllPracticeRatingsForAssessment(
+  assessmentId: bigint | null,
+) {
+  const { actor, isFetching } = useActor();
+  return useQuery<PracticeRating[]>({
+    queryKey: ["practiceRatings", assessmentId?.toString()],
+    queryFn: async () => {
+      if (!actor || assessmentId == null) return [];
+      try {
+        return await actor.getAllPracticeRatingsForAssessment(assessmentId);
+      } catch {
+        return [];
+      }
+    },
+    enabled: !!actor && !isFetching && assessmentId != null,
+  });
+}
+
+export function useSavePracticeRating() {
+  const { actor } = useActor();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      assessmentId,
+      processId,
+      level,
+      practiceId,
+      rating,
+      strengths,
+      weaknesses,
+      workProductsInspected,
+    }: {
+      assessmentId: bigint;
+      processId: string;
+      level: bigint;
+      practiceId: string;
+      rating: string;
+      strengths: string;
+      weaknesses: string;
+      workProductsInspected: string;
+    }) => {
+      if (!actor) throw new Error("Actor not available");
+      return actor.savePracticeRating(
+        assessmentId,
+        processId,
+        level,
+        practiceId,
+        rating,
+        strengths,
+        weaknesses,
+        workProductsInspected,
+      );
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ["practiceRatings", variables.assessmentId.toString()],
+      });
     },
   });
 }
@@ -163,11 +299,15 @@ export function useCreateAssessmentPlan() {
 
 export function useGetAllWorkProducts() {
   const { actor, isFetching } = useActor();
-  return useQuery<WorkProduct[]>({
+  return useQuery({
     queryKey: ["workProducts"],
     queryFn: async () => {
       if (!actor) return [];
-      return actor.getAllWorkProducts();
+      try {
+        return (await (actor as any).getAllWorkProducts?.()) ?? [];
+      } catch {
+        return [];
+      }
     },
     enabled: !!actor && !isFetching,
   });
@@ -189,7 +329,7 @@ export function useAddWorkProduct() {
       notes: string;
     }) => {
       if (!actor) throw new Error("Actor not available");
-      return actor.addWorkProduct(assessmentId, name, fileType, notes);
+      return (actor as any).addWorkProduct(assessmentId, name, fileType, notes);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["workProducts"] });
@@ -201,11 +341,15 @@ export function useAddWorkProduct() {
 
 export function useGetAllAssessmentResults() {
   const { actor, isFetching } = useActor();
-  return useQuery<AssessmentResult[]>({
+  return useQuery({
     queryKey: ["assessmentResults"],
     queryFn: async () => {
       if (!actor) return [];
-      return actor.getAllAssessmentResults();
+      try {
+        return (await (actor as any).getAllAssessmentResults?.()) ?? [];
+      } catch {
+        return [];
+      }
     },
     enabled: !!actor && !isFetching,
   });
@@ -227,7 +371,12 @@ export function useAddAssessmentResult() {
       recommendations: string;
     }) => {
       if (!actor) throw new Error("Actor not available");
-      return actor.addAssessmentResult(assessmentId, score, findings, recommendations);
+      return (actor as any).addAssessmentResult(
+        assessmentId,
+        score,
+        findings,
+        recommendations,
+      );
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["assessmentResults"] });
@@ -239,11 +388,15 @@ export function useAddAssessmentResult() {
 
 export function useGetAllReports() {
   const { actor, isFetching } = useActor();
-  return useQuery<Report[]>({
+  return useQuery({
     queryKey: ["reports"],
     queryFn: async () => {
       if (!actor) return [];
-      return actor.getAllReports();
+      try {
+        return (await (actor as any).getAllReports?.()) ?? [];
+      } catch {
+        return [];
+      }
     },
     enabled: !!actor && !isFetching,
   });
@@ -261,7 +414,7 @@ export function useGenerateReport() {
       reportContent: string;
     }) => {
       if (!actor) throw new Error("Actor not available");
-      return actor.generateReport(assessmentId, reportContent);
+      return (actor as any).generateReport(assessmentId, reportContent);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["reports"] });

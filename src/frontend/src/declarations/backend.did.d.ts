@@ -15,66 +15,88 @@ export interface Assessment {
   'status' : string,
   'name' : string,
   'createdAt' : Time,
-  'description' : string,
+  'updatedAt' : Time,
+  'currentStep' : string,
 }
-export interface AssessmentPlan {
+export interface AssessmentDay {
   'id' : bigint,
-  'status' : string,
-  'scheduledDate' : Time,
-  'planDetails' : string,
+  'timeTo' : string,
+  'date' : string,
+  'dayNumber' : bigint,
+  'sessions' : string,
   'assessmentId' : bigint,
+  'timeFrom' : string,
 }
-export interface AssessmentResult {
-  'id' : bigint,
-  'completedAt' : Time,
-  'recommendations' : string,
-  'score' : bigint,
-  'findings' : string,
+export interface AssessmentInfoData {
+  'unitDepartment' : string,
+  'projectName' : string,
+  'endDate' : string,
+  'agileEnvironments' : boolean,
+  'modelBasedDev' : boolean,
+  'additionalRemarks' : string,
+  'cybersecurityLevel' : string,
+  'coAssessor' : string,
+  'leadAssessor' : string,
+  'projectContactSWQuality' : string,
+  'sponsor' : string,
+  'pamVersion' : string,
+  'developmentExternal' : boolean,
+  'projectContactSWDev' : string,
   'assessmentId' : bigint,
+  'intacsId' : string,
+  'functionalSafetyLevel' : string,
+  'assessedParty' : string,
+  'assessmentClass' : string,
+  'projectScope' : string,
+  'targetCapabilityLevel' : string,
+  'assessedSite' : string,
+  'assessorBody' : string,
+  'startDate' : string,
+  'vdaVersion' : string,
 }
-export interface Report {
+export interface PracticeRating {
   'id' : bigint,
-  'generatedAt' : Time,
-  'reportContent' : string,
+  'weaknesses' : string,
+  'strengths' : string,
+  'workProductsInspected' : string,
+  'level' : bigint,
+  'rating' : string,
   'assessmentId' : bigint,
+  'processId' : string,
+  'practiceId' : string,
 }
-export interface TargetProfile {
-  'id' : bigint,
-  'name' : string,
-  'criteria' : string,
-  'skillLevel' : string,
+export interface ProcessGroupConfig {
+  'enabledGroups' : string,
+  'processLevels' : string,
   'assessmentId' : bigint,
 }
 export type Time = bigint;
-export interface WorkProduct {
-  'id' : bigint,
-  'name' : string,
-  'fileType' : string,
-  'notes' : string,
-  'assessmentId' : bigint,
-  'uploadedAt' : Time,
-}
 export interface _SERVICE {
-  'addAssessmentResult' : ActorMethod<[bigint, bigint, string, string], bigint>,
-  'addWorkProduct' : ActorMethod<[bigint, string, string, string], bigint>,
-  'createAssessment' : ActorMethod<[string, string, string], bigint>,
-  'createAssessmentPlan' : ActorMethod<[bigint, string, Time, string], bigint>,
-  'createTargetProfile' : ActorMethod<[bigint, string, string, string], bigint>,
-  'deleteAssessment' : ActorMethod<[bigint], undefined>,
-  'generateReport' : ActorMethod<[bigint, string], bigint>,
-  'getAllAssessmentPlans' : ActorMethod<[], Array<AssessmentPlan>>,
-  'getAllAssessmentResults' : ActorMethod<[], Array<AssessmentResult>>,
+  'createAssessment' : ActorMethod<[string], bigint>,
+  'deleteAssessmentDay' : ActorMethod<[bigint], undefined>,
   'getAllAssessments' : ActorMethod<[], Array<Assessment>>,
-  'getAllReports' : ActorMethod<[], Array<Report>>,
-  'getAllTargetProfiles' : ActorMethod<[], Array<TargetProfile>>,
-  'getAllWorkProducts' : ActorMethod<[], Array<WorkProduct>>,
+  'getAllPracticeRatingsForAssessment' : ActorMethod<
+    [bigint],
+    Array<PracticeRating>
+  >,
   'getAssessment' : ActorMethod<[bigint], Assessment>,
-  'getAssessmentPlan' : ActorMethod<[bigint], AssessmentPlan>,
-  'getAssessmentResult' : ActorMethod<[bigint], AssessmentResult>,
-  'getReport' : ActorMethod<[bigint], Report>,
-  'getTargetProfile' : ActorMethod<[bigint], TargetProfile>,
-  'getWorkProduct' : ActorMethod<[bigint], WorkProduct>,
-  'updateAssessment' : ActorMethod<[bigint, string, string, string], undefined>,
+  'getAssessmentDays' : ActorMethod<[bigint], Array<AssessmentDay>>,
+  'getAssessmentInfoData' : ActorMethod<[bigint], AssessmentInfoData>,
+  'getPracticeRatings' : ActorMethod<[bigint, string], Array<PracticeRating>>,
+  'getProcessGroupConfig' : ActorMethod<[bigint], ProcessGroupConfig>,
+  'markAssessmentCompleted' : ActorMethod<[bigint], undefined>,
+  'saveAssessmentDay' : ActorMethod<
+    [bigint, bigint, string, string, string, string],
+    bigint
+  >,
+  'saveAssessmentInfoData' : ActorMethod<[AssessmentInfoData], undefined>,
+  'savePracticeRating' : ActorMethod<
+    [bigint, string, bigint, string, string, string, string, string],
+    bigint
+  >,
+  'saveProcessGroupConfig' : ActorMethod<[bigint, string, string], undefined>,
+  'updateAssessmentStatus' : ActorMethod<[bigint, string], undefined>,
+  'updateAssessmentStep' : ActorMethod<[bigint, string], undefined>,
 }
 export declare const idlService: IDL.ServiceClass;
 export declare const idlInitArgs: IDL.Type[];
