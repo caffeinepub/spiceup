@@ -1,14 +1,22 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  ResizableHandle,
-  ResizablePanel,
-  ResizablePanelGroup,
-} from "@/components/ui/resizable";
-import { ScrollArea } from "@/components/ui/scroll-area";
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -40,18 +48,23 @@ import {
 import { cn } from "@/lib/utils";
 import {
   AlertCircle,
+  Bold,
   CheckCircle2,
   ChevronDown,
   ChevronRight,
   ChevronsDownUp,
   ChevronsUpDown,
+  Italic,
   LayoutDashboard,
+  List,
   Loader2,
+  Pencil,
   Plus,
   Save,
+  Trash2,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { PracticeRating } from "../backend.d";
 
@@ -65,11 +78,19 @@ interface EvidenceItem {
   version: string;
 }
 
+interface SwEntry {
+  id: string;
+  type: "strength" | "weakness";
+  text: string;
+}
+
 interface PracticeState {
   rating: Rating;
-  strengths: string;
-  weaknesses: string;
+  swEntries: SwEntry[];
   workProducts: EvidenceItem[];
+  // legacy fields kept for backward compat serialization
+  strengths?: string;
+  weaknesses?: string;
 }
 
 // key: `${processId}_${level}_${practiceId}`
@@ -155,8 +176,7 @@ function buildEnabledProcesses(
 
 const defaultPracticeState = (): PracticeState => ({
   rating: "",
-  strengths: "",
-  weaknesses: "",
+  swEntries: [],
   workProducts: [],
 });
 
@@ -180,7 +200,6 @@ function getAggregateDotClass(ratings: Rating[]): string {
   const rated = ratings.filter((r) => r !== "");
   if (rated.length === 0) return "bg-muted-foreground/30";
   if (rated.length < ratings.length) return "bg-orange-400";
-  // All rated — check if all F or L
   const allGood = rated.every((r) => r === "F" || r === "L");
   return allGood ? "bg-emerald-500" : "bg-orange-400";
 }
@@ -249,6 +268,455 @@ function getProcessName(processId: string): string {
   );
 }
 
+/** Simple markdown-like renderer: **bold**, *italic*, • list items */
+function renderRichText(text: string): React.ReactNode {
+  if (!text) return null;
+  const lines = text.split("\n");
+  return (
+    <>
+      {lines.map((line, li) => {
+        // Render inline bold/italic
+        const parts: React.ReactNode[] = [];
+        let remaining = line;
+        let ki = 0;
+        while (remaining.length > 0) {
+          const boldMatch = remaining.match(/\*\*(.+?)\*\*/);
+          const italicMatch = remaining.match(/\*([^*]+?)\*/);
+
+          const boldIdx = boldMatch ? remaining.indexOf(boldMatch[0]) : -1;
+          const italicIdx = italicMatch
+            ? remaining.indexOf(italicMatch[0])
+            : -1;
+
+          if (boldIdx !== -1 && (italicIdx === -1 || boldIdx <= italicIdx)) {
+            if (boldIdx > 0) {
+              parts.push(
+                <span key={`${li}-t${ki++}`}>
+                  {remaining.slice(0, boldIdx)}
+                </span>,
+              );
+            }
+            parts.push(<strong key={`${li}-b${ki++}`}>{boldMatch![1]}</strong>);
+            remaining = remaining.slice(boldIdx + boldMatch![0].length);
+          } else if (italicIdx !== -1) {
+            if (italicIdx > 0) {
+              parts.push(
+                <span key={`${li}-t${ki++}`}>
+                  {remaining.slice(0, italicIdx)}
+                </span>,
+              );
+            }
+            parts.push(<em key={`${li}-i${ki++}`}>{italicMatch![1]}</em>);
+            remaining = remaining.slice(italicIdx + italicMatch![0].length);
+          } else {
+            parts.push(<span key={`${li}-t${ki++}`}>{remaining}</span>);
+            remaining = "";
+          }
+        }
+
+        const isBullet = line.startsWith("• ");
+        return (
+          <div
+            // biome-ignore lint/suspicious/noArrayIndexKey: line index is the only stable key for rich text rendering
+            key={`line-${li}`}
+            className={cn("leading-relaxed", isBullet && "flex gap-1")}
+          >
+            {isBullet && <span className="shrink-0">•</span>}
+            <span>{parts.length > 0 ? parts : " "}</span>
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+// ─── Rich Text Editor ─────────────────────────────────────────────
+
+function RichTextEditor({
+  value,
+  onChange,
+  placeholder,
+  disabled,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  disabled?: boolean;
+}) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  function wrapSelection(prefix: string, suffix: string) {
+    const el = textareaRef.current;
+    if (!el) return;
+    const start = el.selectionStart;
+    const end = el.selectionEnd;
+    const selected = value.slice(start, end);
+    const newText =
+      value.slice(0, start) + prefix + selected + suffix + value.slice(end);
+    onChange(newText);
+    setTimeout(() => {
+      el.focus();
+      el.setSelectionRange(start + prefix.length, end + prefix.length);
+    }, 0);
+  }
+
+  function insertBullet() {
+    const el = textareaRef.current;
+    if (!el) return;
+    const start = el.selectionStart;
+    // Find start of current line
+    const lineStart = value.lastIndexOf("\n", start - 1) + 1;
+    const newText = `${value.slice(0, lineStart)}• ${value.slice(lineStart)}`;
+    onChange(newText);
+    setTimeout(() => {
+      el.focus();
+      el.setSelectionRange(start + 2, start + 2);
+    }, 0);
+  }
+
+  return (
+    <div className="space-y-1">
+      {!disabled && (
+        <div className="flex items-center gap-0.5 p-1 rounded-t-md border border-b-0 border-border/60 bg-muted/30">
+          <button
+            type="button"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              wrapSelection("**", "**");
+            }}
+            className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+            title="Bold (wrap selection)"
+          >
+            <Bold className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              wrapSelection("*", "*");
+            }}
+            className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+            title="Italic (wrap selection)"
+          >
+            <Italic className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              insertBullet();
+            }}
+            className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+            title="Bullet list"
+          >
+            <List className="h-3.5 w-3.5" />
+          </button>
+          <span className="text-[10px] text-muted-foreground/50 ml-1">
+            Select text then B/I
+          </span>
+        </div>
+      )}
+      <Textarea
+        ref={textareaRef}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        rows={4}
+        disabled={disabled}
+        className={cn(
+          "font-body text-sm resize-none",
+          !disabled && "rounded-t-none border-t-0",
+        )}
+      />
+    </div>
+  );
+}
+
+// ─── Add / Edit Entry Dialog ──────────────────────────────────────
+
+function AddEntryDialog({
+  open,
+  onOpenChange,
+  initialEntry,
+  practiceId,
+  onSubmit,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  initialEntry?: SwEntry;
+  practiceId: string;
+  onSubmit: (entry: SwEntry) => void;
+}) {
+  const [entryType, setEntryType] = useState<"strength" | "weakness">(
+    initialEntry?.type ?? "strength",
+  );
+  const [text, setText] = useState(initialEntry?.text ?? "");
+
+  // Reset when dialog opens or initialEntry changes
+  useEffect(() => {
+    if (open) {
+      setEntryType(initialEntry?.type ?? "strength");
+      setText(initialEntry?.text ?? "");
+    }
+  }, [open, initialEntry]);
+
+  function handleSubmit() {
+    if (!text.trim()) return;
+    onSubmit({
+      id: initialEntry?.id ?? String(Date.now()),
+      type: entryType,
+      text: text.trim(),
+    });
+    onOpenChange(false);
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg" data-ocid="perform.entry_dialog">
+        <DialogHeader>
+          <DialogTitle className="font-heading text-base">
+            {initialEntry ? "Edit Entry" : "Add Strength / Weakness"}
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          <div className="space-y-1.5">
+            <Label className="font-body text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              Practice
+            </Label>
+            <p className="text-sm font-mono text-foreground">{practiceId}</p>
+          </div>
+          <div className="space-y-1.5">
+            <Label
+              htmlFor="entry-type"
+              className="font-body text-xs font-medium text-muted-foreground uppercase tracking-wide"
+            >
+              Type
+            </Label>
+            <Select
+              value={entryType}
+              onValueChange={(v) => setEntryType(v as "strength" | "weakness")}
+            >
+              <SelectTrigger
+                id="entry-type"
+                className="font-body"
+                data-ocid="perform.entry_type_select"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="strength">
+                  <span className="flex items-center gap-2">
+                    <span className="h-2 w-2 rounded-full bg-emerald-500 inline-block" />
+                    Strength
+                  </span>
+                </SelectItem>
+                <SelectItem value="weakness">
+                  <span className="flex items-center gap-2">
+                    <span className="h-2 w-2 rounded-full bg-red-500 inline-block" />
+                    Weakness
+                  </span>
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="font-body text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              Description
+            </Label>
+            <RichTextEditor
+              value={text}
+              onChange={setText}
+              placeholder={
+                entryType === "strength"
+                  ? "Describe the strength observed..."
+                  : "Describe the weakness observed..."
+              }
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            className="font-body"
+            data-ocid="perform.entry_dialog_cancel_button"
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSubmit}
+            disabled={!text.trim()}
+            className="spice-gradient text-white border-0 font-body"
+            data-ocid="perform.entry_dialog_submit_button"
+          >
+            {initialEntry ? "Save Changes" : "Add Entry"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ─── S&W Entries Table (used for BP view) ────────────────────────
+// Bug fix: Dialog state is now lifted to the PerformAssessment main component
+// via openDialog callback, preventing blank-page bug caused by child remounts.
+
+function SwEntriesTable({
+  entries,
+  practiceId,
+  onDelete,
+  isCompleted,
+  openDialog,
+}: {
+  entries: SwEntry[];
+  practiceId: string;
+  onDelete: (id: string) => void;
+  isCompleted?: boolean;
+  openDialog: (entry?: SwEntry) => void;
+}) {
+  const strengths = entries.filter((e) => e.type === "strength");
+  const weaknesses = entries.filter((e) => e.type === "weakness");
+
+  return (
+    <div className="space-y-3">
+      {/* Header row with stats and add button */}
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-3">
+          <span className="text-xs font-body text-muted-foreground">
+            <span className="inline-flex items-center gap-1">
+              <span className="h-2 w-2 rounded-full bg-emerald-500" />
+              {strengths.length} Strength{strengths.length !== 1 ? "s" : ""}
+            </span>
+          </span>
+          <span className="text-xs font-body text-muted-foreground">
+            <span className="inline-flex items-center gap-1">
+              <span className="h-2 w-2 rounded-full bg-red-500" />
+              {weaknesses.length} Weakness
+              {weaknesses.length !== 1 ? "es" : ""}
+            </span>
+          </span>
+        </div>
+        {!isCompleted && (
+          <Button
+            size="sm"
+            onClick={() => openDialog(undefined)}
+            className="spice-gradient text-white border-0 gap-1.5 font-body text-xs h-7 px-3"
+            data-ocid="perform.sw_add_button"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Add Entry
+          </Button>
+        )}
+      </div>
+
+      {/* Table of entries */}
+      {entries.length === 0 ? (
+        <div
+          className="rounded-md border border-dashed border-border/60 py-8 text-center"
+          data-ocid="perform.sw_entries_empty_state"
+        >
+          <p className="text-sm text-muted-foreground font-body italic">
+            No strengths or weaknesses recorded yet.
+          </p>
+          {!isCompleted && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => openDialog(undefined)}
+              className="mt-3 font-body text-xs gap-1"
+              data-ocid="perform.sw_add_first_button"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Add First Entry
+            </Button>
+          )}
+        </div>
+      ) : (
+        <div className="rounded-md border border-border/60 overflow-hidden">
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-muted/30">
+                <TableHead className="font-body text-xs w-[90px]">
+                  Type
+                </TableHead>
+                <TableHead className="font-body text-xs w-[90px]">
+                  Practice
+                </TableHead>
+                <TableHead className="font-body text-xs">Description</TableHead>
+                {!isCompleted && (
+                  <TableHead className="font-body text-xs w-[80px]">
+                    Actions
+                  </TableHead>
+                )}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {entries.map((entry, idx) => (
+                <TableRow
+                  key={entry.id}
+                  data-ocid={`perform.sw_entry_row.${idx + 1}`}
+                  className={cn(
+                    "transition-colors border-b border-border/50 last:border-b-0",
+                    entry.type === "strength"
+                      ? "bg-emerald-50/60 hover:bg-emerald-50 border-l-2 border-l-emerald-300"
+                      : "bg-red-50/60 hover:bg-red-50 border-l-2 border-l-red-300",
+                  )}
+                >
+                  <TableCell className="py-2">
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        "font-body text-xs",
+                        entry.type === "strength"
+                          ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                          : "bg-red-50 text-red-700 border-red-200",
+                      )}
+                    >
+                      {entry.type === "strength" ? "Strength" : "Weakness"}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="py-2 font-mono text-xs text-muted-foreground">
+                    {practiceId}
+                  </TableCell>
+                  <TableCell className="py-2">
+                    <div className="text-xs font-body text-foreground leading-relaxed max-w-md">
+                      {renderRichText(entry.text)}
+                    </div>
+                  </TableCell>
+                  {!isCompleted && (
+                    <TableCell className="py-2">
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => openDialog(entry)}
+                          className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                          title="Edit"
+                          data-ocid={`perform.sw_edit_button.${idx + 1}`}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onDelete(entry.id)}
+                          className="p-1 rounded hover:bg-destructive/10 transition-colors text-muted-foreground hover:text-destructive"
+                          title="Delete"
+                          data-ocid={`perform.sw_delete_button.${idx + 1}`}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </TableCell>
+                  )}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Sub-components ─────────────────────────────────────────────
 
 function StatusBadge({ status }: { status: string }) {
@@ -271,10 +739,12 @@ function RatingSelector({
   value,
   onChange,
   index,
+  disabled,
 }: {
   value: Rating;
   onChange: (v: Rating) => void;
   index: number;
+  disabled?: boolean;
 }) {
   return (
     <div className="flex gap-1.5">
@@ -282,12 +752,14 @@ function RatingSelector({
         <button
           key={opt.value}
           type="button"
+          disabled={disabled}
           onClick={() => onChange(value === opt.value ? "" : opt.value)}
           className={cn(
             "w-9 h-9 rounded-lg text-sm font-bold font-heading border-2 transition-all",
             value === opt.value
               ? opt.activeClass
               : "bg-background border-border text-muted-foreground hover:bg-muted",
+            disabled && "opacity-60 cursor-not-allowed",
           )}
           data-ocid={`perform.practice_rating_button.${index}`}
         >
@@ -298,27 +770,25 @@ function RatingSelector({
   );
 }
 
-function PracticeCard({
-  id,
-  title,
-  text,
-  notes,
+// ─── BP Practice Panel (new design) ──────────────────────────────
+
+function BPPracticePanel({
+  practice,
+  processId,
   state,
   onChange,
-  index,
   isCompleted,
+  openSwDialog,
 }: {
-  id: string;
-  title: string;
-  text: string;
-  notes?: string[];
+  practice: BasePractice | GenericPractice;
+  processId: string;
+  level?: number;
   state: PracticeState;
   onChange: (patch: Partial<PracticeState>) => void;
-  index: number;
   isCompleted?: boolean;
+  openSwDialog: (entry?: SwEntry) => void;
 }) {
-  const [notesOpen, setNotesOpen] = useState(false);
-
+  // Work Products Inspected handlers
   function updateEvidence(i: number, patch: Partial<EvidenceItem>) {
     const updated = state.workProducts.map((item, idx) =>
       idx === i ? { ...item, ...patch } : item,
@@ -341,219 +811,158 @@ function PracticeCard({
     });
   }
 
-  return (
-    <Card className="border-border/60">
-      <CardHeader className="pb-3">
-        <div className="space-y-1">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <span className="font-bold font-heading text-sm text-foreground">
-                {id}
-              </span>
-              <span className="text-muted-foreground font-body text-sm ml-2">
-                — {title}
-              </span>
-            </div>
-            <div
-              className={isCompleted ? "opacity-60 pointer-events-none" : ""}
-            >
-              <RatingSelector
-                value={state.rating}
-                onChange={(v) => onChange({ rating: v })}
-                index={index}
-              />
-            </div>
-          </div>
-          <p className="text-xs text-muted-foreground font-body leading-relaxed">
-            {text}
-          </p>
-          {notes && notes.length > 0 && (
-            <>
-              <button
-                type="button"
-                onClick={() => setNotesOpen((v) => !v)}
-                className="text-xs text-blue-600 hover:text-blue-800 flex items-center gap-1 mt-1"
-                data-ocid={`perform.notes_toggle.${index}`}
-              >
-                <ChevronDown
-                  className={cn(
-                    "h-3 w-3 transition-transform",
-                    notesOpen && "rotate-180",
-                  )}
-                />
-                {notesOpen ? "Hide Notes" : "Show Notes"}
-              </button>
-              {notesOpen && (
-                <div className="mt-2 p-3 rounded-md bg-muted/50 border border-border/40 space-y-1.5">
-                  {notes.map((note, i) => (
-                    <p
-                      key={note.slice(0, 40)}
-                      className="text-xs text-muted-foreground font-body italic leading-relaxed"
-                    >
-                      <span className="font-semibold not-italic">
-                        Note {i + 1}:
-                      </span>{" "}
-                      {note}
-                    </p>
-                  ))}
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-3 pt-0">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div className="space-y-1.5">
-            <Label className="font-body text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              Strengths
-            </Label>
-            <Textarea
-              value={state.strengths}
-              onChange={(e) => onChange({ strengths: e.target.value })}
-              placeholder="Document strengths observed..."
-              rows={3}
-              className="font-body text-sm resize-none"
-              disabled={isCompleted}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label className="font-body text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              Weaknesses
-            </Label>
-            <Textarea
-              value={state.weaknesses}
-              onChange={(e) => onChange({ weaknesses: e.target.value })}
-              placeholder="Document weaknesses observed..."
-              rows={3}
-              className="font-body text-sm resize-none"
-              disabled={isCompleted}
-            />
-          </div>
-        </div>
+  function deleteSwEntry(id: string) {
+    onChange({
+      swEntries: (state.swEntries ?? []).filter((e) => e.id !== id),
+    });
+  }
 
-        {/* Work Products Inspected */}
-        <div className="space-y-2">
-          <Label className="font-body text-xs font-medium text-muted-foreground uppercase tracking-wide">
-            Work Products Inspected
-          </Label>
-          <div className="space-y-1.5">
-            {state.workProducts.map((ev, i) => {
-              const isLineItem = ev.description.trim() !== "";
-              return isLineItem ? (
-                <div
-                  // biome-ignore lint/suspicious/noArrayIndexKey: evidence items have no stable IDs
-                  key={`wp-${index}-${i}`}
-                  className="flex items-center gap-2 px-3 py-2 rounded-md bg-muted/40 border border-border/40 text-sm"
-                >
-                  <span className="font-medium font-body text-foreground flex-1 min-w-0 truncate">
-                    {ev.description}
+  const practiceLabel = `${processId} ${practice.id}`;
+
+  return (
+    <div className="space-y-5">
+      {/* Rating row — rating selector only, no heading */}
+      <div className="flex items-center justify-end gap-4 pb-3 border-b border-border/40">
+        <RatingSelector
+          value={state.rating}
+          onChange={(v) => onChange({ rating: v })}
+          index={1}
+          disabled={isCompleted}
+        />
+      </div>
+
+      {/* S&W Entries Table — no label heading */}
+      <div className="space-y-2">
+        <SwEntriesTable
+          entries={state.swEntries ?? []}
+          practiceId={practiceLabel}
+          onDelete={deleteSwEntry}
+          isCompleted={isCompleted}
+          openDialog={openSwDialog}
+        />
+      </div>
+
+      {/* Work Products Inspected */}
+      <div className="space-y-2">
+        <Label className="font-body text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+          Work Products Inspected
+        </Label>
+        <div className="space-y-1.5">
+          {state.workProducts.map((ev, i) => {
+            const isLineItem = ev.description.trim() !== "";
+            return isLineItem ? (
+              <div
+                // biome-ignore lint/suspicious/noArrayIndexKey: evidence items have no stable IDs
+                key={`wp-${i}`}
+                className="flex items-center gap-2 px-3 py-2 rounded-md bg-muted/40 border border-border/40 text-sm"
+              >
+                <span className="font-medium font-body text-foreground flex-1 min-w-0 truncate">
+                  {ev.description}
+                </span>
+                <span className="shrink-0 text-muted-foreground font-body text-xs">
+                  |
+                </span>
+                {ev.link ? (
+                  <a
+                    href={ev.link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 hover:text-blue-800 font-body text-xs truncate max-w-[140px]"
+                  >
+                    {ev.link}
+                  </a>
+                ) : (
+                  <span className="text-muted-foreground font-body text-xs">
+                    —
                   </span>
-                  <span className="shrink-0 text-muted-foreground font-body text-xs">
-                    |
-                  </span>
-                  {ev.link ? (
-                    <a
-                      href={ev.link}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-600 hover:text-blue-800 font-body text-xs truncate max-w-[140px]"
-                    >
-                      {ev.link}
-                    </a>
-                  ) : (
-                    <span className="text-muted-foreground font-body text-xs">
-                      —
-                    </span>
-                  )}
-                  <span className="shrink-0 text-muted-foreground font-body text-xs">
-                    |
-                  </span>
-                  <span className="text-muted-foreground font-body text-xs shrink-0">
-                    {ev.version || "—"}
-                  </span>
+                )}
+                <span className="shrink-0 text-muted-foreground font-body text-xs">
+                  |
+                </span>
+                <span className="text-muted-foreground font-body text-xs shrink-0">
+                  {ev.version || "—"}
+                </span>
+                {!isCompleted && (
+                  <button
+                    type="button"
+                    onClick={() => removeEvidence(i)}
+                    className="shrink-0 text-muted-foreground hover:text-destructive transition-colors p-0.5 rounded ml-1"
+                    data-ocid={`perform.evidence_remove_button.${i + 1}`}
+                    aria-label="Remove evidence"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div
+                // biome-ignore lint/suspicious/noArrayIndexKey: evidence items have no stable IDs
+                key={`wp-input-${i}`}
+                className="border border-border/40 rounded-md p-2 space-y-1.5"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <Input
+                    value={ev.description}
+                    onChange={(e) =>
+                      updateEvidence(i, { description: e.target.value })
+                    }
+                    placeholder="Evidence description..."
+                    className="font-body text-sm flex-1"
+                    disabled={isCompleted}
+                    data-ocid={`perform.evidence_description_input.${i + 1}`}
+                  />
                   {!isCompleted && (
                     <button
                       type="button"
                       onClick={() => removeEvidence(i)}
-                      className="shrink-0 text-muted-foreground hover:text-destructive transition-colors p-0.5 rounded ml-1"
-                      data-ocid={`perform.evidence_remove_button.${index}.${i + 1}`}
+                      className="shrink-0 text-muted-foreground hover:text-destructive transition-colors p-1 rounded"
+                      data-ocid={`perform.evidence_remove_button.${i + 1}`}
                       aria-label="Remove evidence"
                     >
-                      <X className="h-3.5 w-3.5" />
+                      <X className="h-4 w-4" />
                     </button>
                   )}
                 </div>
-              ) : (
-                <div
-                  // biome-ignore lint/suspicious/noArrayIndexKey: evidence items have no stable IDs
-                  key={`wp-${index}-${i}`}
-                  className="border border-border/40 rounded-md p-2 space-y-1.5"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <Input
-                      value={ev.description}
-                      onChange={(e) =>
-                        updateEvidence(i, { description: e.target.value })
-                      }
-                      placeholder="Evidence description..."
-                      className="font-body text-sm flex-1"
-                      disabled={isCompleted}
-                      data-ocid={`perform.evidence_description_input.${index}.${i + 1}`}
-                    />
-                    {!isCompleted && (
-                      <button
-                        type="button"
-                        onClick={() => removeEvidence(i)}
-                        className="shrink-0 text-muted-foreground hover:text-destructive transition-colors p-1 rounded"
-                        data-ocid={`perform.evidence_remove_button.${index}.${i + 1}`}
-                        aria-label="Remove evidence"
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
-                    )}
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <Input
-                      value={ev.link}
-                      onChange={(e) =>
-                        updateEvidence(i, { link: e.target.value })
-                      }
-                      placeholder="Link (optional)"
-                      className="font-body text-sm"
-                      disabled={isCompleted}
-                      data-ocid={`perform.evidence_link_input.${index}.${i + 1}`}
-                    />
-                    <Input
-                      value={ev.version}
-                      onChange={(e) =>
-                        updateEvidence(i, { version: e.target.value })
-                      }
-                      placeholder="Version (optional)"
-                      className="font-body text-sm"
-                      disabled={isCompleted}
-                      data-ocid={`perform.evidence_version_input.${index}.${i + 1}`}
-                    />
-                  </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <Input
+                    value={ev.link}
+                    onChange={(e) =>
+                      updateEvidence(i, { link: e.target.value })
+                    }
+                    placeholder="Link (optional)"
+                    className="font-body text-sm"
+                    disabled={isCompleted}
+                    data-ocid={`perform.evidence_link_input.${i + 1}`}
+                  />
+                  <Input
+                    value={ev.version}
+                    onChange={(e) =>
+                      updateEvidence(i, { version: e.target.value })
+                    }
+                    placeholder="Version (optional)"
+                    className="font-body text-sm"
+                    disabled={isCompleted}
+                    data-ocid={`perform.evidence_version_input.${i + 1}`}
+                  />
                 </div>
-              );
-            })}
-            {!isCompleted && (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={addEvidence}
-                className="font-body text-xs gap-1"
-                data-ocid={`perform.evidence_add_button.${index}`}
-              >
-                <Plus className="h-3.5 w-3.5" /> Add Evidence
-              </Button>
-            )}
-          </div>
+              </div>
+            );
+          })}
+          {!isCompleted && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={addEvidence}
+              className="font-body text-xs gap-1"
+              data-ocid="perform.evidence_add_button"
+            >
+              <Plus className="h-3.5 w-3.5" /> Add Evidence
+            </Button>
+          )}
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
 
@@ -598,8 +1007,7 @@ function TreeNode({
 
   const paddingLeft = 8 + depth * 14;
 
-  function handleClick() {
-    if (!isLeaf) onToggle(nodeKey);
+  function handleLabelClick() {
     onSelect({
       type: node.type,
       id: node.id,
@@ -607,6 +1015,12 @@ function TreeNode({
       level: node.level,
       paId: node.paId,
     });
+  }
+
+  function handleChevronClick(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    onToggle(nodeKey);
   }
 
   const ocidMap: Record<SelectedNodeType, string> = {
@@ -619,47 +1033,61 @@ function TreeNode({
 
   return (
     <div>
-      <button
-        type="button"
-        onClick={handleClick}
-        data-ocid={ocidMap[node.type]}
+      <div
         className={cn(
-          "w-full text-left flex items-center gap-1.5 py-1 pr-2 rounded-sm text-sm transition-colors group",
-          isSelected
-            ? "bg-accent/15 text-accent font-medium"
-            : "text-foreground hover:bg-muted/70",
-          node.type === "process" && "font-semibold",
+          "w-full flex items-center gap-0.5 py-0.5 rounded-sm group",
         )}
         style={{ paddingLeft }}
       >
-        {/* Expand/collapse chevron */}
+        {/* Expand/collapse chevron — separate click target */}
         {!isLeaf ? (
-          isExpanded ? (
-            <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-          ) : (
-            <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-          )
+          <button
+            type="button"
+            onClick={handleChevronClick}
+            className="p-0.5 rounded hover:bg-muted/80 text-muted-foreground hover:text-foreground transition-colors shrink-0"
+            aria-label={isExpanded ? "Collapse" : "Expand"}
+          >
+            {isExpanded ? (
+              <ChevronDown className="h-3.5 w-3.5" />
+            ) : (
+              <ChevronRight className="h-3.5 w-3.5" />
+            )}
+          </button>
         ) : (
-          <span className="w-3.5 shrink-0" />
+          <span className="w-5 shrink-0" />
         )}
 
-        {/* Status dot */}
-        {node.dotClass && (
-          <span
-            className={cn("h-2 w-2 rounded-full shrink-0", node.dotClass)}
-          />
-        )}
-
-        {/* Label */}
-        <span className="truncate font-body text-xs leading-snug">
-          {node.label}
-          {node.sublabel && (
-            <span className="text-muted-foreground font-normal ml-1 text-[11px]">
-              {node.sublabel}
-            </span>
+        {/* Label button — clicking only SELECTS, does NOT toggle expand */}
+        <button
+          type="button"
+          onClick={handleLabelClick}
+          data-ocid={ocidMap[node.type]}
+          className={cn(
+            "flex-1 flex items-center gap-1.5 py-1 pr-2 rounded-sm text-sm transition-colors text-left",
+            isSelected
+              ? "bg-accent/15 text-accent font-medium"
+              : "text-foreground hover:bg-muted/70",
+            node.type === "process" && "font-semibold",
           )}
-        </span>
-      </button>
+        >
+          {/* Status dot */}
+          {node.dotClass && (
+            <span
+              className={cn("h-2 w-2 rounded-full shrink-0", node.dotClass)}
+            />
+          )}
+
+          {/* Label text */}
+          <span className="truncate font-body text-xs leading-snug">
+            {node.label}
+            {node.sublabel && (
+              <span className="text-muted-foreground font-normal ml-1 text-[11px]">
+                {node.sublabel}
+              </span>
+            )}
+          </span>
+        </button>
+      </div>
 
       {/* Children */}
       {!isLeaf && isExpanded && node.children && (
@@ -682,21 +1110,30 @@ function TreeNode({
   );
 }
 
-// ─── PA Summary View ─────────────────────────────────────────────
+// ─── PA Summary View (Consolidated S&W list) ─────────────────────
 
 function PASummaryView({
   paId,
   processId,
   ratings,
-  onSelectPractice,
+  onEdit,
+  isCompleted,
 }: {
   paId: string;
   processId: string;
   ratings: RatingsMap;
-  onSelectPractice: (node: SelectedNode) => void;
+  onEdit: (practiceId: string, level: number, entry: SwEntry) => void;
   isCompleted?: boolean;
 }) {
-  const [filter, setFilter] = useState<"all" | "rated" | "unrated">("all");
+  const [filter, setFilter] = useState<"all" | "strengths" | "weaknesses">(
+    "all",
+  );
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingMeta, setEditingMeta] = useState<{
+    entry: SwEntry;
+    practiceId: string;
+    level: number;
+  } | null>(null);
 
   const practices: Array<{
     practice: BasePractice | GenericPractice;
@@ -735,30 +1172,78 @@ function PASummaryView({
     return [];
   }, [paId, processId]);
 
-  const practicesWithState = useMemo(() => {
-    return practices.map(({ practice, level }) => {
+  // Collect ALL S&W entries from all practices under this PA
+  const allEntries = useMemo(() => {
+    const result: Array<{
+      entry: SwEntry;
+      practiceId: string;
+      rating: Rating;
+      level: number;
+    }> = [];
+    for (const { practice, level } of practices) {
       const key = `${processId}_${level}_${practice.id}`;
       const state = ratings[key] ?? defaultPracticeState();
-      return { practice, level, state };
-    });
+      const entries = state.swEntries ?? [];
+      // Also convert legacy strings to virtual entries for display
+      const legacyStrengths: SwEntry[] = [];
+      const legacyWeaknesses: SwEntry[] = [];
+      if (
+        entries.length === 0 &&
+        (state.strengths?.trim() || state.weaknesses?.trim())
+      ) {
+        if (state.strengths?.trim()) {
+          legacyStrengths.push({
+            id: `legacy-s-${practice.id}`,
+            type: "strength",
+            text: state.strengths,
+          });
+        }
+        if (state.weaknesses?.trim()) {
+          legacyWeaknesses.push({
+            id: `legacy-w-${practice.id}`,
+            type: "weakness",
+            text: state.weaknesses,
+          });
+        }
+      }
+      const allForPractice =
+        entries.length > 0
+          ? entries
+          : [...legacyStrengths, ...legacyWeaknesses];
+      for (const entry of allForPractice) {
+        result.push({
+          entry,
+          practiceId: practice.id,
+          rating: state.rating,
+          level,
+        });
+      }
+    }
+    return result;
   }, [practices, processId, ratings]);
 
-  const totalCount = practicesWithState.length;
-  const ratedCount = practicesWithState.filter(
-    (p) => p.state.rating !== "",
+  const strengthsCount = allEntries.filter(
+    (e) => e.entry.type === "strength",
   ).length;
-  const strengthsCount = practicesWithState.filter(
-    (p) => p.state.strengths.trim() !== "",
-  ).length;
-  const weaknessesCount = practicesWithState.filter(
-    (p) => p.state.weaknesses.trim() !== "",
+  const weaknessesCount = allEntries.filter(
+    (e) => e.entry.type === "weakness",
   ).length;
 
-  const filtered = practicesWithState.filter((p) => {
-    if (filter === "rated") return p.state.rating !== "";
-    if (filter === "unrated") return p.state.rating === "";
+  const filtered = allEntries.filter((e) => {
+    if (filter === "strengths") return e.entry.type === "strength";
+    if (filter === "weaknesses") return e.entry.type === "weakness";
     return true;
   });
+
+  function openEditEntry(entry: SwEntry, practiceId: string, level: number) {
+    setEditingMeta({ entry, practiceId, level });
+    setEditDialogOpen(true);
+  }
+
+  function handleEditSubmit(updated: SwEntry) {
+    if (!editingMeta) return;
+    onEdit(editingMeta.practiceId, editingMeta.level, updated);
+  }
 
   return (
     <div className="space-y-4">
@@ -769,41 +1254,8 @@ function PASummaryView({
           </h2>
         </div>
         <p className="text-sm text-muted-foreground font-body mt-1">
-          {processId}
+          {processId} — Consolidated Strengths & Weaknesses
         </p>
-      </div>
-
-      {/* Summary stats */}
-      <div className="flex gap-3 flex-wrap">
-        {[
-          { label: "Total Practices", value: totalCount, cls: "bg-muted/50" },
-          {
-            label: "Assessed",
-            value: ratedCount,
-            cls: "bg-blue-50 text-blue-700",
-          },
-          {
-            label: "Strengths documented",
-            value: strengthsCount,
-            cls: "bg-emerald-50 text-emerald-700",
-          },
-          {
-            label: "Weaknesses documented",
-            value: weaknessesCount,
-            cls: "bg-red-50 text-red-700",
-          },
-        ].map((s) => (
-          <div
-            key={s.label}
-            className={cn(
-              "px-3 py-2 rounded-lg border border-border/40 min-w-[100px]",
-              s.cls,
-            )}
-          >
-            <p className="text-lg font-bold font-heading">{s.value}</p>
-            <p className="text-xs font-body text-muted-foreground">{s.label}</p>
-          </div>
-        ))}
       </div>
 
       {/* Filter tabs */}
@@ -812,88 +1264,94 @@ function PASummaryView({
           <TabsTrigger
             value="all"
             className="font-body text-xs h-6 px-3"
-            data-ocid="perform.pa_summary_filter_tab"
+            data-ocid="perform.pa_sw_filter_all_tab"
           >
-            All ({totalCount})
+            All ({allEntries.length})
           </TabsTrigger>
           <TabsTrigger
-            value="rated"
+            value="strengths"
             className="font-body text-xs h-6 px-3"
-            data-ocid="perform.pa_summary_filter_tab"
+            data-ocid="perform.pa_sw_filter_strengths_tab"
           >
-            Rated ({ratedCount})
+            Strengths ({strengthsCount})
           </TabsTrigger>
           <TabsTrigger
-            value="unrated"
+            value="weaknesses"
             className="font-body text-xs h-6 px-3"
-            data-ocid="perform.pa_summary_filter_tab"
+            data-ocid="perform.pa_sw_filter_weaknesses_tab"
           >
-            Unrated ({totalCount - ratedCount})
+            Weaknesses ({weaknessesCount})
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value={filter} className="mt-3">
-          <div
-            className="rounded-md border border-border/60 overflow-hidden"
-            data-ocid="perform.pa_summary_table"
-          >
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-muted/30">
-                  <TableHead className="font-body text-xs w-[110px]">
-                    Practice ID
-                  </TableHead>
-                  <TableHead className="font-body text-xs w-[70px]">
-                    Rating
-                  </TableHead>
-                  <TableHead className="font-body text-xs">Strengths</TableHead>
-                  <TableHead className="font-body text-xs">
-                    Weaknesses
-                  </TableHead>
-                  <TableHead className="font-body text-xs w-[80px]">
-                    Status
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filtered.length === 0 ? (
-                  <TableRow>
-                    <TableCell
-                      colSpan={5}
-                      className="py-8 text-center text-muted-foreground font-body text-sm"
-                    >
-                      No practices match this filter.
-                    </TableCell>
+          {filtered.length === 0 ? (
+            <div
+              className="rounded-md border border-dashed border-border/60 py-10 text-center"
+              data-ocid="perform.pa_sw_empty_state"
+            >
+              <p className="text-sm text-muted-foreground font-body italic">
+                {allEntries.length === 0
+                  ? "No strengths or weaknesses recorded for this PA level yet."
+                  : "No entries match this filter."}
+              </p>
+              <p className="text-xs text-muted-foreground font-body mt-1">
+                Select individual Base Practices or Generic Practices from the
+                tree to add entries.
+              </p>
+            </div>
+          ) : (
+            <div
+              className="rounded-md border border-border/60 overflow-hidden"
+              data-ocid="perform.pa_sw_table"
+            >
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-muted/30">
+                    <TableHead className="font-body text-xs w-[90px]">
+                      Practice
+                    </TableHead>
+                    <TableHead className="font-body text-xs w-[70px]">
+                      Rating
+                    </TableHead>
+                    <TableHead className="font-body text-xs w-[90px]">
+                      Type
+                    </TableHead>
+                    <TableHead className="font-body text-xs">
+                      Description
+                    </TableHead>
+                    {!isCompleted && (
+                      <TableHead className="font-body text-xs w-[80px]">
+                        Actions
+                      </TableHead>
+                    )}
                   </TableRow>
-                ) : (
-                  filtered.map(({ practice, level, state }, idx) => (
+                </TableHeader>
+                <TableBody>
+                  {filtered.map(({ entry, practiceId, rating, level }, idx) => (
                     <TableRow
-                      key={practice.id}
-                      className="cursor-pointer hover:bg-muted/40 transition-colors"
-                      data-ocid={`perform.pa_summary_row.${idx + 1}`}
-                      onClick={() =>
-                        onSelectPractice({
-                          type: paId === "PA1.1" ? "bp" : "gp",
-                          id: practice.id,
-                          processId,
-                          level,
-                          paId,
-                        })
-                      }
+                      key={`${practiceId}-${entry.id}`}
+                      data-ocid={`perform.pa_sw_row.${idx + 1}`}
+                      className={cn(
+                        "transition-colors",
+                        entry.type === "strength"
+                          ? "bg-emerald-50/50 hover:bg-emerald-50 border-l-2 border-l-emerald-300"
+                          : "bg-red-50/50 hover:bg-red-50 border-l-2 border-l-red-300",
+                      )}
                     >
-                      <TableCell className="font-body text-xs font-medium py-2">
-                        {practice.id}
+                      <TableCell className="font-mono text-xs py-2 text-muted-foreground">
+                        {practiceId}
                       </TableCell>
                       <TableCell className="py-2">
-                        {state.rating ? (
+                        {rating ? (
                           <Badge
                             variant="outline"
                             className={cn(
                               "font-body text-xs",
-                              getRatingBadgeClass(state.rating),
+                              getRatingBadgeClass(rating),
                             )}
                           >
-                            {state.rating}
+                            {rating}
                           </Badge>
                         ) : (
                           <span className="text-muted-foreground font-body text-xs">
@@ -901,46 +1359,57 @@ function PASummaryView({
                           </span>
                         )}
                       </TableCell>
-                      <TableCell className="font-body text-xs py-2 max-w-[180px]">
-                        <span className="line-clamp-2 text-muted-foreground">
-                          {state.strengths || (
-                            <span className="italic">Not documented</span>
-                          )}
-                        </span>
-                      </TableCell>
-                      <TableCell className="font-body text-xs py-2 max-w-[180px]">
-                        <span className="line-clamp-2 text-muted-foreground">
-                          {state.weaknesses || (
-                            <span className="italic">Not documented</span>
-                          )}
-                        </span>
-                      </TableCell>
                       <TableCell className="py-2">
-                        <span
+                        <Badge
+                          variant="outline"
                           className={cn(
-                            "inline-flex items-center gap-1 text-xs font-body",
-                            state.rating
-                              ? "text-emerald-600"
-                              : "text-muted-foreground",
+                            "font-body text-xs",
+                            entry.type === "strength"
+                              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                              : "bg-red-50 text-red-700 border-red-200",
                           )}
                         >
-                          <span
-                            className={cn(
-                              "h-1.5 w-1.5 rounded-full",
-                              getRatingDotClass(state.rating),
-                            )}
-                          />
-                          {state.rating ? "Assessed" : "Pending"}
-                        </span>
+                          {entry.type === "strength" ? "Strength" : "Weakness"}
+                        </Badge>
                       </TableCell>
+                      <TableCell className="py-2 max-w-xs">
+                        <div className="text-xs font-body text-foreground leading-relaxed">
+                          {renderRichText(entry.text)}
+                        </div>
+                      </TableCell>
+                      {!isCompleted && (
+                        <TableCell className="py-2">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              openEditEntry(entry, practiceId, level)
+                            }
+                            className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                            title="Edit"
+                            data-ocid={`perform.pa_sw_edit_button.${idx + 1}`}
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                        </TableCell>
+                      )}
                     </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
         </TabsContent>
       </Tabs>
+
+      {editingMeta && (
+        <AddEntryDialog
+          open={editDialogOpen}
+          onOpenChange={setEditDialogOpen}
+          initialEntry={editingMeta.entry}
+          practiceId={`${processId} ${editingMeta.practiceId}`}
+          onSubmit={handleEditSubmit}
+        />
+      )}
     </div>
   );
 }
@@ -1155,8 +1624,8 @@ function ProcessOverviewView({
           </div>
 
           <p className="text-xs text-muted-foreground font-body italic">
-            Click a PA row to view its practices, or select a practice from the
-            tree.
+            Click a PA row to view its consolidated Strengths & Weaknesses, or
+            select a practice from the tree.
           </p>
         </>
       )}
@@ -1270,6 +1739,94 @@ function RootOverviewView({
   );
 }
 
+// ─── BPGPRightPanel — stable named component to avoid remount on re-render ───
+
+function BPGPRightPanel({
+  selectedNode,
+  isCompleted,
+  getPracticeState,
+  updatePracticeState,
+  onSelectProcess,
+  onSelectPA,
+  openSwDialog,
+}: {
+  selectedNode: SelectedNode;
+  enabledProcesses: Array<{ id: string; targetLevel: string }>;
+  ratings: RatingsMap;
+  isCompleted: boolean;
+  getPracticeState: (
+    processId: string,
+    level: number,
+    practiceId: string,
+  ) => PracticeState;
+  updatePracticeState: (
+    processId: string,
+    level: number,
+    practiceId: string,
+    patch: Partial<PracticeState>,
+  ) => void;
+  onSelectProcess: (processId: string) => void;
+  onSelectPA: (paId: string, processId: string) => void;
+  openSwDialog: (entry?: SwEntry) => void;
+}) {
+  const level = selectedNode.level ?? 1;
+  const practiceId = selectedNode.id;
+  const processId = selectedNode.processId;
+  const paId = selectedNode.paId ?? "PA1.1";
+
+  let practice: BasePractice | GenericPractice | undefined;
+  if (selectedNode.type === "bp") {
+    practice = (BASE_PRACTICES[processId] ?? []).find(
+      (b) => b.id === practiceId,
+    );
+  } else {
+    const attrs = level === 2 ? LEVEL2_ATTRIBUTES : LEVEL3_ATTRIBUTES;
+    for (const attr of attrs) {
+      practice = attr.practices.find((g) => g.id === practiceId);
+      if (practice) break;
+    }
+  }
+
+  if (!practice) return null;
+
+  return (
+    <div className="space-y-3">
+      {/* Breadcrumb */}
+      <nav className="flex items-center gap-1.5 text-xs font-body text-muted-foreground flex-wrap">
+        <button
+          type="button"
+          className="hover:text-foreground transition-colors"
+          onClick={() => onSelectProcess(processId)}
+        >
+          {processId}
+        </button>
+        <ChevronRight className="h-3 w-3" />
+        <button
+          type="button"
+          className="hover:text-foreground transition-colors"
+          onClick={() => onSelectPA(paId, processId)}
+        >
+          {paId}
+        </button>
+        <ChevronRight className="h-3 w-3" />
+        <span className="text-foreground font-medium">{practiceId}</span>
+      </nav>
+
+      <BPPracticePanel
+        practice={practice}
+        processId={processId}
+        level={level}
+        state={getPracticeState(processId, level, practiceId)}
+        onChange={(patch) =>
+          updatePracticeState(processId, level, practiceId, patch)
+        }
+        isCompleted={isCompleted}
+        openSwDialog={openSwDialog}
+      />
+    </div>
+  );
+}
+
 // ─── Main Component ──────────────────────────────────────────────
 
 export function PerformAssessment() {
@@ -1289,14 +1846,32 @@ export function PerformAssessment() {
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [descNotesOpen, setDescNotesOpen] = useState(false);
 
+  // ─── Bug Fix 1: Lift AddEntryDialog state here so it survives child remounts ───
+  const [swDialogOpen, setSwDialogOpen] = useState(false);
+  const [swDialogEntry, setSwDialogEntry] = useState<SwEntry | undefined>();
+  const [swDialogPracticeKey, setSwDialogPracticeKey] = useState<{
+    processId: string;
+    level: number;
+    practiceId: string;
+  } | null>(null);
+
   const currentAssessment = assessments?.find(
     (a) => a.id === currentAssessmentId,
   );
   const isCompleted = currentAssessment?.status === "Completed";
   const enabledProcesses = buildEnabledProcesses(processConfig ?? null);
 
+  // ─── Bug Fix 2: Wrap toggleNode, expandAll, collapseAll in useCallback ───
+  const toggleNode = useCallback((key: string) => {
+    setExpandedNodes((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
+
   // Default: expand all process and PA nodes
-  // biome-ignore lint/correctness/useExhaustiveDependencies: only re-run when process list changes
   useEffect(() => {
     if (enabledProcesses.length === 0) return;
     const keys = new Set<string>();
@@ -1314,7 +1889,6 @@ export function PerformAssessment() {
   }, [enabledProcesses]);
 
   // Default selection: first enabled process
-  // biome-ignore lint/correctness/useExhaustiveDependencies: only run once when processes load
   useEffect(() => {
     if (enabledProcesses.length > 0 && !selectedNode) {
       const first = enabledProcesses[0];
@@ -1329,6 +1903,7 @@ export function PerformAssessment() {
       for (const r of savedRatings as PracticeRating[]) {
         const key = `${r.processId}_${Number(r.level)}_${r.practiceId}`;
         let workProducts: EvidenceItem[] = [];
+        let swEntries: SwEntry[] = [];
         try {
           const parsed = JSON.parse(r.workProductsInspected) as unknown;
           if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
@@ -1349,6 +1924,10 @@ export function PerformAssessment() {
                 }
               }
             }
+            // Load swEntries if stored
+            if (Array.isArray(p.swEntries)) {
+              swEntries = p.swEntries as SwEntry[];
+            }
           }
         } catch {
           if (r.workProductsInspected) {
@@ -1359,9 +1938,11 @@ export function PerformAssessment() {
         }
         map[key] = {
           rating: r.rating as Rating,
+          swEntries,
+          workProducts,
+          // keep legacy for backward compat in serialization
           strengths: r.strengths,
           weaknesses: r.weaknesses,
-          workProducts,
         };
       }
       setRatings((prev) => ({ ...map, ...prev }));
@@ -1396,6 +1977,61 @@ export function PerformAssessment() {
     }));
   }
 
+  // Edit a single SwEntry within a practice (used from PA summary view)
+  function editSwEntryForPractice(
+    processId: string,
+    level: number,
+    practiceId: string,
+    updated: SwEntry,
+  ) {
+    const key = getRatingKey(processId, level, practiceId);
+    setRatings((prev) => {
+      const existing = prev[key] ?? defaultPracticeState();
+      return {
+        ...prev,
+        [key]: {
+          ...existing,
+          swEntries: (existing.swEntries ?? []).map((e) =>
+            e.id === updated.id ? updated : e,
+          ),
+        },
+      };
+    });
+  }
+
+  // ─── Stable openSwDialog callback (Bug Fix 1 continued) ──────────────────
+  // This callback is passed deep into tree; using useCallback ensures stability.
+  const openSwDialog = useCallback(
+    (processId: string, level: number, practiceId: string, entry?: SwEntry) => {
+      setSwDialogEntry(entry);
+      setSwDialogPracticeKey({ processId, level, practiceId });
+      setSwDialogOpen(true);
+    },
+    [],
+  );
+
+  // Handler for dialog submission — runs at top level, no child remount risk
+  function handleSwDialogSubmit(entry: SwEntry) {
+    if (!swDialogPracticeKey) return;
+    const { processId, level, practiceId } = swDialogPracticeKey;
+    const key = getRatingKey(processId, level, practiceId);
+    setRatings((prev) => {
+      const existing = prev[key] ?? defaultPracticeState();
+      const existingEntries = existing.swEntries ?? [];
+      const isEdit = existingEntries.some((e) => e.id === entry.id);
+      return {
+        ...prev,
+        [key]: {
+          ...existing,
+          swEntries: isEdit
+            ? existingEntries.map((e) => (e.id === entry.id ? entry : e))
+            : [...existingEntries, entry],
+        },
+      };
+    });
+    setSwDialogOpen(false);
+  }
+
   const saveProcessRatings = useCallback(
     async (processId: string, currentRatings: RatingsMap) => {
       if (!currentAssessmentId) return;
@@ -1415,11 +2051,32 @@ export function PerformAssessment() {
           : Number.parseInt(processInfo.targetLevel, 10);
       const savePromises: Promise<unknown>[] = [];
 
+      // Serialize swEntries to strengths/weaknesses for backend + keep in workProductsInspected
+      function serializeState(state: PracticeState) {
+        const strengths = (state.swEntries ?? [])
+          .filter((e) => e.type === "strength")
+          .map((e) => e.text)
+          .join("\n");
+        const weaknesses = (state.swEntries ?? [])
+          .filter((e) => e.type === "weakness")
+          .map((e) => e.text)
+          .join("\n");
+        return {
+          strengths: strengths || state.strengths || "",
+          weaknesses: weaknesses || state.weaknesses || "",
+          workProductsInspected: JSON.stringify({
+            workProducts: state.workProducts,
+            swEntries: state.swEntries ?? [],
+          }),
+        };
+      }
+
       if (targetLevel >= 1) {
         const bps = BASE_PRACTICES[processId] ?? [];
         for (const bp of bps) {
           const state = getState(processId, 1, bp.id);
-          if (state.rating) {
+          if (state.rating || (state.swEntries ?? []).length > 0) {
+            const serialized = serializeState(state);
             savePromises.push(
               savePracticeRating.mutateAsync({
                 assessmentId: currentAssessmentId,
@@ -1427,11 +2084,9 @@ export function PerformAssessment() {
                 level: BigInt(1),
                 practiceId: bp.id,
                 rating: state.rating,
-                strengths: state.strengths,
-                weaknesses: state.weaknesses,
-                workProductsInspected: JSON.stringify({
-                  workProducts: state.workProducts,
-                }),
+                strengths: serialized.strengths,
+                weaknesses: serialized.weaknesses,
+                workProductsInspected: serialized.workProductsInspected,
               }),
             );
           }
@@ -1442,7 +2097,8 @@ export function PerformAssessment() {
         for (const attr of LEVEL2_ATTRIBUTES) {
           for (const gp of attr.practices) {
             const state = getState(processId, 2, gp.id);
-            if (state.rating) {
+            if (state.rating || (state.swEntries ?? []).length > 0) {
+              const serialized = serializeState(state);
               savePromises.push(
                 savePracticeRating.mutateAsync({
                   assessmentId: currentAssessmentId,
@@ -1450,11 +2106,9 @@ export function PerformAssessment() {
                   level: BigInt(2),
                   practiceId: gp.id,
                   rating: state.rating,
-                  strengths: state.strengths,
-                  weaknesses: state.weaknesses,
-                  workProductsInspected: JSON.stringify({
-                    workProducts: state.workProducts,
-                  }),
+                  strengths: serialized.strengths,
+                  weaknesses: serialized.weaknesses,
+                  workProductsInspected: serialized.workProductsInspected,
                 }),
               );
             }
@@ -1466,7 +2120,8 @@ export function PerformAssessment() {
         for (const attr of LEVEL3_ATTRIBUTES) {
           for (const gp of attr.practices) {
             const state = getState(processId, 3, gp.id);
-            if (state.rating) {
+            if (state.rating || (state.swEntries ?? []).length > 0) {
+              const serialized = serializeState(state);
               savePromises.push(
                 savePracticeRating.mutateAsync({
                   assessmentId: currentAssessmentId,
@@ -1474,11 +2129,9 @@ export function PerformAssessment() {
                   level: BigInt(3),
                   practiceId: gp.id,
                   rating: state.rating,
-                  strengths: state.strengths,
-                  weaknesses: state.weaknesses,
-                  workProductsInspected: JSON.stringify({
-                    workProducts: state.workProducts,
-                  }),
+                  strengths: serialized.strengths,
+                  weaknesses: serialized.weaknesses,
+                  workProductsInspected: serialized.workProductsInspected,
                 }),
               );
             }
@@ -1643,16 +2296,8 @@ export function PerformAssessment() {
     };
   }, [enabledProcesses, ratings]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  function toggleNode(key: string) {
-    setExpandedNodes((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  }
-
-  function expandAll() {
+  // Bug Fix 2: expandAll/collapseAll wrapped in useCallback with treeData dependency
+  const expandAll = useCallback(() => {
     const keys = new Set<string>();
     function collect(node: TreeNodeData) {
       if (node.children && node.children.length > 0) {
@@ -1662,11 +2307,11 @@ export function PerformAssessment() {
     }
     collect(treeData);
     setExpandedNodes(keys);
-  }
+  }, [treeData]);
 
-  function collapseAll() {
+  const collapseAll = useCallback(() => {
     setExpandedNodes(new Set());
-  }
+  }, []);
 
   // ─── Description panel content ───────────────────────────────
 
@@ -1720,124 +2365,6 @@ export function PerformAssessment() {
     return null;
   }, [selectedNode]);
 
-  // ─── Right panel content ──────────────────────────────────────
-
-  function renderRightPanel() {
-    if (!selectedNode) {
-      return (
-        <RootOverviewView
-          enabledProcesses={enabledProcesses}
-          ratings={ratings}
-        />
-      );
-    }
-
-    if (selectedNode.type === "root") {
-      return (
-        <RootOverviewView
-          enabledProcesses={enabledProcesses}
-          ratings={ratings}
-        />
-      );
-    }
-
-    if (selectedNode.type === "process") {
-      const procInfo = enabledProcesses.find(
-        (p) => p.id === selectedNode.processId,
-      );
-      if (!procInfo) return null;
-      return (
-        <ProcessOverviewView
-          processId={selectedNode.processId}
-          processInfo={procInfo}
-          ratings={ratings}
-          onSelectPA={(node) => setSelectedNode(node)}
-        />
-      );
-    }
-
-    if (selectedNode.type === "pa") {
-      const paId = selectedNode.paId ?? selectedNode.id;
-      return (
-        <PASummaryView
-          paId={paId}
-          processId={selectedNode.processId}
-          ratings={ratings}
-          onSelectPractice={(node) => setSelectedNode(node)}
-          isCompleted={!!isCompleted}
-        />
-      );
-    }
-
-    // BP or GP — single practice card
-    if (selectedNode.type === "bp" || selectedNode.type === "gp") {
-      const level = selectedNode.level ?? 1;
-      const practiceId = selectedNode.id;
-      const processId = selectedNode.processId;
-
-      let practice: BasePractice | GenericPractice | undefined;
-      if (selectedNode.type === "bp") {
-        practice = (BASE_PRACTICES[processId] ?? []).find(
-          (b) => b.id === practiceId,
-        );
-      } else {
-        const attrs = level === 2 ? LEVEL2_ATTRIBUTES : LEVEL3_ATTRIBUTES;
-        for (const attr of attrs) {
-          practice = attr.practices.find((g) => g.id === practiceId);
-          if (practice) break;
-        }
-      }
-
-      if (!practice) return null;
-
-      const paId = selectedNode.paId ?? "PA1.1";
-
-      return (
-        <div className="space-y-3">
-          {/* Breadcrumb */}
-          <nav className="flex items-center gap-1.5 text-xs font-body text-muted-foreground flex-wrap">
-            <button
-              type="button"
-              className="hover:text-foreground transition-colors"
-              onClick={() =>
-                setSelectedNode({ type: "process", id: processId, processId })
-              }
-            >
-              {processId}
-            </button>
-            <ChevronRight className="h-3 w-3" />
-            <button
-              type="button"
-              className="hover:text-foreground transition-colors"
-              onClick={() =>
-                setSelectedNode({ type: "pa", id: paId, processId, paId })
-              }
-            >
-              {paId}
-            </button>
-            <ChevronRight className="h-3 w-3" />
-            <span className="text-foreground font-medium">{practiceId}</span>
-          </nav>
-
-          <PracticeCard
-            id={practice.id}
-            title={practice.title}
-            text={practice.text}
-            notes={practice.notes}
-            state={getPracticeState(processId, level, practiceId)}
-            onChange={(patch) =>
-              updatePracticeState(processId, level, practiceId, patch)
-            }
-            index={1}
-            isCompleted={isCompleted}
-          />
-        </div>
-      );
-    }
-
-    return null;
-  }
-
   // ─── Early returns ───────────────────────────────────────────
 
   if (!currentAssessmentId) {
@@ -1879,8 +2406,27 @@ export function PerformAssessment() {
 
   // ─── Main render ─────────────────────────────────────────────
 
+  // Build openSwDialog callback for the currently selected BP/GP node
+  // This is a stable wrapper that captures the current selected node context
+  const currentBpGpOpenDialog = (entry?: SwEntry) => {
+    if (
+      !selectedNode ||
+      (selectedNode.type !== "bp" && selectedNode.type !== "gp")
+    )
+      return;
+    openSwDialog(
+      selectedNode.processId,
+      selectedNode.level ?? 1,
+      selectedNode.id,
+      entry,
+    );
+  };
+
   return (
-    <div className="page-enter flex flex-col flex-1 min-h-0">
+    <div
+      className="page-enter flex flex-col"
+      style={{ flex: "1 1 0", minHeight: 0, overflow: "hidden" }}
+    >
       {/* Page Header */}
       <div className="flex items-start justify-between gap-4 pb-3 shrink-0">
         <div>
@@ -1956,142 +2502,347 @@ export function PerformAssessment() {
           </CardContent>
         </Card>
       ) : (
-        <div className="flex-1 min-h-0">
-          <ResizablePanelGroup
-            direction="horizontal"
-            className="h-full rounded-lg border border-border/60"
-          >
-            {/* ── Left Panel ── */}
-            <ResizablePanel
-              defaultSize={25}
-              minSize={15}
-              maxSize={40}
-              className="flex flex-col min-h-0"
-            >
-              {/* Tree header */}
-              <div className="flex items-center justify-between px-3 py-2 border-b border-border/60 shrink-0 bg-muted/20">
-                <span className="text-xs font-semibold font-heading uppercase tracking-wide text-muted-foreground">
-                  Processes
-                </span>
-                <div className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={collapseAll}
-                    title="Collapse all"
-                    className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-                    data-ocid="perform.tree_collapse_all_button"
-                  >
-                    <ChevronsDownUp className="h-3.5 w-3.5" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={expandAll}
-                    title="Expand all"
-                    className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-                    data-ocid="perform.tree_expand_all_button"
-                  >
-                    <ChevronsUpDown className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              </div>
-
-              {/* Tree scroll area */}
-              <ScrollArea className="flex-1 min-h-0">
-                <div className="p-1.5">
-                  {/* Root node */}
-                  <TreeNode
-                    node={treeData}
-                    depth={0}
-                    selected={selectedNode}
-                    expandedNodes={expandedNodes}
-                    onSelect={(n) => {
-                      setSelectedNode(n);
-                      setDescNotesOpen(false);
-                    }}
-                    onToggle={toggleNode}
-                    index={0}
-                  />
-                </div>
-              </ScrollArea>
-
-              <Separator />
-
-              {/* Description Panel — bottom of left panel */}
-              <div
-                className="shrink-0"
-                style={{ height: 220 }}
-                data-ocid="perform.description_panel"
-              >
-                <ScrollArea className="h-full">
-                  <div className="p-3 space-y-1.5">
-                    {descContent ? (
-                      <>
-                        <p className="text-[11px] font-mono text-muted-foreground/70 uppercase tracking-wider">
-                          {descContent.id}
-                        </p>
-                        <p className="text-xs font-semibold font-heading text-foreground leading-snug">
-                          {descContent.title}
-                        </p>
-                        <p className="text-[11px] text-muted-foreground font-body leading-relaxed">
-                          {descContent.text}
-                        </p>
-                        {descContent.notes && descContent.notes.length > 0 && (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => setDescNotesOpen((v) => !v)}
-                              className="flex items-center gap-1 text-[11px] text-blue-600 hover:text-blue-800 mt-1"
-                              data-ocid="perform.description_notes_toggle"
-                            >
-                              <ChevronDown
-                                className={cn(
-                                  "h-3 w-3 transition-transform",
-                                  descNotesOpen && "rotate-180",
-                                )}
-                              />
-                              {descNotesOpen
-                                ? "Hide Notes"
-                                : `Show Notes (${descContent.notes.length})`}
-                            </button>
-                            {descNotesOpen && (
-                              <div className="space-y-1 pt-1">
-                                {descContent.notes.map((note, i) => (
-                                  <p
-                                    key={note.slice(0, 30)}
-                                    className="text-[11px] text-muted-foreground font-body italic leading-snug"
-                                  >
-                                    <span className="font-semibold not-italic">
-                                      Note {i + 1}:
-                                    </span>{" "}
-                                    {note}
-                                  </p>
-                                ))}
-                              </div>
-                            )}
-                          </>
-                        )}
-                      </>
-                    ) : (
-                      <p className="text-[11px] text-muted-foreground font-body italic">
-                        Select a practice to view its description.
-                      </p>
-                    )}
-                  </div>
-                </ScrollArea>
-              </div>
-            </ResizablePanel>
-
-            <ResizableHandle withHandle />
-
-            {/* ── Right Panel ── */}
-            <ResizablePanel defaultSize={75} className="min-h-0">
-              <ScrollArea className="h-full">
-                <div className="p-4 space-y-4">{renderRightPanel()}</div>
-              </ScrollArea>
-            </ResizablePanel>
-          </ResizablePanelGroup>
-        </div>
+        /* ── Three-panel layout with draggable divider ── */
+        <DraggableThreePanelLayout
+          selectedNode={selectedNode}
+          setSelectedNode={setSelectedNode}
+          setDescNotesOpen={setDescNotesOpen}
+          toggleNode={toggleNode}
+          expandAll={expandAll}
+          collapseAll={collapseAll}
+          treeData={treeData}
+          expandedNodes={expandedNodes}
+          descContent={descContent}
+          descNotesOpen={descNotesOpen}
+          enabledProcesses={enabledProcesses}
+          ratings={ratings}
+          isCompleted={!!isCompleted}
+          getPracticeState={getPracticeState}
+          updatePracticeState={updatePracticeState}
+          editSwEntryForPractice={editSwEntryForPractice}
+          currentBpGpOpenDialog={currentBpGpOpenDialog}
+        />
       )}
+
+      {/* Bug Fix 1: AddEntryDialog rendered at top level, outside child panels */}
+      {swDialogPracticeKey && (
+        <AddEntryDialog
+          open={swDialogOpen}
+          onOpenChange={setSwDialogOpen}
+          initialEntry={swDialogEntry}
+          practiceId={`${swDialogPracticeKey.processId} ${swDialogPracticeKey.practiceId}`}
+          onSubmit={handleSwDialogSubmit}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── DraggableThreePanelLayout — Bug Fix 3: draggable resize divider ──────────
+
+interface DescContent {
+  id: string;
+  title: string;
+  text: string;
+  notes?: string[];
+}
+
+function DraggableThreePanelLayout({
+  selectedNode,
+  setSelectedNode,
+  setDescNotesOpen,
+  toggleNode,
+  expandAll,
+  collapseAll,
+  treeData,
+  expandedNodes,
+  descContent,
+  descNotesOpen,
+  enabledProcesses,
+  ratings,
+  isCompleted,
+  getPracticeState,
+  updatePracticeState,
+  editSwEntryForPractice,
+  currentBpGpOpenDialog,
+}: {
+  selectedNode: SelectedNode | null;
+  setSelectedNode: (n: SelectedNode) => void;
+  setDescNotesOpen: (fn: (v: boolean) => boolean) => void;
+  toggleNode: (key: string) => void;
+  expandAll: () => void;
+  collapseAll: () => void;
+  treeData: TreeNodeData;
+  expandedNodes: Set<string>;
+  descContent: DescContent | null;
+  descNotesOpen: boolean;
+  enabledProcesses: Array<{ id: string; targetLevel: string }>;
+  ratings: RatingsMap;
+  isCompleted: boolean;
+  getPracticeState: (
+    processId: string,
+    level: number,
+    practiceId: string,
+  ) => PracticeState;
+  updatePracticeState: (
+    processId: string,
+    level: number,
+    practiceId: string,
+    patch: Partial<PracticeState>,
+  ) => void;
+  editSwEntryForPractice: (
+    processId: string,
+    level: number,
+    practiceId: string,
+    updated: SwEntry,
+  ) => void;
+  currentBpGpOpenDialog: (entry?: SwEntry) => void;
+}) {
+  // Bug Fix 3: Draggable panel width state
+  const [leftPanelWidth, setLeftPanelWidth] = useState(280);
+  const [isDragging, setIsDragging] = useState(false);
+
+  function handleDragStart(e: React.MouseEvent) {
+    e.preventDefault();
+    setIsDragging(true);
+    const startX = e.clientX;
+    const startWidth = leftPanelWidth;
+
+    const onMove = (me: MouseEvent) => {
+      const newWidth = Math.max(
+        180,
+        Math.min(500, startWidth + (me.clientX - startX)),
+      );
+      setLeftPanelWidth(newWidth);
+    };
+
+    const onUp = () => {
+      setIsDragging(false);
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
+
+  return (
+    <div
+      style={{
+        flex: "1 1 0",
+        minHeight: 0,
+        display: "flex",
+        flexDirection: "row",
+        overflow: "hidden",
+        border: "1px solid var(--border)",
+        borderRadius: "0.5rem",
+        userSelect: isDragging ? "none" : undefined,
+      }}
+    >
+      {/* ── Left Panel (resizable) ── */}
+      <div
+        style={{
+          width: leftPanelWidth,
+          minWidth: 180,
+          maxWidth: 500,
+          flexShrink: 0,
+          display: "flex",
+          flexDirection: "column",
+          borderRight: "1px solid var(--border)",
+          overflow: "hidden",
+        }}
+      >
+        {/* Tree header */}
+        <div className="flex items-center justify-between px-3 py-2 border-b border-border/60 shrink-0 bg-muted/20">
+          <span className="text-xs font-semibold font-heading uppercase tracking-wide text-muted-foreground">
+            Processes
+          </span>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={collapseAll}
+              title="Collapse all"
+              className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+              data-ocid="perform.tree_collapse_all_button"
+            >
+              <ChevronsDownUp className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={expandAll}
+              title="Expand all"
+              className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+              data-ocid="perform.tree_expand_all_button"
+            >
+              <ChevronsUpDown className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Tree scroll area */}
+        <div style={{ flex: "1 1 0", minHeight: 0, overflow: "auto" }}>
+          <div className="p-1.5">
+            <TreeNode
+              node={treeData}
+              depth={0}
+              selected={selectedNode}
+              expandedNodes={expandedNodes}
+              onSelect={(n) => {
+                setSelectedNode(n);
+                setDescNotesOpen(() => false);
+              }}
+              onToggle={toggleNode}
+              index={0}
+            />
+          </div>
+        </div>
+
+        <Separator />
+
+        {/* Description Panel — fixed 220px at bottom of left panel */}
+        <div
+          style={{ height: 220, flexShrink: 0, overflow: "auto" }}
+          data-ocid="perform.description_panel"
+        >
+          <div className="p-3 space-y-1.5">
+            {descContent ? (
+              <>
+                <p className="text-[11px] font-mono text-muted-foreground/70 uppercase tracking-wider">
+                  {descContent.id}
+                </p>
+                <p className="text-xs font-semibold font-heading text-foreground leading-snug">
+                  {descContent.title}
+                </p>
+                <p className="text-[11px] text-muted-foreground font-body leading-relaxed">
+                  {descContent.text}
+                </p>
+                {descContent.notes && descContent.notes.length > 0 && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setDescNotesOpen((v) => !v)}
+                      className="flex items-center gap-1 text-[11px] text-blue-600 hover:text-blue-800 mt-1"
+                      data-ocid="perform.description_notes_toggle"
+                    >
+                      <ChevronDown
+                        className={cn(
+                          "h-3 w-3 transition-transform",
+                          descNotesOpen && "rotate-180",
+                        )}
+                      />
+                      {descNotesOpen
+                        ? "Hide Notes"
+                        : `Show Notes (${descContent.notes.length})`}
+                    </button>
+                    {descNotesOpen && (
+                      <div className="space-y-1 pt-1">
+                        {descContent.notes.map((note, i) => (
+                          <p
+                            key={note.slice(0, 30)}
+                            className="text-[11px] text-muted-foreground font-body italic leading-snug"
+                          >
+                            <span className="font-semibold not-italic">
+                              Note {i + 1}:
+                            </span>{" "}
+                            {note}
+                          </p>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+              </>
+            ) : (
+              <p className="text-[11px] text-muted-foreground font-body italic">
+                Select a practice to view its description.
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Drag handle ── */}
+      <div
+        style={{
+          width: 4,
+          cursor: "col-resize",
+          background: isDragging ? "var(--accent)" : "var(--border)",
+          flexShrink: 0,
+          transition: isDragging ? "none" : "background 0.15s",
+        }}
+        className="hover:bg-accent/50"
+        onMouseDown={handleDragStart}
+        data-ocid="perform.drag_handle"
+        title="Drag to resize panels"
+      />
+
+      {/* ── Right Panel (flex: 1) ── */}
+      <div style={{ flex: 1, minWidth: 0, overflow: "auto" }}>
+        <div className="p-4 space-y-4">
+          {(!selectedNode || selectedNode.type === "root") && (
+            <RootOverviewView
+              enabledProcesses={enabledProcesses}
+              ratings={ratings}
+            />
+          )}
+          {selectedNode?.type === "process" &&
+            (() => {
+              const procInfo = enabledProcesses.find(
+                (p) => p.id === selectedNode.processId,
+              );
+              return procInfo ? (
+                <ProcessOverviewView
+                  processId={selectedNode.processId}
+                  processInfo={procInfo}
+                  ratings={ratings}
+                  onSelectPA={(node) => setSelectedNode(node)}
+                />
+              ) : null;
+            })()}
+          {selectedNode?.type === "pa" && (
+            <PASummaryView
+              paId={selectedNode.paId ?? selectedNode.id}
+              processId={selectedNode.processId}
+              ratings={ratings}
+              onEdit={(practiceId, level, updated) => {
+                editSwEntryForPractice(
+                  selectedNode.processId,
+                  level,
+                  practiceId,
+                  updated,
+                );
+              }}
+              isCompleted={!!isCompleted}
+            />
+          )}
+          {(selectedNode?.type === "bp" || selectedNode?.type === "gp") && (
+            <BPGPRightPanel
+              selectedNode={selectedNode}
+              enabledProcesses={enabledProcesses}
+              ratings={ratings}
+              isCompleted={!!isCompleted}
+              getPracticeState={getPracticeState}
+              updatePracticeState={updatePracticeState}
+              onSelectProcess={(pid) =>
+                setSelectedNode({
+                  type: "process",
+                  id: pid,
+                  processId: pid,
+                })
+              }
+              onSelectPA={(paId, pid) =>
+                setSelectedNode({
+                  type: "pa",
+                  id: paId,
+                  processId: pid,
+                  paId,
+                })
+              }
+              openSwDialog={currentBpGpOpenDialog}
+            />
+          )}
+        </div>
+      </div>
     </div>
   );
 }

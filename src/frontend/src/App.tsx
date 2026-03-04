@@ -10,7 +10,6 @@ import {
   LayoutDashboard,
   Menu,
   Target,
-  Upload,
 } from "lucide-react";
 import { useState } from "react";
 import { AssessmentInfo } from "./components/AssessmentInfo";
@@ -19,7 +18,6 @@ import { Dashboard } from "./components/Dashboard";
 import { DefineTargetProfile } from "./components/DefineTargetProfile";
 import { GenerateReport } from "./components/GenerateReport";
 import { PerformAssessment } from "./components/PerformAssessment";
-import { UploadWorkProducts } from "./components/UploadWorkProducts";
 import { ViewResults } from "./components/ViewResults";
 import { AppProvider } from "./context/AppContext";
 
@@ -34,7 +32,6 @@ const NAV_ITEMS: NavItem[] = [
   { id: "assessment-info", label: "Assessment Info", icon: ClipboardList },
   { id: "target-profile", label: "Define Target Profile", icon: Target },
   { id: "planning", label: "Assessment Planning", icon: CalendarDays },
-  { id: "work-products", label: "Upload Work Products", icon: Upload },
   { id: "perform", label: "Perform Assessment", icon: CheckSquare },
   { id: "results", label: "View Results", icon: BarChart2 },
   { id: "reports", label: "Generate Report", icon: FileText },
@@ -50,8 +47,6 @@ function renderPage(activeId: string) {
       return <DefineTargetProfile />;
     case "planning":
       return <AssessmentPlanning />;
-    case "work-products":
-      return <UploadWorkProducts />;
     case "perform":
       return <PerformAssessment />;
     case "results":
@@ -213,8 +208,15 @@ export default function App() {
 
           {/* Page Content */}
           {active === "perform" ? (
-            <main className="flex-1 min-h-0 overflow-hidden flex flex-col">
-              <div className="flex-1 min-h-0 px-6 py-6 flex flex-col">
+            <main className="flex-1 overflow-hidden" style={{ height: 0 }}>
+              <div
+                style={{
+                  height: "100%",
+                  display: "flex",
+                  flexDirection: "column",
+                  padding: "24px",
+                }}
+              >
                 {renderPage(active)}
               </div>
             </main>

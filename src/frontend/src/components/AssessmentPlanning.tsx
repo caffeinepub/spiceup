@@ -38,6 +38,7 @@ import type { AssessmentDay } from "../backend.d";
 
 interface SessionData {
   sid: string;
+  sessionName: string;
   processId: string;
   notes: string;
 }
@@ -120,9 +121,11 @@ export function AssessmentPlanning() {
             processId: string;
             notes: string;
             sid?: string;
+            sessionName?: string;
           }>;
           sessions = raw.map((s, i) => ({
             sid: s.sid ?? `loaded-${i}`,
+            sessionName: s.sessionName ?? "",
             processId: s.processId,
             notes: s.notes,
           }));
@@ -202,6 +205,7 @@ export function AssessmentPlanning() {
                 ...d.sessions,
                 {
                   sid: `${Date.now()}-${Math.random()}`,
+                  sessionName: "",
                   processId: enabledProcesses[0] ?? "",
                   notes: "",
                 },
@@ -509,62 +513,74 @@ export function AssessmentPlanning() {
                       {day.sessions.map((session, sessionIndex) => (
                         <div
                           key={session.sid}
-                          className="flex items-center gap-2 p-2.5 rounded-lg bg-muted/40 border border-border/40"
+                          className="flex items-center gap-2 p-2 rounded-lg bg-muted/40 border border-border/40"
                         >
-                          <span className="text-xs font-body text-muted-foreground w-4 shrink-0">
-                            {sessionIndex + 1}
+                          <span className="text-xs font-body text-muted-foreground w-5 shrink-0 font-medium">
+                            #{sessionIndex + 1}
                           </span>
-                          <div className="flex-1 grid grid-cols-2 gap-2">
-                            {enabledProcesses.length > 0 ? (
-                              <Select
-                                value={session.processId}
-                                onValueChange={(v) =>
-                                  updateSession(dayIndex, sessionIndex, {
-                                    processId: v,
-                                  })
-                                }
-                                disabled={isCompleted}
-                              >
-                                <SelectTrigger className="h-8 text-xs font-body">
-                                  <SelectValue placeholder="Select process" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {enabledProcesses.map((pid) => (
-                                    <SelectItem
-                                      key={pid}
-                                      value={pid}
-                                      className="text-xs"
-                                    >
-                                      {pid}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            ) : (
-                              <Input
-                                value={session.processId}
-                                onChange={(e) =>
-                                  updateSession(dayIndex, sessionIndex, {
-                                    processId: e.target.value,
-                                  })
-                                }
-                                placeholder="Process ID"
-                                className="h-8 text-xs font-body"
-                                disabled={isCompleted}
-                              />
-                            )}
-                            <Input
-                              value={session.notes}
-                              onChange={(e) =>
+                          {/* Session Name */}
+                          <Input
+                            value={session.sessionName}
+                            onChange={(e) =>
+                              updateSession(dayIndex, sessionIndex, {
+                                sessionName: e.target.value,
+                              })
+                            }
+                            placeholder="Session name"
+                            className="h-8 text-xs font-body w-32 shrink-0"
+                            disabled={isCompleted}
+                          />
+                          {/* Process selector */}
+                          {enabledProcesses.length > 0 ? (
+                            <Select
+                              value={session.processId}
+                              onValueChange={(v) =>
                                 updateSession(dayIndex, sessionIndex, {
-                                  notes: e.target.value,
+                                  processId: v,
                                 })
                               }
-                              placeholder="Session notes"
-                              className="h-8 text-xs font-body"
+                              disabled={isCompleted}
+                            >
+                              <SelectTrigger className="h-8 text-xs font-body w-28 shrink-0">
+                                <SelectValue placeholder="Process" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {enabledProcesses.map((pid) => (
+                                  <SelectItem
+                                    key={pid}
+                                    value={pid}
+                                    className="text-xs"
+                                  >
+                                    {pid}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          ) : (
+                            <Input
+                              value={session.processId}
+                              onChange={(e) =>
+                                updateSession(dayIndex, sessionIndex, {
+                                  processId: e.target.value,
+                                })
+                              }
+                              placeholder="Process ID"
+                              className="h-8 text-xs font-body w-28 shrink-0"
                               disabled={isCompleted}
                             />
-                          </div>
+                          )}
+                          {/* Notes */}
+                          <Input
+                            value={session.notes}
+                            onChange={(e) =>
+                              updateSession(dayIndex, sessionIndex, {
+                                notes: e.target.value,
+                              })
+                            }
+                            placeholder="Notes"
+                            className="h-8 text-xs font-body flex-1 min-w-0"
+                            disabled={isCompleted}
+                          />
                           {!isCompleted && (
                             <Button
                               size="icon"

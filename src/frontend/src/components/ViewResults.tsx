@@ -1,11 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
-import {
   Select,
   SelectContent,
   SelectItem,
@@ -13,16 +8,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { useAppContext } from "@/context/AppContext";
 import {
+  ASPICE_RATING_COLORS,
   BASE_PRACTICES,
   LEVEL2_ATTRIBUTES,
   LEVEL3_ATTRIBUTES,
@@ -33,7 +21,7 @@ import {
   useGetAllPracticeRatingsForAssessment,
   useGetProcessGroupConfig,
 } from "@/hooks/useQueries";
-import { BarChart2, ChevronDown, ChevronUp, ClipboardX } from "lucide-react";
+import { BarChart2, ClipboardX } from "lucide-react";
 import { useState } from "react";
 import {
   Bar,
@@ -85,30 +73,12 @@ interface ProcessResult {
 
 // ─── Rating color helpers ───────────────────────────────────────
 
-const RATING_COLORS: Record<Rating, string> = {
-  N: "bg-red-100 text-red-700 border-red-200",
-  P: "bg-orange-100 text-orange-700 border-orange-200",
-  L: "bg-blue-100 text-blue-700 border-blue-200",
-  F: "bg-green-100 text-green-700 border-green-200",
-};
-
 const RATING_FILL: Record<Rating, string> = {
-  N: "#ef4444",
-  P: "#f97316",
-  L: "#3b82f6",
-  F: "#22c55e",
+  N: ASPICE_RATING_COLORS.N.bg,
+  P: ASPICE_RATING_COLORS.P.bg,
+  L: ASPICE_RATING_COLORS.L.bg,
+  F: ASPICE_RATING_COLORS.F.bg,
 };
-
-function RatingBadge({ rating }: { rating: Rating | null }) {
-  if (!rating) return <span className="text-muted-foreground text-xs">—</span>;
-  return (
-    <span
-      className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold border ${RATING_COLORS[rating]}`}
-    >
-      {rating}
-    </span>
-  );
-}
 
 // ─── Data builder ───────────────────────────────────────────────
 
@@ -261,230 +231,271 @@ function SummaryCard({
   );
 }
 
-// ─── Process Section ────────────────────────────────────────────
+// ─── Cross-Process Matrix Table ─────────────────────────────────
 
-function ProcessSection({
-  process,
-  index,
+function MatrixRatingCell({
+  rating,
+  greyed,
 }: {
-  process: ProcessResult;
-  index: number;
+  rating: Rating | null;
+  greyed: boolean;
 }) {
-  const [open, setOpen] = useState(true);
+  if (greyed) {
+    return (
+      <td className="px-1 py-1.5 text-center border border-border/30 bg-muted/20 min-w-[36px]">
+        <span className="text-muted-foreground/40 text-xs">—</span>
+      </td>
+    );
+  }
+  if (!rating) {
+    return (
+      <td className="px-1 py-1.5 text-center border border-border/30 min-w-[36px]">
+        <span className="text-muted-foreground/50 text-xs">—</span>
+      </td>
+    );
+  }
+  const color = ASPICE_RATING_COLORS[rating];
+  return (
+    <td className="px-1 py-1.5 text-center border border-border/30 min-w-[36px]">
+      <span
+        className="inline-flex items-center justify-center w-6 h-6 rounded text-xs font-bold"
+        style={{ backgroundColor: color.bg, color: color.text }}
+      >
+        {rating}
+      </span>
+    </td>
+  );
+}
 
-  // Group practices by level then by PA group
-  const level1Practices = process.practices.filter((p) => p.level === 1);
-  const level2Practices = process.practices.filter((p) => p.level === 2);
-  const level3Practices = process.practices.filter((p) => p.level === 3);
+function ResultsMatrixTable({
+  processes,
+}: {
+  processes: ProcessResult[];
+}) {
+  // Determine max BP count across all processes
+  const maxBPs = processes.reduce((max, p) => {
+    const bpCount = p.practices.filter((pr) => pr.level === 1).length;
+    return Math.max(max, bpCount);
+  }, 0);
 
-  // Group L2/L3 by paGroup
-  function groupByPA(practices: PracticeRow[]) {
-    const groups: Record<string, PracticeRow[]> = {};
-    for (const p of practices) {
-      const key = p.paGroup ?? "Other";
-      if (!groups[key]) groups[key] = [];
-      groups[key].push(p);
+  // GP counts per PA
+  const pa21Count =
+    LEVEL2_ATTRIBUTES.find((pa) => pa.id === "PA 2.1")?.practices.length ?? 6;
+  const pa22Count =
+    LEVEL2_ATTRIBUTES.find((pa) => pa.id === "PA 2.2")?.practices.length ?? 4;
+  const pa31Count =
+    LEVEL3_ATTRIBUTES.find((pa) => pa.id === "PA 3.1")?.practices.length ?? 4;
+  const pa32Count =
+    LEVEL3_ATTRIBUTES.find((pa) => pa.id === "PA 3.2")?.practices.length ?? 4;
+
+  // Build rating lookup per process: { practiceId -> rating }
+  const processRatingLookup: Record<string, Record<string, Rating | null>> = {};
+  for (const proc of processes) {
+    processRatingLookup[proc.id] = {};
+    for (const pr of proc.practices) {
+      processRatingLookup[proc.id][pr.practiceId] = pr.rating;
     }
-    return Object.entries(groups);
   }
 
-  const { rollup } = process;
+  // PA 2.1 GPs
+  const pa21GPs =
+    LEVEL2_ATTRIBUTES.find((pa) => pa.id === "PA 2.1")?.practices ?? [];
+  // PA 2.2 GPs
+  const pa22GPs =
+    LEVEL2_ATTRIBUTES.find((pa) => pa.id === "PA 2.2")?.practices ?? [];
+  // PA 3.1 GPs
+  const pa31GPs =
+    LEVEL3_ATTRIBUTES.find((pa) => pa.id === "PA 3.1")?.practices ?? [];
+  // PA 3.2 GPs
+  const pa32GPs =
+    LEVEL3_ATTRIBUTES.find((pa) => pa.id === "PA 3.2")?.practices ?? [];
 
   return (
-    <Collapsible
-      open={open}
-      onOpenChange={setOpen}
-      data-ocid={`results.process_row.${index}`}
-    >
-      <Card className="border-border/60 overflow-hidden">
-        {/* Process Header */}
-        <CollapsibleTrigger asChild>
-          <button
-            type="button"
-            className="w-full text-left"
-            aria-expanded={open}
-          >
-            <div className="flex items-center justify-between px-5 py-4 bg-muted/40 hover:bg-muted/60 transition-colors border-b border-border/40">
-              <div className="flex items-center gap-3">
-                <span className="text-sm font-bold font-heading text-accent bg-accent/10 px-2.5 py-0.5 rounded-md">
-                  {process.id}
-                </span>
-                <span className="text-sm font-medium text-foreground font-body">
-                  {process.label}
-                </span>
-                <span className="text-xs text-muted-foreground font-body">
-                  Target: Level {process.targetLevel}
-                </span>
-              </div>
-              <div className="flex items-center gap-4">
-                {/* Mini rollup */}
-                {rollup.total > 0 && (
-                  <div className="hidden sm:flex items-center gap-2 text-xs font-mono">
-                    {(["N", "P", "L", "F"] as Rating[]).map((r) => (
-                      <span
-                        key={r}
-                        className={`px-2 py-0.5 rounded font-semibold border ${RATING_COLORS[r]}`}
-                      >
-                        {r}:{rollup[r]}
-                      </span>
-                    ))}
+    <div className="overflow-x-auto rounded-lg border border-border/60">
+      <table className="border-collapse text-xs font-body min-w-full">
+        <thead>
+          {/* Group header row */}
+          <tr className="bg-muted/60">
+            <th
+              className="sticky left-0 z-10 bg-muted/80 px-3 py-2 text-left font-heading font-semibold text-foreground border border-border/40 min-w-[90px]"
+              rowSpan={2}
+            >
+              Process
+            </th>
+            <th
+              className="px-2 py-2 text-center font-heading font-semibold text-foreground border border-border/40 bg-slate-100"
+              colSpan={maxBPs}
+            >
+              PA 1.1 — Base Practices
+            </th>
+            <th
+              className="px-2 py-2 text-center font-heading font-semibold text-foreground border border-border/40 bg-blue-50"
+              colSpan={pa21Count}
+            >
+              PA 2.1
+            </th>
+            <th
+              className="px-2 py-2 text-center font-heading font-semibold text-foreground border border-border/40 bg-indigo-50"
+              colSpan={pa22Count}
+            >
+              PA 2.2
+            </th>
+            <th
+              className="px-2 py-2 text-center font-heading font-semibold text-foreground border border-border/40 bg-violet-50"
+              colSpan={pa31Count}
+            >
+              PA 3.1
+            </th>
+            <th
+              className="px-2 py-2 text-center font-heading font-semibold text-foreground border border-border/40 bg-purple-50"
+              colSpan={pa32Count}
+            >
+              PA 3.2
+            </th>
+          </tr>
+          {/* Sub-header row */}
+          <tr className="bg-muted/40">
+            {Array.from({ length: maxBPs }, (_, i) => (
+              <th
+                key={`bp-header-${i + 1}`}
+                className="px-1 py-1.5 text-center font-heading text-[10px] text-muted-foreground border border-border/30 bg-slate-50 min-w-[36px]"
+              >
+                BP{i + 1}
+              </th>
+            ))}
+            {pa21GPs.map((gp) => (
+              <th
+                key={gp.id}
+                className="px-1 py-1.5 text-center font-heading text-[10px] text-muted-foreground border border-border/30 bg-blue-50/60 min-w-[36px]"
+                title={gp.title}
+              >
+                {gp.id.replace("GP ", "G")}
+              </th>
+            ))}
+            {pa22GPs.map((gp) => (
+              <th
+                key={gp.id}
+                className="px-1 py-1.5 text-center font-heading text-[10px] text-muted-foreground border border-border/30 bg-indigo-50/60 min-w-[36px]"
+                title={gp.title}
+              >
+                {gp.id.replace("GP ", "G")}
+              </th>
+            ))}
+            {pa31GPs.map((gp) => (
+              <th
+                key={gp.id}
+                className="px-1 py-1.5 text-center font-heading text-[10px] text-muted-foreground border border-border/30 bg-violet-50/60 min-w-[36px]"
+                title={gp.title}
+              >
+                {gp.id.replace("GP ", "G")}
+              </th>
+            ))}
+            {pa32GPs.map((gp) => (
+              <th
+                key={gp.id}
+                className="px-1 py-1.5 text-center font-heading text-[10px] text-muted-foreground border border-border/30 bg-purple-50/60 min-w-[36px]"
+                title={gp.title}
+              >
+                {gp.id.replace("GP ", "G")}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {processes.map((proc, rowIdx) => {
+            const bps = proc.practices.filter((p) => p.level === 1);
+            const ratingMap = processRatingLookup[proc.id] ?? {};
+            const targetLevel = proc.targetLevel;
+            const rowBg = rowIdx % 2 === 0 ? "bg-white" : "bg-muted/10";
+
+            return (
+              <tr
+                key={proc.id}
+                className={`${rowBg} hover:bg-accent/5 transition-colors`}
+              >
+                {/* Process ID */}
+                <td className="sticky left-0 z-10 px-3 py-2 border border-border/40 font-heading font-semibold text-xs text-accent bg-inherit">
+                  <div className="flex flex-col">
+                    <span>{proc.id}</span>
+                    <span className="text-[9px] text-muted-foreground font-normal font-body">
+                      L{targetLevel}
+                    </span>
                   </div>
-                )}
-                {open ? (
-                  <ChevronUp className="h-4 w-4 text-muted-foreground shrink-0" />
-                ) : (
-                  <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />
-                )}
-              </div>
-            </div>
-          </button>
-        </CollapsibleTrigger>
+                </td>
 
-        <CollapsibleContent>
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-muted/20 hover:bg-muted/20">
-                  <TableHead className="w-32 font-heading text-xs uppercase tracking-wide">
-                    Practice ID
-                  </TableHead>
-                  <TableHead className="font-heading text-xs uppercase tracking-wide">
-                    Title
-                  </TableHead>
-                  <TableHead className="w-20 text-center font-heading text-xs uppercase tracking-wide">
-                    Rating
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {/* Level 1 */}
-                {level1Practices.length > 0 && (
-                  <>
-                    <TableRow className="bg-slate-50/50 hover:bg-slate-50/50">
-                      <TableCell
-                        colSpan={3}
-                        className="py-1.5 px-4 text-xs font-semibold font-heading text-muted-foreground uppercase tracking-wider"
+                {/* PA 1.1 — BPs */}
+                {Array.from({ length: maxBPs }, (_, i) => {
+                  const bp = bps[i];
+                  if (!bp) {
+                    return (
+                      <td
+                        key={`bp-cell-${proc.id}-${i + 1}`}
+                        className="px-1 py-1.5 text-center border border-border/30 bg-muted/20 min-w-[36px]"
                       >
-                        Level 1 — Base Practices
-                      </TableCell>
-                    </TableRow>
-                    {level1Practices.map((p) => (
-                      <TableRow
-                        key={p.practiceId}
-                        className="hover:bg-muted/20"
-                      >
-                        <TableCell className="font-mono text-xs text-muted-foreground py-2.5">
-                          {p.practiceId}
-                        </TableCell>
-                        <TableCell className="text-sm text-foreground font-body py-2.5">
-                          {p.title}
-                        </TableCell>
-                        <TableCell className="text-center py-2.5">
-                          <RatingBadge rating={p.rating} />
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </>
-                )}
+                        <span className="text-muted-foreground/30 text-xs">
+                          ·
+                        </span>
+                      </td>
+                    );
+                  }
+                  return (
+                    <MatrixRatingCell
+                      key={`${proc.id}-${bp.practiceId}`}
+                      rating={ratingMap[bp.practiceId] ?? null}
+                      greyed={false}
+                    />
+                  );
+                })}
 
-                {/* Level 2 grouped by PA */}
-                {level2Practices.length > 0 &&
-                  groupByPA(level2Practices).flatMap(([paName, practices]) => [
-                    <TableRow
-                      key={`l2-header-${paName}`}
-                      className="bg-blue-50/50 hover:bg-blue-50/50"
-                    >
-                      <TableCell
-                        colSpan={3}
-                        className="py-1.5 px-4 text-xs font-semibold font-heading text-blue-600 uppercase tracking-wider"
-                      >
-                        Level 2 — {paName}
-                      </TableCell>
-                    </TableRow>,
-                    ...practices.map((p) => (
-                      <TableRow
-                        key={p.practiceId}
-                        className="hover:bg-muted/20"
-                      >
-                        <TableCell className="font-mono text-xs text-muted-foreground py-2.5">
-                          {p.practiceId}
-                        </TableCell>
-                        <TableCell className="text-sm text-foreground font-body py-2.5">
-                          {p.title}
-                        </TableCell>
-                        <TableCell className="text-center py-2.5">
-                          <RatingBadge rating={p.rating} />
-                        </TableCell>
-                      </TableRow>
-                    )),
-                  ])}
+                {/* PA 2.1 GPs */}
+                {pa21GPs.map((gp) => (
+                  <MatrixRatingCell
+                    key={`${proc.id}-${gp.id}`}
+                    rating={
+                      targetLevel >= 2 ? (ratingMap[gp.id] ?? null) : null
+                    }
+                    greyed={targetLevel < 2}
+                  />
+                ))}
 
-                {/* Level 3 grouped by PA */}
-                {level3Practices.length > 0 &&
-                  groupByPA(level3Practices).flatMap(([paName, practices]) => [
-                    <TableRow
-                      key={`l3-header-${paName}`}
-                      className="bg-purple-50/50 hover:bg-purple-50/50"
-                    >
-                      <TableCell
-                        colSpan={3}
-                        className="py-1.5 px-4 text-xs font-semibold font-heading text-purple-600 uppercase tracking-wider"
-                      >
-                        Level 3 — {paName}
-                      </TableCell>
-                    </TableRow>,
-                    ...practices.map((p) => (
-                      <TableRow
-                        key={p.practiceId}
-                        className="hover:bg-muted/20"
-                      >
-                        <TableCell className="font-mono text-xs text-muted-foreground py-2.5">
-                          {p.practiceId}
-                        </TableCell>
-                        <TableCell className="text-sm text-foreground font-body py-2.5">
-                          {p.title}
-                        </TableCell>
-                        <TableCell className="text-center py-2.5">
-                          <RatingBadge rating={p.rating} />
-                        </TableCell>
-                      </TableRow>
-                    )),
-                  ])}
+                {/* PA 2.2 GPs */}
+                {pa22GPs.map((gp) => (
+                  <MatrixRatingCell
+                    key={`${proc.id}-${gp.id}`}
+                    rating={
+                      targetLevel >= 2 ? (ratingMap[gp.id] ?? null) : null
+                    }
+                    greyed={targetLevel < 2}
+                  />
+                ))}
 
-                {/* Rollup row */}
-                {rollup.total > 0 && (
-                  <TableRow className="bg-muted/30 border-t-2 border-border/60">
-                    <TableCell className="py-3 font-heading text-xs font-bold text-foreground uppercase">
-                      Rollup
-                    </TableCell>
-                    <TableCell className="py-3">
-                      <span className="text-xs text-muted-foreground font-body">
-                        {rollup.total} practices rated
-                      </span>
-                    </TableCell>
-                    <TableCell className="py-3">
-                      <div className="flex items-center gap-1.5 justify-center flex-wrap">
-                        {(["N", "P", "L", "F"] as Rating[]).map((r) => (
-                          <span
-                            key={r}
-                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold border ${RATING_COLORS[r]}`}
-                          >
-                            {r}: {rollup[r]}
-                            <span className="opacity-70">
-                              ({rollup[`pct${r}` as keyof ProcessRollup]}%)
-                            </span>
-                          </span>
-                        ))}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </CollapsibleContent>
-      </Card>
-    </Collapsible>
+                {/* PA 3.1 GPs */}
+                {pa31GPs.map((gp) => (
+                  <MatrixRatingCell
+                    key={`${proc.id}-${gp.id}`}
+                    rating={
+                      targetLevel >= 3 ? (ratingMap[gp.id] ?? null) : null
+                    }
+                    greyed={targetLevel < 3}
+                  />
+                ))}
+
+                {/* PA 3.2 GPs */}
+                {pa32GPs.map((gp) => (
+                  <MatrixRatingCell
+                    key={`${proc.id}-${gp.id}`}
+                    rating={
+                      targetLevel >= 3 ? (ratingMap[gp.id] ?? null) : null
+                    }
+                    greyed={targetLevel < 3}
+                  />
+                ))}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -784,25 +795,25 @@ export function ViewResults() {
               index={1}
             />
             <SummaryCard
-              label="Not Satisfied (N)"
+              label="Not Achieved (N)"
               value={countN}
-              accent="text-red-600"
+              accent="text-red-800"
               index={2}
             />
             <SummaryCard
-              label="Partially Satisfied (P)"
+              label="Partially Achieved (P)"
               value={countP}
-              accent="text-orange-500"
+              accent="text-yellow-600"
               index={3}
             />
             <SummaryCard
-              label="Largely Satisfied (L)"
+              label="Largely Achieved (L)"
               value={countL}
-              accent="text-blue-600"
+              accent="text-lime-600"
               index={4}
             />
             <SummaryCard
-              label="Fully Satisfied (F)"
+              label="Fully Achieved (F)"
               value={countF}
               accent="text-green-600"
               index={5}
@@ -843,12 +854,12 @@ export function ViewResults() {
             </div>
           )}
 
-          {/* Results Table */}
+          {/* Results Summary Matrix */}
           {processResults.length > 0 && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <h2 className="text-lg font-bold font-heading text-foreground">
-                  Process Results
+                  Assessment Results Summary
                 </h2>
                 <p className="text-xs text-muted-foreground font-body">
                   {processResults.length} process
@@ -857,34 +868,42 @@ export function ViewResults() {
                 </p>
               </div>
 
-              {/* Rating legend */}
-              <div className="flex flex-wrap items-center gap-2 text-xs font-body text-muted-foreground">
-                <span className="font-semibold">Legend:</span>
-                {(["N", "P", "L", "F"] as Rating[]).map((r) => {
-                  const labels: Record<Rating, string> = {
-                    N: "Not Satisfied",
-                    P: "Partially Satisfied",
-                    L: "Largely Satisfied",
-                    F: "Fully Satisfied",
-                  };
+              {/* Rating Legend */}
+              <div className="flex flex-wrap items-center gap-2 text-xs font-body">
+                <span className="font-semibold text-muted-foreground">
+                  Legend:
+                </span>
+                {(
+                  [
+                    ["F", "Fully Achieved", "86–100%"],
+                    ["L", "Largely Achieved", "51–85%"],
+                    ["P", "Partially Achieved", "16–50%"],
+                    ["N", "Not Achieved", "0–15%"],
+                    ["NA", "Not Applicable", ""],
+                  ] as [keyof typeof ASPICE_RATING_COLORS, string, string][]
+                ).map(([r, label, range]) => {
+                  const color = ASPICE_RATING_COLORS[r];
                   return (
                     <span
                       key={r}
-                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border ${RATING_COLORS[r]}`}
+                      className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded border text-white text-[11px] font-semibold"
+                      style={{
+                        backgroundColor: color.bg,
+                        borderColor: color.bg,
+                      }}
                     >
-                      <span className="font-bold">{r}</span> — {labels[r]}
+                      <span className="font-bold">{r}</span>
+                      <span className="opacity-90 font-normal">
+                        {label}
+                        {range ? ` (${range})` : ""}
+                      </span>
                     </span>
                   );
                 })}
               </div>
 
-              {processResults.map((process, idx) => (
-                <ProcessSection
-                  key={process.id}
-                  process={process}
-                  index={idx + 1}
-                />
-              ))}
+              {/* Matrix Table */}
+              <ResultsMatrixTable processes={processResults} />
             </div>
           )}
         </>

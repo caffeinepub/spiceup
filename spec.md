@@ -1,39 +1,38 @@
 # Infineon ASPICE Assessment Tool
 
 ## Current State
-The Perform Assessment page displays BP and GP practice cards via `PracticeCard` in `PerformAssessment.tsx`. Each card shows the full `text` field from `aspiceData.ts`, which currently contains both the main requirement text and all numbered Notes concatenated together (e.g. "...software requirements.\n\nNote 1: ...\nNote 2: ..."). There is no way to hide/show notes, and there is no "Evidences Checked" section per BP.
+Full-stack ASPICE assessment app with: Dashboard, Assessment Info, Define Target Profile, Assessment Planning, Upload Work Products, Perform Assessment, View Results, Generate Report. Backend is Motoko with stable storage.
 
 ## Requested Changes (Diff)
 
 ### Add
-- **Notes toggle per practice card**: A collapsible "Notes" section at the bottom of each `PracticeCard`. Hidden by default, revealed when the user clicks a "Notes" button/link. Notes should be visually distinct (e.g. lighter background, italic text, note numbers preserved).
-- **Evidences Checked section per BP (Level 1 only)**: A new multi-entry field below Strengths/Weaknesses/Work Products on every Level 1 Base Practice card, allowing the assessor to add one or more evidence items (text entries). Each evidence entry should be addable ("+Add Evidence") and removable (×). This is specific to BP cards (`showWorkProducts=true`), not GPs.
-- Update `PracticeState` interface to include an `evidences: string[]` field.
-- Wire evidences into save/load logic (stored as JSON string in `workProductsInspected` field or as a new field – use a new top-level `evidences` field in state serialized to the existing `workProductsInspected` column via JSON, keeping backward compat).
+- Global rating color system: F (green, 86-100), L (yellow-green, 51-85), P (yellow, 16-50), N (dark red, 0-15), NA (gray) — applied everywhere ratings appear (badges, table cells, charts, perform assessment buttons)
+- Assessment Info: Lead Assessor ID field and up to 3 Co-Assessors each with name + INTACS ID fields (dynamic add/remove up to 3)
+- Assessment Info: "Application Parameters" as its own separate card section (move checkboxes out of Project Information)
+- Assessment Planning: Session Name field added to each session row (one line display: Session Name | Process | Notes)
+- View Results: Complete redesign — cross-process summary table with Process Areas as rows, and PA1.1 (all BPs), PA2.1 (all GPs), PA2.2 (all GPs), PA3.1 (all GPs), PA3.2 (all GPs) as column groups; each cell shows the rating with the defined color code
 
 ### Modify
-- **`aspiceData.ts`**: Split the `text` field into two parts for every BP and GP:
-  - `text`: main requirement text only (no Note lines)
-  - `notes`: array of note strings (each note as a plain string without the "Note N:" prefix, but preserve the note number in display)
-  - Update `BasePractice` and `GenericPractice` interfaces to add `notes?: string[]`.
-- **`PracticeCard`**: 
-  - Render only `text` (main body) in the description area.
-  - Add a "Notes" toggle button below the description. Clicking it expands/collapses the notes list. Each note displayed as "Note N: <text>".
-  - Add "Evidences Checked" section when `showWorkProducts` is true (Level 1 BPs).
-- **`PracticeState`**: Add `evidences: string[]`.
-- **Save logic** (`saveProcessRatings`): Serialize `evidences` array alongside existing fields. Store as JSON in `workProductsInspected` to avoid backend schema change, or handle gracefully.
-- **Load logic**: Deserialize evidences from saved data.
+- Assessment Info: Remove "Assessor Body" field (field + state + backend still stores it but hide from UI)
+- Assessment Info: Remove "Target Profile" field from Standards & Classification section — there is no such field currently but ensure "Target Capability Level" is kept (it stays)
+- Define Target Profile: Remove the process count text "(X processes)" from each group header
+- Define Target Profile: Remove the disabled group hint text "This group is disabled and will be excluded from Planning and Perform Assessment."
+- Define Target Profile: Change from single-column stacked list to 2-column grid layout so all process groups are visible at once; each group card has toggle + collapsible process list below it
+- Assessment Planning: Session rows display all info (Session Name, Process, Notes) in a single compact line
+- App.tsx: Remove "Upload Work Products" from navigation items entirely
+- View Results: Replace the existing per-process collapsible table with a single cross-process matrix table
 
 ### Remove
-- Notes text from the inline `text` field of all BP/GP entries in `aspiceData.ts` (moved to `notes` array).
+- Upload Work Products navigation item from sidebar
+- Assessor Body field from Assessment Info UI
+- Process count "(X processes)" text from Define Target Profile
+- Disabled group hint text in Define Target Profile
 
 ## Implementation Plan
-1. Update `BasePractice` and `GenericPractice` interfaces in `aspiceData.ts` to add `notes?: string[]`.
-2. Refactor all BP and GP entries in `aspiceData.ts`: strip Note lines from `text`, populate `notes` array for each entry that has notes.
-3. Update `PracticeState` to include `evidences: string[]`.
-4. Update `defaultPracticeState()` to include `evidences: []`.
-5. Update `PracticeCard` props to accept `notes` and `showEvidences` (or derive from `showWorkProducts`).
-6. In `PracticeCard`, add a local `notesOpen` state toggle with a "Notes" button. Render notes in a collapsible panel.
-7. In `PracticeCard`, add the Evidences Checked section (when `showWorkProducts` is true): a list of text inputs with remove buttons, and an "+ Add Evidence" button below.
-8. Update save/load serialization to handle `evidences` field (serialize to/from `workProductsInspected` as JSON object `{ workProducts: string, evidences: string[] }`).
-9. Validate, typecheck, and build.
+1. Define ASPICE_RATING_COLORS constant with hex codes and Tailwind classes matching the image legend (F=green #22c55e, L=#a3e635 lime/yellow-green, P=yellow #eab308, N=dark red #991b1b, NA=gray)
+2. AssessmentInfo.tsx: Remove assessorBody field UI; add Lead Assessor ID input; replace single coAssessor with dynamic list of up to 3 co-assessors (each with name + ID); move Application Parameters checkboxes into separate FormSection card
+3. DefineTargetProfile.tsx: Remove process count span; remove disabled hint paragraph; switch PROCESS_GROUPS map to 2-column CSS grid; each group is a card with toggle in header and collapsible process rows
+4. AssessmentPlanning.tsx: Add sessionName field to SessionData interface; add Session Name input to each session row; display in one compact line: [#] [Session Name] [Process dropdown] [Notes] [×]
+5. App.tsx: Remove "work-products" nav item and its Upload Work Products case from renderPage
+6. ViewResults.tsx: Redesign results section — build cross-process matrix table where rows = processes, columns = PA1.1 BPs + PA2.1 GPs + PA2.2 GPs + PA3.1 GPs + PA3.2 GPs; each cell is a colored rating badge using the ASPICE color scheme; keep charts but apply consistent colors
+7. Apply ASPICE rating colors globally: N/P/L/F/NA color scheme from the image used in all RatingBadge components, rating selector buttons in Perform Assessment, chart fill colors, and View Results cells

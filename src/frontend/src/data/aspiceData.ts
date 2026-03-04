@@ -1,6 +1,41 @@
 // ASPICE Base Practices and Generic Practices data
 // Full verbatim text from Automotive SPICE standard
 
+// ─── GLOBAL ASPICE RATING COLOR SYSTEM ────────────────────────
+// F (Fully achieved): Green 86-100
+// L (Largely achieved): Yellow-green/lime 51-85
+// P (Partially achieved): Yellow 16-50
+// N (Not achieved): Dark red 0-15
+// NA (Not Applicable): Gray
+
+export const ASPICE_RATING_COLORS = {
+  F: {
+    bg: "#22c55e",
+    text: "#fff",
+    tailwind: "bg-green-500 text-white border-green-600",
+  },
+  L: {
+    bg: "#84cc16",
+    text: "#fff",
+    tailwind: "bg-lime-500 text-white border-lime-600",
+  },
+  P: {
+    bg: "#eab308",
+    text: "#fff",
+    tailwind: "bg-yellow-500 text-white border-yellow-600",
+  },
+  N: {
+    bg: "#991b1b",
+    text: "#fff",
+    tailwind: "bg-red-800 text-white border-red-900",
+  },
+  NA: {
+    bg: "#9ca3af",
+    text: "#fff",
+    tailwind: "bg-gray-400 text-white border-gray-500",
+  },
+};
+
 export interface BasePractice {
   id: string;
   title: string;

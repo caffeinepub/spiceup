@@ -230,106 +230,100 @@ export function DefineTargetProfile() {
               </p>
               <Separator />
             </CardHeader>
-            <CardContent className="space-y-8">
-              {PROCESS_GROUPS.map((group, groupIndex) => {
-                const isEnabled = enabledGroups.has(group.id);
-                return (
-                  <div key={group.id} className="space-y-3">
-                    {/* Group header row */}
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="h-1 w-4 rounded-full spice-gradient" />
-                        <h3
-                          className={`font-semibold font-heading text-sm ${isEnabled ? "text-foreground" : "text-muted-foreground"}`}
-                        >
-                          {group.name}
-                        </h3>
-                        <span className="text-xs text-muted-foreground font-body">
-                          ({group.processes.length} process
-                          {group.processes.length !== 1 ? "es" : ""})
-                        </span>
-                      </div>
-                      <Switch
-                        checked={isEnabled}
-                        onCheckedChange={() =>
-                          !isCompleted && toggleGroup(group.id)
-                        }
-                        disabled={isCompleted}
-                        data-ocid={`target_profile.group_toggle.${groupIndex + 1}`}
-                      />
-                    </div>
-
-                    {/* Process rows — only shown when group is enabled */}
-                    {isEnabled && (
-                      <div className="space-y-2 pl-6">
-                        {group.processes.map((process, processIndex) => (
-                          <div
-                            key={process.id}
-                            className="flex items-center justify-between py-2 px-3 rounded-lg bg-muted/30 border border-border/40"
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {PROCESS_GROUPS.map((group, groupIndex) => {
+                  const isEnabled = enabledGroups.has(group.id);
+                  return (
+                    <div
+                      key={group.id}
+                      className={`rounded-lg border ${isEnabled ? "border-border/60 bg-card" : "border-border/30 bg-muted/20"} overflow-hidden`}
+                    >
+                      {/* Group header row */}
+                      <div className="flex items-center justify-between px-3 py-2.5 border-b border-border/30">
+                        <div className="flex items-center gap-2">
+                          <div className="h-1 w-3 rounded-full spice-gradient shrink-0" />
+                          <h3
+                            className={`font-semibold font-heading text-sm ${isEnabled ? "text-foreground" : "text-muted-foreground"}`}
                           >
-                            <div className="flex-1 min-w-0 mr-4">
-                              <span className="font-medium font-body text-sm text-foreground">
-                                {process.id}
-                              </span>
-                              <span className="text-muted-foreground font-body text-sm ml-2">
-                                — {process.name}
-                              </span>
-                            </div>
-                            <Select
-                              value={processLevels[process.id] ?? "2"}
-                              onValueChange={(v) =>
-                                !isCompleted && setLevel(process.id, v as Level)
-                              }
-                              disabled={isCompleted}
-                            >
-                              <SelectTrigger
-                                className="w-32 h-8 text-xs font-body"
-                                data-ocid={`target_profile.${process.id.toLowerCase().replace(".", "_")}.level_select.${processIndex + 1}`}
-                              >
-                                <SelectValue placeholder="Select level" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem
-                                  value="1"
-                                  className="text-xs font-body"
-                                >
-                                  Level 1
-                                </SelectItem>
-                                <SelectItem
-                                  value="2"
-                                  className="text-xs font-body"
-                                >
-                                  Level 2
-                                </SelectItem>
-                                <SelectItem
-                                  value="3"
-                                  className="text-xs font-body"
-                                >
-                                  Level 3
-                                </SelectItem>
-                                <SelectItem
-                                  value="NA"
-                                  className="text-xs font-body"
-                                >
-                                  NA
-                                </SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        ))}
+                            {group.name}
+                          </h3>
+                        </div>
+                        <Switch
+                          checked={isEnabled}
+                          onCheckedChange={() =>
+                            !isCompleted && toggleGroup(group.id)
+                          }
+                          disabled={isCompleted}
+                          data-ocid={`target_profile.group_toggle.${groupIndex + 1}`}
+                        />
                       </div>
-                    )}
 
-                    {/* Disabled group hint */}
-                    {!isEnabled && (
-                      <p className="pl-6 text-xs text-muted-foreground font-body italic">
-                        This group is disabled and will be excluded from
-                        Planning and Perform Assessment.
-                      </p>
-                    )}
-                  </div>
-                );
-              })}
+                      {/* Process rows — only shown when group is enabled */}
+                      {isEnabled && (
+                        <div className="divide-y divide-border/20">
+                          {group.processes.map((process, processIndex) => (
+                            <div
+                              key={process.id}
+                              className="flex items-center justify-between py-2 px-3 hover:bg-muted/20 transition-colors"
+                            >
+                              <div className="flex-1 min-w-0 mr-2">
+                                <span className="font-medium font-body text-xs text-foreground">
+                                  {process.id}
+                                </span>
+                                <span className="text-muted-foreground font-body text-xs ml-1 truncate block">
+                                  {process.name}
+                                </span>
+                              </div>
+                              <Select
+                                value={processLevels[process.id] ?? "2"}
+                                onValueChange={(v) =>
+                                  !isCompleted &&
+                                  setLevel(process.id, v as Level)
+                                }
+                                disabled={isCompleted}
+                              >
+                                <SelectTrigger
+                                  className="w-28 h-7 text-xs font-body shrink-0"
+                                  data-ocid={`target_profile.${process.id.toLowerCase().replace(".", "_")}.level_select.${processIndex + 1}`}
+                                >
+                                  <SelectValue placeholder="Level" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem
+                                    value="1"
+                                    className="text-xs font-body"
+                                  >
+                                    Level 1
+                                  </SelectItem>
+                                  <SelectItem
+                                    value="2"
+                                    className="text-xs font-body"
+                                  >
+                                    Level 2
+                                  </SelectItem>
+                                  <SelectItem
+                                    value="3"
+                                    className="text-xs font-body"
+                                  >
+                                    Level 3
+                                  </SelectItem>
+                                  <SelectItem
+                                    value="NA"
+                                    className="text-xs font-body"
+                                  >
+                                    NA
+                                  </SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </CardContent>
           </Card>
 

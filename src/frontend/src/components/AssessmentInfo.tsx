@@ -21,10 +21,16 @@ import {
   useSaveAssessmentInfoData,
   useUpdateAssessmentStep,
 } from "@/hooks/useQueries";
-import { AlertCircle, LayoutDashboard, Loader2 } from "lucide-react";
+import { AlertCircle, LayoutDashboard, Loader2, Plus, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import type { AssessmentInfoData } from "../backend.d";
+
+interface CoAssessorEntry {
+  uid: string; // stable key for React lists
+  name: string;
+  id: string;
+}
 
 function StatusBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
@@ -47,9 +53,8 @@ const defaultFormData = {
   endDate: "",
   sponsor: "",
   leadAssessor: "",
-  coAssessor: "",
+  leadAssessorId: "",
   intacsId: "",
-  assessorBody: "",
   assessedParty: "",
   assessedSite: "",
   unitDepartment: "",
@@ -100,6 +105,7 @@ export function AssessmentInfo() {
   const updateStepMutation = useUpdateAssessmentStep();
 
   const [formData, setFormData] = useState<FormData>(defaultFormData);
+  const [coAssessors, setCoAssessors] = useState<CoAssessorEntry[]>([]);
 
   const currentAssessment = assessments?.find(
     (a) => a.id === currentAssessmentId,
@@ -108,14 +114,32 @@ export function AssessmentInfo() {
 
   useEffect(() => {
     if (infoData) {
+      // leadAssessorId stored in assessorBody field
+      const leadAssessorId = infoData.assessorBody || "";
+      // coAssessors stored as JSON in coAssessor field
+      let parsedCoAssessors: CoAssessorEntry[] = [];
+      try {
+        const raw = JSON.parse(infoData.coAssessor || "[]");
+        if (Array.isArray(raw)) {
+          parsedCoAssessors = raw.map(
+            (item: { name?: string; id?: string; uid?: string }, i) => ({
+              uid: item.uid ?? `slot-${i}`,
+              name: item.name ?? "",
+              id: item.id ?? "",
+            }),
+          );
+        }
+      } catch {
+        parsedCoAssessors = [];
+      }
+      setCoAssessors(parsedCoAssessors);
       setFormData({
         startDate: infoData.startDate || "",
         endDate: infoData.endDate || "",
         sponsor: infoData.sponsor || "",
         leadAssessor: infoData.leadAssessor || "",
-        coAssessor: infoData.coAssessor || "",
+        leadAssessorId,
         intacsId: infoData.intacsId || "",
-        assessorBody: infoData.assessorBody || "",
         assessedParty: infoData.assessedParty || "",
         assessedSite: infoData.assessedSite || "",
         unitDepartment: infoData.unitDepartment || "",
@@ -141,10 +165,59 @@ export function AssessmentInfo() {
     setFormData((prev) => ({ ...prev, [field]: value }));
   }
 
+  function addCoAssessor() {
+    if (coAssessors.length >= 3) return;
+    setCoAssessors((prev) => [
+      ...prev,
+      { uid: `new-${Date.now()}`, name: "", id: "" },
+    ]);
+  }
+
+  function updateCoAssessor(
+    index: number,
+    field: "name" | "id",
+    value: string,
+  ) {
+    setCoAssessors((prev) =>
+      prev.map((ca, i) => (i === index ? { ...ca, [field]: value } : ca)),
+    );
+  }
+
+  function removeCoAssessor(index: number) {
+    setCoAssessors((prev) => prev.filter((_, i) => i !== index));
+  }
+
   function buildPayload(): AssessmentInfoData {
     return {
       assessmentId: currentAssessmentId!,
-      ...formData,
+      startDate: formData.startDate,
+      endDate: formData.endDate,
+      sponsor: formData.sponsor,
+      leadAssessor: formData.leadAssessor,
+      // Store coAssessors JSON in coAssessor field (strip uid)
+      coAssessor: JSON.stringify(
+        coAssessors.map(({ name, id }) => ({ name, id })),
+      ),
+      intacsId: formData.intacsId,
+      // Store leadAssessorId in assessorBody field (hidden from UI)
+      assessorBody: formData.leadAssessorId,
+      assessedParty: formData.assessedParty,
+      assessedSite: formData.assessedSite,
+      unitDepartment: formData.unitDepartment,
+      projectContactSWDev: formData.projectContactSWDev,
+      projectContactSWQuality: formData.projectContactSWQuality,
+      projectName: formData.projectName,
+      projectScope: formData.projectScope,
+      modelBasedDev: formData.modelBasedDev,
+      agileEnvironments: formData.agileEnvironments,
+      developmentExternal: formData.developmentExternal,
+      pamVersion: formData.pamVersion,
+      vdaVersion: formData.vdaVersion,
+      assessmentClass: formData.assessmentClass,
+      targetCapabilityLevel: formData.targetCapabilityLevel,
+      functionalSafetyLevel: formData.functionalSafetyLevel,
+      cybersecurityLevel: formData.cybersecurityLevel,
+      additionalRemarks: formData.additionalRemarks,
     };
   }
 
@@ -271,65 +344,143 @@ export function AssessmentInfo() {
           </FormSection>
 
           {/* Section 2: Assessment Team */}
-          <FormSection title="Assessment Team">
-            <div className="space-y-2">
-              <Label className="font-body font-medium">
-                Assessment Sponsor
-              </Label>
-              <Input
-                value={formData.sponsor}
-                onChange={(e) => update("sponsor", e.target.value)}
-                placeholder="Enter sponsor name"
-                className="font-body"
-                disabled={isCompleted}
-                data-ocid="assessment_info.sponsor_input"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label className="font-body font-medium">Lead Assessor</Label>
-              <Input
-                value={formData.leadAssessor}
-                onChange={(e) => update("leadAssessor", e.target.value)}
-                placeholder="Enter lead assessor name"
-                className="font-body"
-                disabled={isCompleted}
-                data-ocid="assessment_info.lead_assessor_input"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label className="font-body font-medium">Co-Assessor</Label>
-              <Input
-                value={formData.coAssessor}
-                onChange={(e) => update("coAssessor", e.target.value)}
-                placeholder="Enter co-assessor name"
-                className="font-body"
-                disabled={isCompleted}
-                data-ocid="assessment_info.co_assessor_input"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label className="font-body font-medium">INTACS ID</Label>
-              <Input
-                value={formData.intacsId}
-                onChange={(e) => update("intacsId", e.target.value)}
-                placeholder="Enter INTACS ID"
-                className="font-body"
-                disabled={isCompleted}
-                data-ocid="assessment_info.intacs_id_input"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label className="font-body font-medium">Assessor Body</Label>
-              <Input
-                value={formData.assessorBody}
-                onChange={(e) => update("assessorBody", e.target.value)}
-                placeholder="Enter assessor body"
-                className="font-body"
-                disabled={isCompleted}
-                data-ocid="assessment_info.assessor_body_input"
-              />
-            </div>
-          </FormSection>
+          <Card className="border-border/60">
+            <CardHeader className="pb-4">
+              <CardTitle className="text-sm font-heading font-semibold text-foreground uppercase tracking-wide">
+                Assessment Team
+              </CardTitle>
+              <Separator />
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="font-body font-medium">
+                    Assessment Sponsor
+                  </Label>
+                  <Input
+                    value={formData.sponsor}
+                    onChange={(e) => update("sponsor", e.target.value)}
+                    placeholder="Enter sponsor name"
+                    className="font-body"
+                    disabled={isCompleted}
+                    data-ocid="assessment_info.sponsor_input"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="font-body font-medium">INTACS ID</Label>
+                  <Input
+                    value={formData.intacsId}
+                    onChange={(e) => update("intacsId", e.target.value)}
+                    placeholder="Enter INTACS ID"
+                    className="font-body"
+                    disabled={isCompleted}
+                    data-ocid="assessment_info.intacs_id_input"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="font-body font-medium">Lead Assessor</Label>
+                  <Input
+                    value={formData.leadAssessor}
+                    onChange={(e) => update("leadAssessor", e.target.value)}
+                    placeholder="Enter lead assessor name"
+                    className="font-body"
+                    disabled={isCompleted}
+                    data-ocid="assessment_info.lead_assessor_input"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="font-body font-medium">
+                    Lead Assessor ID
+                  </Label>
+                  <Input
+                    value={formData.leadAssessorId}
+                    onChange={(e) => update("leadAssessorId", e.target.value)}
+                    placeholder="Enter lead assessor ID"
+                    className="font-body"
+                    disabled={isCompleted}
+                    data-ocid="assessment_info.lead_assessor_id_input"
+                  />
+                </div>
+              </div>
+
+              {/* Co-Assessors */}
+              <div className="space-y-3 pt-1">
+                <div className="flex items-center justify-between">
+                  <Label className="font-body font-medium">Co-Assessors</Label>
+                  {!isCompleted && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs gap-1"
+                      onClick={addCoAssessor}
+                      disabled={coAssessors.length >= 3}
+                      data-ocid="assessment_info.add_co_assessor_button"
+                    >
+                      <Plus className="h-3 w-3" />
+                      Add Co-Assessor
+                    </Button>
+                  )}
+                </div>
+                {coAssessors.length === 0 && (
+                  <p className="text-xs text-muted-foreground font-body italic">
+                    No co-assessors added. You can add up to 3.
+                  </p>
+                )}
+                {coAssessors.map((ca, idx) => (
+                  <div
+                    key={ca.uid}
+                    className="flex items-start gap-2 p-3 rounded-lg bg-muted/30 border border-border/40"
+                    data-ocid={`assessment_info.co_assessor_item.${idx + 1}`}
+                  >
+                    <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div className="space-y-1">
+                        <Label className="text-xs font-body text-muted-foreground">
+                          Co-Assessor {idx + 1} Name
+                        </Label>
+                        <Input
+                          value={ca.name}
+                          onChange={(e) =>
+                            updateCoAssessor(idx, "name", e.target.value)
+                          }
+                          placeholder="Enter name"
+                          className="font-body h-8 text-sm"
+                          disabled={isCompleted}
+                          data-ocid={`assessment_info.co_assessor_name_input.${idx + 1}`}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs font-body text-muted-foreground">
+                          Co-Assessor {idx + 1} ID
+                        </Label>
+                        <Input
+                          value={ca.id}
+                          onChange={(e) =>
+                            updateCoAssessor(idx, "id", e.target.value)
+                          }
+                          placeholder="Enter ID"
+                          className="font-body h-8 text-sm"
+                          disabled={isCompleted}
+                          data-ocid={`assessment_info.co_assessor_id_input.${idx + 1}`}
+                        />
+                      </div>
+                    </div>
+                    {!isCompleted && (
+                      <button
+                        type="button"
+                        onClick={() => removeCoAssessor(idx)}
+                        className="mt-5 p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors shrink-0"
+                        aria-label={`Remove co-assessor ${idx + 1}`}
+                        data-ocid={`assessment_info.co_assessor_remove_button.${idx + 1}`}
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
 
           {/* Section 3: Organization Details */}
           <FormSection title="Organization Details">
@@ -404,86 +555,86 @@ export function AssessmentInfo() {
               </CardTitle>
               <Separator />
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2 md:col-span-2">
-                  <Label className="font-body font-medium">Project Name</Label>
-                  <Input
-                    value={formData.projectName}
-                    onChange={(e) => update("projectName", e.target.value)}
-                    placeholder="Enter project name"
-                    className="font-body"
-                    disabled={isCompleted}
-                    data-ocid="assessment_info.project_name_input"
-                  />
-                </div>
-                <div className="space-y-2 md:col-span-2">
-                  <Label className="font-body font-medium">Project Scope</Label>
-                  <Textarea
-                    value={formData.projectScope}
-                    onChange={(e) => update("projectScope", e.target.value)}
-                    placeholder="Describe the project scope..."
-                    rows={4}
-                    className="font-body"
-                    disabled={isCompleted}
-                    data-ocid="assessment_info.project_scope_textarea"
-                  />
-                </div>
+            <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-2 md:col-span-2">
+                <Label className="font-body font-medium">Project Name</Label>
+                <Input
+                  value={formData.projectName}
+                  onChange={(e) => update("projectName", e.target.value)}
+                  placeholder="Enter project name"
+                  className="font-body"
+                  disabled={isCompleted}
+                  data-ocid="assessment_info.project_name_input"
+                />
               </div>
+              <div className="space-y-2 md:col-span-2">
+                <Label className="font-body font-medium">Project Scope</Label>
+                <Textarea
+                  value={formData.projectScope}
+                  onChange={(e) => update("projectScope", e.target.value)}
+                  placeholder="Describe the project scope..."
+                  rows={4}
+                  className="font-body"
+                  disabled={isCompleted}
+                  data-ocid="assessment_info.project_scope_textarea"
+                />
+              </div>
+            </CardContent>
+          </Card>
 
-              <div className="space-y-3 pt-2">
-                <p className="text-sm font-medium font-body text-foreground">
-                  Application Parameters
-                </p>
-                <div className="flex flex-col gap-3">
-                  <div className="flex items-center gap-3">
-                    <Checkbox
-                      id="model-based"
-                      checked={formData.modelBasedDev}
-                      onCheckedChange={(v) => update("modelBasedDev", !!v)}
-                      disabled={isCompleted}
-                      data-ocid="assessment_info.model_based_dev_checkbox"
-                    />
-                    <Label
-                      htmlFor="model-based"
-                      className="font-body text-sm cursor-pointer"
-                    >
-                      Model Based Development
-                    </Label>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <Checkbox
-                      id="agile"
-                      checked={formData.agileEnvironments}
-                      onCheckedChange={(v) => update("agileEnvironments", !!v)}
-                      disabled={isCompleted}
-                      data-ocid="assessment_info.agile_environments_checkbox"
-                    />
-                    <Label
-                      htmlFor="agile"
-                      className="font-body text-sm cursor-pointer"
-                    >
-                      Agile Environments
-                    </Label>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <Checkbox
-                      id="dev-external"
-                      checked={formData.developmentExternal}
-                      onCheckedChange={(v) =>
-                        update("developmentExternal", !!v)
-                      }
-                      disabled={isCompleted}
-                      data-ocid="assessment_info.development_external_checkbox"
-                    />
-                    <Label
-                      htmlFor="dev-external"
-                      className="font-body text-sm cursor-pointer"
-                    >
-                      Development External
-                    </Label>
-                  </div>
-                </div>
+          {/* Section 4b: Application Parameters */}
+          <Card className="border-border/60">
+            <CardHeader className="pb-4">
+              <CardTitle className="text-sm font-heading font-semibold text-foreground uppercase tracking-wide">
+                Application Parameters
+              </CardTitle>
+              <Separator />
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex items-center gap-3">
+                <Checkbox
+                  id="model-based"
+                  checked={formData.modelBasedDev}
+                  onCheckedChange={(v) => update("modelBasedDev", !!v)}
+                  disabled={isCompleted}
+                  data-ocid="assessment_info.model_based_dev_checkbox"
+                />
+                <Label
+                  htmlFor="model-based"
+                  className="font-body text-sm cursor-pointer"
+                >
+                  Model Based Development
+                </Label>
+              </div>
+              <div className="flex items-center gap-3">
+                <Checkbox
+                  id="agile"
+                  checked={formData.agileEnvironments}
+                  onCheckedChange={(v) => update("agileEnvironments", !!v)}
+                  disabled={isCompleted}
+                  data-ocid="assessment_info.agile_environments_checkbox"
+                />
+                <Label
+                  htmlFor="agile"
+                  className="font-body text-sm cursor-pointer"
+                >
+                  Agile Environments
+                </Label>
+              </div>
+              <div className="flex items-center gap-3">
+                <Checkbox
+                  id="dev-external"
+                  checked={formData.developmentExternal}
+                  onCheckedChange={(v) => update("developmentExternal", !!v)}
+                  disabled={isCompleted}
+                  data-ocid="assessment_info.development_external_checkbox"
+                />
+                <Label
+                  htmlFor="dev-external"
+                  className="font-body text-sm cursor-pointer"
+                >
+                  Development External
+                </Label>
               </div>
             </CardContent>
           </Card>
