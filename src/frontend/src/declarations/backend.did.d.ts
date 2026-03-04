@@ -73,6 +73,7 @@ export interface ProcessGroupConfig {
 export type Time = bigint;
 export interface _SERVICE {
   'createAssessment' : ActorMethod<[string], bigint>,
+  'deleteAssessment' : ActorMethod<[bigint], undefined>,
   'deleteAssessmentDay' : ActorMethod<[bigint], undefined>,
   'getAllAssessments' : ActorMethod<[], Array<Assessment>>,
   'getAllPracticeRatingsForAssessment' : ActorMethod<

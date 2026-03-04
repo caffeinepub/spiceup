@@ -152,6 +152,7 @@ export interface PracticeRating {
 }
 export interface backendInterface {
     createAssessment(name: string): Promise<bigint>;
+    deleteAssessment(id: bigint): Promise<void>;
     deleteAssessmentDay(id: bigint): Promise<void>;
     getAllAssessments(): Promise<Array<Assessment>>;
     getAllPracticeRatingsForAssessment(assessmentId: bigint): Promise<Array<PracticeRating>>;
@@ -181,6 +182,20 @@ export class Backend implements backendInterface {
             }
         } else {
             const result = await this.actor.createAssessment(arg0);
+            return result;
+        }
+    }
+    async deleteAssessment(arg0: bigint): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.deleteAssessment(arg0);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.deleteAssessment(arg0);
             return result;
         }
     }

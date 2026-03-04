@@ -70,6 +70,7 @@ export interface PracticeRating {
 }
 export interface backendInterface {
     createAssessment(name: string): Promise<bigint>;
+    deleteAssessment(id: bigint): Promise<void>;
     deleteAssessmentDay(id: bigint): Promise<void>;
     getAllAssessments(): Promise<Array<Assessment>>;
     getAllPracticeRatingsForAssessment(assessmentId: bigint): Promise<Array<PracticeRating>>;

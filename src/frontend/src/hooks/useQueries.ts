@@ -8,6 +8,18 @@ import type {
 } from "../backend.d";
 import { useActor } from "./useActor";
 
+/** Checks if an error is an IC0508 "canister is stopped" error */
+function isCanisterStoppedError(err: unknown): boolean {
+  if (!err) return false;
+  const msg = err instanceof Error ? err.message : String(err);
+  return (
+    msg.includes("IC0508") ||
+    (msg.toLowerCase().includes("canister") &&
+      msg.toLowerCase().includes("stopped")) ||
+    (msg.includes("reject_code") && msg.includes("stopped"))
+  );
+}
+
 // ─── Assessments ──────────────────────────────────────────────
 
 export function useGetAllAssessments() {
@@ -23,12 +35,28 @@ export function useGetAllAssessments() {
 }
 
 export function useCreateAssessment() {
-  const { actor } = useActor();
+  const { actor, isFetching } = useActor();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ name }: { name: string }) => {
-      if (!actor) throw new Error("Actor not available");
-      return actor.createAssessment(name);
+      if (isFetching)
+        throw new Error("Backend is still initializing, please try again");
+      if (!actor)
+        throw new Error(
+          "CANISTER_STOPPED: The backend connection is unavailable. It may be restarting after a recent deployment.",
+        );
+      try {
+        return await actor.createAssessment(name);
+      } catch (err) {
+        if (isCanisterStoppedError(err)) {
+          // Force-remove the cached actor so a fresh one is created on next attempt
+          queryClient.removeQueries({ queryKey: ["actor"] });
+          throw new Error(
+            "CANISTER_STOPPED: The backend is restarting after a new deployment.",
+          );
+        }
+        throw err;
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["assessments"] });
@@ -43,6 +71,20 @@ export function useMarkAssessmentCompleted() {
     mutationFn: async (id: bigint) => {
       if (!actor) throw new Error("Actor not available");
       return actor.markAssessmentCompleted(id);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["assessments"] });
+    },
+  });
+}
+
+export function useDeleteAssessment() {
+  const { actor } = useActor();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: bigint) => {
+      if (!actor) throw new Error("Actor not available");
+      return actor.deleteAssessment(id);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["assessments"] });

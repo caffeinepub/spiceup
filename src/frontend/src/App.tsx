@@ -212,14 +212,24 @@ export default function App() {
           </header>
 
           {/* Page Content */}
-          <main className="flex-1 overflow-y-auto">
-            <div className="max-w-5xl mx-auto px-6 py-8">
-              {renderPage(active)}
-            </div>
-          </main>
+          {active === "perform" ? (
+            <main className="flex-1 min-h-0 overflow-hidden flex flex-col">
+              <div className="flex-1 min-h-0 px-6 py-6 flex flex-col">
+                {renderPage(active)}
+              </div>
+            </main>
+          ) : (
+            <main className="flex-1 overflow-y-auto">
+              <div className="max-w-5xl mx-auto px-6 py-8">
+                {renderPage(active)}
+              </div>
+            </main>
+          )}
 
-          {/* Footer */}
-          <footer className="hidden md:flex items-center justify-center px-6 py-3 border-t border-border bg-background shrink-0">
+          {/* Footer — hidden on perform page to allow full-height panel layout */}
+          <footer
+            className={`hidden md:flex items-center justify-center px-6 py-3 border-t border-border bg-background shrink-0 ${active === "perform" ? "!hidden" : ""}`}
+          >
             <p className="text-xs text-muted-foreground font-body">
               © {new Date().getFullYear()}. Built with ♥ using{" "}
               <a

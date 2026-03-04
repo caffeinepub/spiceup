@@ -22,6 +22,7 @@ import {
   useUpdateAssessmentStep,
 } from "@/hooks/useQueries";
 import {
+  AlertCircle,
   ChevronDown,
   ChevronUp,
   Copy,
@@ -106,6 +107,7 @@ export function AssessmentPlanning() {
   const currentAssessment = assessments?.find(
     (a) => a.id === currentAssessmentId,
   );
+  const isCompleted = currentAssessment?.status === "Completed";
   const enabledProcesses = buildEnabledProcessList(processConfig ?? null);
 
   // Load saved days into local state
@@ -347,6 +349,16 @@ export function AssessmentPlanning() {
         </p>
       </div>
 
+      {isCompleted && (
+        <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+          <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+          <p className="text-sm font-body text-amber-800">
+            This assessment is marked as Completed. No further edits are
+            allowed.
+          </p>
+        </div>
+      )}
+
       {isLoading ? (
         <div className="space-y-4">
           {[1, 2].map((i) => (
@@ -383,21 +395,23 @@ export function AssessmentPlanning() {
                     </div>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                      onClick={() => saveDay(dayIndex)}
-                      disabled={day.saving}
-                      title="Save day"
-                      data-ocid={`planning.day_save_button.${dayIndex + 1}`}
-                    >
-                      {day.saving ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Save className="h-4 w-4" />
-                      )}
-                    </Button>
+                    {!isCompleted && (
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                        onClick={() => saveDay(dayIndex)}
+                        disabled={day.saving}
+                        title="Save day"
+                        data-ocid={`planning.day_save_button.${dayIndex + 1}`}
+                      >
+                        {day.saving ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Save className="h-4 w-4" />
+                        )}
+                      </Button>
+                    )}
                     <Button
                       size="icon"
                       variant="ghost"
@@ -407,15 +421,17 @@ export function AssessmentPlanning() {
                     >
                       <Copy className="h-4 w-4" />
                     </Button>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                      onClick={() => removeDay(dayIndex)}
-                      title="Delete day"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    {!isCompleted && (
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                        onClick={() => removeDay(dayIndex)}
+                        title="Delete day"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
                     <Button
                       size="icon"
                       variant="ghost"
@@ -451,6 +467,7 @@ export function AssessmentPlanning() {
                           updateDay(dayIndex, { date: e.target.value })
                         }
                         className="font-body h-9"
+                        disabled={isCompleted}
                       />
                     </div>
                     <div className="space-y-1.5">
@@ -464,6 +481,7 @@ export function AssessmentPlanning() {
                           updateDay(dayIndex, { timeFrom: e.target.value })
                         }
                         className="font-body h-9"
+                        disabled={isCompleted}
                       />
                     </div>
                     <div className="space-y-1.5">
@@ -477,6 +495,7 @@ export function AssessmentPlanning() {
                           updateDay(dayIndex, { timeTo: e.target.value })
                         }
                         className="font-body h-9"
+                        disabled={isCompleted}
                       />
                     </div>
                   </div>
@@ -504,6 +523,7 @@ export function AssessmentPlanning() {
                                     processId: v,
                                   })
                                 }
+                                disabled={isCompleted}
                               >
                                 <SelectTrigger className="h-8 text-xs font-body">
                                   <SelectValue placeholder="Select process" />
@@ -530,6 +550,7 @@ export function AssessmentPlanning() {
                                 }
                                 placeholder="Process ID"
                                 className="h-8 text-xs font-body"
+                                disabled={isCompleted}
                               />
                             )}
                             <Input
@@ -541,74 +562,83 @@ export function AssessmentPlanning() {
                               }
                               placeholder="Session notes"
                               className="h-8 text-xs font-body"
+                              disabled={isCompleted}
                             />
                           </div>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
-                            onClick={() =>
-                              removeSession(dayIndex, sessionIndex)
-                            }
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
+                          {!isCompleted && (
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
+                              onClick={() =>
+                                removeSession(dayIndex, sessionIndex)
+                              }
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
                         </div>
                       ))}
                     </div>
                   )}
 
                   {/* Add Session */}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="gap-1.5 text-xs h-8"
-                    onClick={() => addSession(dayIndex)}
-                    data-ocid={`planning.add_session_button.${dayIndex + 1}`}
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                    Add Session
-                  </Button>
+                  {!isCompleted && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-1.5 text-xs h-8"
+                      onClick={() => addSession(dayIndex)}
+                      data-ocid={`planning.add_session_button.${dayIndex + 1}`}
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      Add Session
+                    </Button>
+                  )}
                 </CardContent>
               )}
             </Card>
           ))}
 
           {/* Add Day Button */}
-          <Button
-            variant="outline"
-            className="w-full gap-2 border-dashed"
-            onClick={addDay}
-            data-ocid="planning.add_day_button"
-          >
-            <Plus className="h-4 w-4" />
-            Add Day
-          </Button>
-
-          {/* Action Buttons */}
-          <div className="flex items-center gap-3 pt-2 pb-6">
+          {!isCompleted && (
             <Button
               variant="outline"
-              onClick={handleSaveAll}
-              disabled={saveAllPending}
+              className="w-full gap-2 border-dashed"
+              onClick={addDay}
+              data-ocid="planning.add_day_button"
             >
-              {saveAllPending && (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              )}
-              Save All
+              <Plus className="h-4 w-4" />
+              Add Day
             </Button>
-            <Button
-              onClick={handleContinue}
-              disabled={saveAllPending}
-              className="spice-gradient text-white border-0"
-              data-ocid="planning.continue_button"
-            >
-              {saveAllPending && (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              )}
-              Continue to Perform Assessment →
-            </Button>
-          </div>
+          )}
+
+          {/* Action Buttons */}
+          {!isCompleted && (
+            <div className="flex items-center gap-3 pt-2 pb-6">
+              <Button
+                variant="outline"
+                onClick={handleSaveAll}
+                disabled={saveAllPending}
+              >
+                {saveAllPending && (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                )}
+                Save All
+              </Button>
+              <Button
+                onClick={handleContinue}
+                disabled={saveAllPending}
+                className="spice-gradient text-white border-0"
+                data-ocid="planning.continue_button"
+              >
+                {saveAllPending && (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                )}
+                Continue to Perform Assessment →
+              </Button>
+            </div>
+          )}
         </div>
       )}
     </div>

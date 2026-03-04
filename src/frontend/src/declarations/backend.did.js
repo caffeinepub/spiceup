@@ -72,6 +72,7 @@ export const ProcessGroupConfig = IDL.Record({
 
 export const idlService = IDL.Service({
   'createAssessment' : IDL.Func([IDL.Text], [IDL.Nat], []),
+  'deleteAssessment' : IDL.Func([IDL.Nat], [], []),
   'deleteAssessmentDay' : IDL.Func([IDL.Nat], [], []),
   'getAllAssessments' : IDL.Func([], [IDL.Vec(Assessment)], ['query']),
   'getAllPracticeRatingsForAssessment' : IDL.Func(
@@ -193,6 +194,7 @@ export const idlFactory = ({ IDL }) => {
   
   return IDL.Service({
     'createAssessment' : IDL.Func([IDL.Text], [IDL.Nat], []),
+    'deleteAssessment' : IDL.Func([IDL.Nat], [], []),
     'deleteAssessmentDay' : IDL.Func([IDL.Nat], [], []),
     'getAllAssessments' : IDL.Func([], [IDL.Vec(Assessment)], ['query']),
     'getAllPracticeRatingsForAssessment' : IDL.Func(

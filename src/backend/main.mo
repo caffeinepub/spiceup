@@ -3,7 +3,6 @@ import Nat "mo:core/Nat";
 import Text "mo:core/Text";
 import Time "mo:core/Time";
 import Iter "mo:core/Iter";
-import Order "mo:core/Order";
 import Runtime "mo:core/Runtime";
 
 
@@ -74,92 +73,40 @@ actor {
     workProductsInspected : Text;
   };
 
-  // Re-add old types
-  type TargetProfile = {
-    id : Nat;
-    assessmentId : Nat;
-    name : Text;
-    criteria : Text;
-    skillLevel : Text;
-  };
+  stable var nextId = 1;
 
-  module TargetProfile {
-    public func compare(tp1 : TargetProfile, tp2 : TargetProfile) : Order.Order {
-      Nat.compare(tp1.id, tp2.id);
+  stable var assessmentEntries : [(Nat, Assessment)] = [];
+  stable var assessmentInfoEntries : [(Nat, AssessmentInfoData)] = [];
+  stable var processGroupEntries : [(Nat, ProcessGroupConfig)] = [];
+  stable var dayEntries : [(Nat, AssessmentDay)] = [];
+  stable var practiceRatingEntries : [(Nat, PracticeRating)] = [];
+
+  let assessments = Map.fromIter<Nat, Assessment>(assessmentEntries.values());
+  let assessmentInfoData = Map.fromIter<Nat, AssessmentInfoData>(assessmentInfoEntries.values());
+  let processGroupConfigs = Map.fromIter<Nat, ProcessGroupConfig>(processGroupEntries.values());
+  let assessmentDays = Map.fromIter<Nat, AssessmentDay>(dayEntries.values());
+  let practiceRatings = Map.fromIter<Nat, PracticeRating>(practiceRatingEntries.values());
+
+  // Delete operation: Remove ALL related data for an assessment
+  public shared ({ caller }) func deleteAssessment(id : Nat) : async () {
+    if (not assessments.containsKey(id)) {
+      Runtime.trap("Assessment not found");
     };
+
+    assessments.remove(id);
+    assessmentInfoData.remove(id);
+    processGroupConfigs.remove(id);
+
+    let filteredDayEntries = dayEntries.filter(
+      func((_, day)) { day.assessmentId != id }
+    );
+    dayEntries := filteredDayEntries;
+
+    let filteredRatingEntries = practiceRatingEntries.filter(
+      func((_, rating)) { rating.assessmentId != id }
+    );
+    practiceRatingEntries := filteredRatingEntries;
   };
-
-  type WorkProduct = {
-    id : Nat;
-    assessmentId : Nat;
-    name : Text;
-    fileType : Text;
-    uploadedAt : Time.Time;
-    notes : Text;
-  };
-
-  module WorkProduct {
-    public func compare(wp1 : WorkProduct, wp2 : WorkProduct) : Order.Order {
-      Nat.compare(wp1.id, wp2.id);
-    };
-  };
-
-  type AssessmentPlan = {
-    id : Nat;
-    assessmentId : Nat;
-    planDetails : Text;
-    scheduledDate : Time.Time;
-    status : Text;
-  };
-
-  module AssessmentPlan {
-    public func compare(ap1 : AssessmentPlan, ap2 : AssessmentPlan) : Order.Order {
-      Nat.compare(ap1.id, ap2.id);
-    };
-  };
-
-  type AssessmentResult = {
-    id : Nat;
-    assessmentId : Nat;
-    score : Nat;
-    findings : Text;
-    recommendations : Text;
-    completedAt : Time.Time;
-  };
-
-  module AssessmentResult {
-    public func compare(ar1 : AssessmentResult, ar2 : AssessmentResult) : Order.Order {
-      Nat.compare(ar1.id, ar2.id);
-    };
-  };
-
-  type Report = {
-    id : Nat;
-    assessmentId : Nat;
-    reportContent : Text;
-    generatedAt : Time.Time;
-  };
-
-  module Report {
-    public func compare(r1 : Report, r2 : Report) : Order.Order {
-      Nat.compare(r1.id, r2.id);
-    };
-  };
-
-  var nextId = 1;
-
-  let assessments = Map.empty<Nat, Assessment>();
-  let assessmentInfoData = Map.empty<Nat, AssessmentInfoData>();
-  let processGroupConfigs = Map.empty<Nat, ProcessGroupConfig>();
-  let assessmentDays = Map.empty<Nat, AssessmentDay>();
-  let practiceRatings = Map.empty<Nat, PracticeRating>();
-
-  // Restore old persistent maps
-  let targetProfiles = Map.empty<Nat, TargetProfile>();
-  let assessmentPlans = Map.empty<Nat, AssessmentPlan>();
-  let workProducts = Map.empty<Nat, WorkProduct>();
-  let assessmentResults = Map.empty<Nat, AssessmentResult>();
-  let reports = Map.empty<Nat, Report>();
 
   // Assessment CRUD
   public shared ({ caller }) func createAssessment(name : Text) : async Nat {
@@ -319,4 +266,39 @@ actor {
     );
     filteredRatings.toArray();
   };
+
+  system func preupgrade() {
+    assessmentEntries := assessments.entries().toArray();
+    assessmentInfoEntries := assessmentInfoData.entries().toArray();
+    processGroupEntries := processGroupConfigs.entries().toArray();
+    dayEntries := assessmentDays.entries().toArray();
+    practiceRatingEntries := practiceRatings.entries().toArray();
+  };
+
+  system func postupgrade() {
+    assessments.clear();
+    assessmentInfoData.clear();
+    processGroupConfigs.clear();
+    assessmentDays.clear();
+    practiceRatings.clear();
+
+    for ((k, v) in assessmentEntries.values()) { assessments.add(k, v) };
+    for ((k, v) in assessmentInfoEntries.values()) {
+      assessmentInfoData.add(k, v);
+    };
+    for ((k, v) in processGroupEntries.values()) {
+      processGroupConfigs.add(k, v);
+    };
+    for ((k, v) in dayEntries.values()) { assessmentDays.add(k, v) };
+    for ((k, v) in practiceRatingEntries.values()) {
+      practiceRatings.add(k, v);
+    };
+
+    assessmentEntries := [];
+    assessmentInfoEntries := [];
+    processGroupEntries := [];
+    dayEntries := [];
+    practiceRatingEntries := [];
+  };
 };
+

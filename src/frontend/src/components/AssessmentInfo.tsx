@@ -21,7 +21,7 @@ import {
   useSaveAssessmentInfoData,
   useUpdateAssessmentStep,
 } from "@/hooks/useQueries";
-import { LayoutDashboard, Loader2 } from "lucide-react";
+import { AlertCircle, LayoutDashboard, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import type { AssessmentInfoData } from "../backend.d";
@@ -104,6 +104,7 @@ export function AssessmentInfo() {
   const currentAssessment = assessments?.find(
     (a) => a.id === currentAssessmentId,
   );
+  const isCompleted = currentAssessment?.status === "Completed";
 
   useEffect(() => {
     if (infoData) {
@@ -221,6 +222,16 @@ export function AssessmentInfo() {
         {currentAssessment && <StatusBadge status={currentAssessment.status} />}
       </div>
 
+      {isCompleted && (
+        <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+          <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+          <p className="text-sm font-body text-amber-800">
+            This assessment is marked as Completed. No further edits are
+            allowed.
+          </p>
+        </div>
+      )}
+
       {isLoading ? (
         <div className="space-y-4">
           {[1, 2, 3].map((i) => (
@@ -240,6 +251,7 @@ export function AssessmentInfo() {
                 value={formData.startDate}
                 onChange={(e) => update("startDate", e.target.value)}
                 className="font-body"
+                disabled={isCompleted}
                 data-ocid="assessment_info.start_date_input"
               />
             </div>
@@ -252,6 +264,7 @@ export function AssessmentInfo() {
                 value={formData.endDate}
                 onChange={(e) => update("endDate", e.target.value)}
                 className="font-body"
+                disabled={isCompleted}
                 data-ocid="assessment_info.end_date_input"
               />
             </div>
@@ -268,6 +281,7 @@ export function AssessmentInfo() {
                 onChange={(e) => update("sponsor", e.target.value)}
                 placeholder="Enter sponsor name"
                 className="font-body"
+                disabled={isCompleted}
                 data-ocid="assessment_info.sponsor_input"
               />
             </div>
@@ -278,6 +292,7 @@ export function AssessmentInfo() {
                 onChange={(e) => update("leadAssessor", e.target.value)}
                 placeholder="Enter lead assessor name"
                 className="font-body"
+                disabled={isCompleted}
                 data-ocid="assessment_info.lead_assessor_input"
               />
             </div>
@@ -288,6 +303,7 @@ export function AssessmentInfo() {
                 onChange={(e) => update("coAssessor", e.target.value)}
                 placeholder="Enter co-assessor name"
                 className="font-body"
+                disabled={isCompleted}
                 data-ocid="assessment_info.co_assessor_input"
               />
             </div>
@@ -298,6 +314,7 @@ export function AssessmentInfo() {
                 onChange={(e) => update("intacsId", e.target.value)}
                 placeholder="Enter INTACS ID"
                 className="font-body"
+                disabled={isCompleted}
                 data-ocid="assessment_info.intacs_id_input"
               />
             </div>
@@ -308,6 +325,7 @@ export function AssessmentInfo() {
                 onChange={(e) => update("assessorBody", e.target.value)}
                 placeholder="Enter assessor body"
                 className="font-body"
+                disabled={isCompleted}
                 data-ocid="assessment_info.assessor_body_input"
               />
             </div>
@@ -322,6 +340,7 @@ export function AssessmentInfo() {
                 onChange={(e) => update("assessedParty", e.target.value)}
                 placeholder="Enter assessed party"
                 className="font-body"
+                disabled={isCompleted}
                 data-ocid="assessment_info.assessed_party_input"
               />
             </div>
@@ -332,6 +351,7 @@ export function AssessmentInfo() {
                 onChange={(e) => update("assessedSite", e.target.value)}
                 placeholder="Enter assessed site"
                 className="font-body"
+                disabled={isCompleted}
                 data-ocid="assessment_info.assessed_site_input"
               />
             </div>
@@ -342,6 +362,7 @@ export function AssessmentInfo() {
                 onChange={(e) => update("unitDepartment", e.target.value)}
                 placeholder="Enter unit or department"
                 className="font-body"
+                disabled={isCompleted}
                 data-ocid="assessment_info.unit_dept_input"
               />
             </div>
@@ -354,6 +375,7 @@ export function AssessmentInfo() {
                 onChange={(e) => update("projectContactSWDev", e.target.value)}
                 placeholder="Enter contact name"
                 className="font-body"
+                disabled={isCompleted}
                 data-ocid="assessment_info.contact_sw_dev_input"
               />
             </div>
@@ -368,6 +390,7 @@ export function AssessmentInfo() {
                 }
                 placeholder="Enter contact name"
                 className="font-body"
+                disabled={isCompleted}
                 data-ocid="assessment_info.contact_sw_quality_input"
               />
             </div>
@@ -390,6 +413,7 @@ export function AssessmentInfo() {
                     onChange={(e) => update("projectName", e.target.value)}
                     placeholder="Enter project name"
                     className="font-body"
+                    disabled={isCompleted}
                     data-ocid="assessment_info.project_name_input"
                   />
                 </div>
@@ -401,6 +425,7 @@ export function AssessmentInfo() {
                     placeholder="Describe the project scope..."
                     rows={4}
                     className="font-body"
+                    disabled={isCompleted}
                     data-ocid="assessment_info.project_scope_textarea"
                   />
                 </div>
@@ -416,6 +441,7 @@ export function AssessmentInfo() {
                       id="model-based"
                       checked={formData.modelBasedDev}
                       onCheckedChange={(v) => update("modelBasedDev", !!v)}
+                      disabled={isCompleted}
                       data-ocid="assessment_info.model_based_dev_checkbox"
                     />
                     <Label
@@ -430,6 +456,7 @@ export function AssessmentInfo() {
                       id="agile"
                       checked={formData.agileEnvironments}
                       onCheckedChange={(v) => update("agileEnvironments", !!v)}
+                      disabled={isCompleted}
                       data-ocid="assessment_info.agile_environments_checkbox"
                     />
                     <Label
@@ -446,6 +473,7 @@ export function AssessmentInfo() {
                       onCheckedChange={(v) =>
                         update("developmentExternal", !!v)
                       }
+                      disabled={isCompleted}
                       data-ocid="assessment_info.development_external_checkbox"
                     />
                     <Label
@@ -467,6 +495,7 @@ export function AssessmentInfo() {
               <Select
                 value={formData.pamVersion}
                 onValueChange={(v) => update("pamVersion", v)}
+                disabled={isCompleted}
               >
                 <SelectTrigger
                   className="font-body"
@@ -489,6 +518,7 @@ export function AssessmentInfo() {
               <Select
                 value={formData.vdaVersion}
                 onValueChange={(v) => update("vdaVersion", v)}
+                disabled={isCompleted}
               >
                 <SelectTrigger
                   className="font-body"
@@ -513,6 +543,7 @@ export function AssessmentInfo() {
                 onChange={(e) => update("assessmentClass", e.target.value)}
                 placeholder="e.g., Class 1, Class 2"
                 className="font-body"
+                disabled={isCompleted}
                 data-ocid="assessment_info.assessment_class_input"
               />
             </div>
@@ -527,6 +558,7 @@ export function AssessmentInfo() {
                 }
                 placeholder="e.g., Level 2"
                 className="font-body"
+                disabled={isCompleted}
                 data-ocid="assessment_info.target_capability_level_input"
               />
             </div>
@@ -541,6 +573,7 @@ export function AssessmentInfo() {
                 }
                 placeholder="e.g., ASIL B"
                 className="font-body"
+                disabled={isCompleted}
                 data-ocid="assessment_info.functional_safety_level_input"
               />
             </div>
@@ -553,6 +586,7 @@ export function AssessmentInfo() {
                 onChange={(e) => update("cybersecurityLevel", e.target.value)}
                 placeholder="e.g., CAL 3"
                 className="font-body"
+                disabled={isCompleted}
                 data-ocid="assessment_info.cybersecurity_level_input"
               />
             </div>
@@ -577,6 +611,7 @@ export function AssessmentInfo() {
                   placeholder="Any additional remarks or notes..."
                   rows={4}
                   className="font-body"
+                  disabled={isCompleted}
                   data-ocid="assessment_info.additional_remarks_textarea"
                 />
               </div>
@@ -584,26 +619,28 @@ export function AssessmentInfo() {
           </Card>
 
           {/* Action Buttons */}
-          <div className="flex items-center gap-3 pt-2 pb-6">
-            <Button
-              variant="outline"
-              onClick={handleSaveDraft}
-              disabled={isSaving}
-              data-ocid="assessment_info.save_draft_button"
-            >
-              {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Save Draft
-            </Button>
-            <Button
-              onClick={handleSaveAndContinue}
-              disabled={isSaving}
-              className="spice-gradient text-white border-0"
-              data-ocid="assessment_info.save_continue_button"
-            >
-              {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Save and Continue →
-            </Button>
-          </div>
+          {!isCompleted && (
+            <div className="flex items-center gap-3 pt-2 pb-6">
+              <Button
+                variant="outline"
+                onClick={handleSaveDraft}
+                disabled={isSaving}
+                data-ocid="assessment_info.save_draft_button"
+              >
+                {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Save Draft
+              </Button>
+              <Button
+                onClick={handleSaveAndContinue}
+                disabled={isSaving}
+                className="spice-gradient text-white border-0"
+                data-ocid="assessment_info.save_continue_button"
+              >
+                {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Save and Continue →
+              </Button>
+            </div>
+          )}
         </div>
       )}
     </div>

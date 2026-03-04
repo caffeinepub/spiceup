@@ -1,3 +1,15 @@
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,21 +23,27 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useAppContext } from "@/context/AppContext";
+import { useCanisterHealth } from "@/hooks/useCanisterHealth";
 import {
+  useDeleteAssessment,
   useGetAllAssessmentResults,
   useGetAllAssessments,
   useGetAllReports,
   useMarkAssessmentCompleted,
 } from "@/hooks/useQueries";
 import {
+  AlertCircle,
   CheckCircle2,
   CheckSquare,
   ClipboardList,
   Clock,
+  Eye,
   FileText,
   Loader2,
   Play,
   Plus,
+  RefreshCw,
+  Trash2,
   TrendingUp,
 } from "lucide-react";
 import { useState } from "react";
@@ -97,6 +115,7 @@ function KpiCard({
 export function Dashboard() {
   const [createOpen, setCreateOpen] = useState(false);
   const { setCurrentAssessment, navigateTo } = useAppContext();
+  const canisterHealth = useCanisterHealth();
 
   const { data: assessments, isLoading: loadingAssessments } =
     useGetAllAssessments();
@@ -104,6 +123,7 @@ export function Dashboard() {
     useGetAllAssessmentResults();
   const { data: reports, isLoading: loadingReports } = useGetAllReports();
   const markCompletedMutation = useMarkAssessmentCompleted();
+  const deleteAssessmentMutation = useDeleteAssessment();
 
   const totalAssessments = assessments?.length ?? 0;
   const completedCount =
@@ -131,6 +151,15 @@ export function Dashboard() {
     }
   }
 
+  async function handleDelete(id: bigint) {
+    try {
+      await deleteAssessmentMutation.mutateAsync(id);
+      toast.success("Assessment deleted");
+    } catch {
+      toast.error("Failed to delete assessment");
+    }
+  }
+
   return (
     <div className="page-enter space-y-8">
       {/* Header */}
@@ -144,6 +173,55 @@ export function Dashboard() {
           </p>
         </div>
       </div>
+
+      {/* Backend restarting banner */}
+      {canisterHealth.isRestarting && (
+        <Alert
+          className="border-amber-200 bg-amber-50"
+          data-ocid="dashboard.backend_restarting_state"
+        >
+          <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5" />
+          <AlertDescription className="font-body text-amber-800 text-sm flex items-center justify-between gap-4 flex-wrap">
+            <span>
+              <strong>Backend is restarting</strong> after a recent deployment.
+              The app will automatically reconnect -- this usually takes a few
+              minutes.
+              {canisterHealth.nextProbeIn > 0 && (
+                <span className="ml-1 text-amber-700">
+                  Next check in {canisterHealth.nextProbeIn}s
+                  {canisterHealth.attempts > 0 &&
+                    ` (attempt ${canisterHealth.attempts})`}
+                  ...
+                </span>
+              )}
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs border-amber-300 text-amber-800 hover:bg-amber-100 gap-1.5 shrink-0"
+              onClick={canisterHealth.checkNow}
+              data-ocid="dashboard.backend_check_now_button"
+            >
+              <RefreshCw className="h-3 w-3" />
+              Check Now
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Backend just came back online confirmation */}
+      {canisterHealth.status === "ready" && (
+        <Alert
+          className="border-emerald-200 bg-emerald-50"
+          data-ocid="dashboard.backend_ready_state"
+        >
+          <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+          <AlertDescription className="font-body text-emerald-800 text-sm">
+            <strong>Backend is back online.</strong> You can now create and
+            manage assessments.
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-4">
@@ -255,18 +333,33 @@ export function Dashboard() {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="gap-1.5 text-xs h-8 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-200"
-                            onClick={() =>
-                              handleContinue(assessment, index + 1)
-                            }
-                            data-ocid={`dashboard.continue_button.${index + 1}`}
-                          >
-                            <Play className="h-3 w-3" />
-                            Continue
-                          </Button>
+                          {assessment.status === "Completed" ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="gap-1.5 text-xs h-8 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-200"
+                              onClick={() =>
+                                handleContinue(assessment, index + 1)
+                              }
+                              data-ocid={`dashboard.continue_button.${index + 1}`}
+                            >
+                              <Eye className="h-3 w-3" />
+                              View
+                            </Button>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="gap-1.5 text-xs h-8 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-200"
+                              onClick={() =>
+                                handleContinue(assessment, index + 1)
+                              }
+                              data-ocid={`dashboard.continue_button.${index + 1}`}
+                            >
+                              <Play className="h-3 w-3" />
+                              Continue
+                            </Button>
+                          )}
                           {assessment.status !== "Completed" && (
                             <Button
                               size="sm"
@@ -284,6 +377,46 @@ export function Dashboard() {
                               Mark Completed
                             </Button>
                           )}
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="gap-1.5 text-xs h-8 hover:bg-red-50 hover:text-red-700 hover:border-red-200"
+                                data-ocid={`dashboard.delete_button.${index + 1}`}
+                              >
+                                <Trash2 className="h-3 w-3" />
+                                Delete
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>
+                                  Delete Assessment
+                                </AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  Are you sure you want to delete &ldquo;
+                                  {assessment.name}&rdquo;? This action cannot
+                                  be undone and all assessment data will be
+                                  permanently lost.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel
+                                  data-ocid={`dashboard.delete_cancel_button.${index + 1}`}
+                                >
+                                  Cancel
+                                </AlertDialogCancel>
+                                <AlertDialogAction
+                                  onClick={() => handleDelete(assessment.id)}
+                                  className="bg-red-600 hover:bg-red-700 text-white"
+                                  data-ocid={`dashboard.delete_confirm_button.${index + 1}`}
+                                >
+                                  Delete Assessment
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -318,6 +451,11 @@ export function Dashboard() {
       <CreateNewAssessmentModal
         open={createOpen}
         onClose={() => setCreateOpen(false)}
+        onCanisterStopped={canisterHealth.triggerRestart}
+        isBackendRestarting={canisterHealth.isRestarting}
+        backendReady={canisterHealth.status === "ready"}
+        nextProbeIn={canisterHealth.nextProbeIn}
+        checkNow={canisterHealth.checkNow}
       />
     </div>
   );
