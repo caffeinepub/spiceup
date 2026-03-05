@@ -17,7 +17,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -43,13 +42,11 @@ import {
   useGetAllPracticeRatingsForAssessment,
   useGetProcessGroupConfig,
   useSavePracticeRating,
-  useUpdateAssessmentStep,
 } from "@/hooks/useQueries";
 import { cn } from "@/lib/utils";
 import {
   AlertCircle,
   Bold,
-  CheckCircle2,
   ChevronDown,
   ChevronRight,
   ChevronsDownUp,
@@ -62,8 +59,8 @@ import {
   Plus,
   Save,
   Trash2,
-  X,
 } from "lucide-react";
+import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { PracticeRating } from "../backend.d";
@@ -116,36 +113,24 @@ const PA_LABELS: Record<string, string> = {
   "PA3.2": "Process Deployment",
 };
 
+const NPLF_COLORS: Record<
+  string,
+  { bg: string; color: string; border: string }
+> = {
+  N: { bg: "#990000", color: "#fff", border: "#990000" },
+  P: { bg: "#ffff00", color: "#000", border: "#d4d400" },
+  L: { bg: "#92d050", color: "#000", border: "#7ab840" },
+  F: { bg: "#00b04f", color: "#000", border: "#009040" },
+};
+
 const RATING_OPTIONS: {
   value: Rating;
   label: string;
-  activeClass: string;
-  dotClass: string;
 }[] = [
-  {
-    value: "N",
-    label: "N",
-    activeClass: "bg-red-500 text-white border-red-500",
-    dotClass: "bg-red-500",
-  },
-  {
-    value: "P",
-    label: "P",
-    activeClass: "bg-orange-500 text-white border-orange-500",
-    dotClass: "bg-orange-500",
-  },
-  {
-    value: "L",
-    label: "L",
-    activeClass: "bg-blue-500 text-white border-blue-500",
-    dotClass: "bg-blue-500",
-  },
-  {
-    value: "F",
-    label: "F",
-    activeClass: "bg-emerald-500 text-white border-emerald-500",
-    dotClass: "bg-emerald-500",
-  },
+  { value: "N", label: "N" },
+  { value: "P", label: "P" },
+  { value: "L", label: "L" },
+  { value: "F", label: "F" },
 ];
 
 // ─── Helpers ────────────────────────────────────────────────────
@@ -164,7 +149,10 @@ function buildEnabledProcesses(
     for (const group of PROCESS_GROUPS) {
       if (enabledGroups.includes(group.id)) {
         for (const p of group.processes) {
-          result.push({ id: p.id, targetLevel: processLevels[p.id] ?? "2" });
+          const level = processLevels[p.id] ?? "2";
+          // Exclude processes marked as NA — they are out of scope for assessment
+          if (level === "NA") continue;
+          result.push({ id: p.id, targetLevel: level });
         }
       }
     }
@@ -180,42 +168,42 @@ const defaultPracticeState = (): PracticeState => ({
   workProducts: [],
 });
 
-function getRatingDotClass(rating: Rating): string {
-  switch (rating) {
-    case "N":
-      return "bg-red-500";
-    case "P":
-      return "bg-orange-400";
-    case "L":
-      return "bg-blue-500";
-    case "F":
-      return "bg-emerald-500";
-    default:
-      return "bg-muted-foreground/30";
-  }
+function getRatingDotStyle(_rating: Rating): React.CSSProperties {
+  return { backgroundColor: "#9ca3af" };
 }
 
-function getAggregateDotClass(ratings: Rating[]): string {
-  if (ratings.length === 0) return "bg-muted-foreground/30";
-  const rated = ratings.filter((r) => r !== "");
-  if (rated.length === 0) return "bg-muted-foreground/30";
-  if (rated.length < ratings.length) return "bg-orange-400";
-  const allGood = rated.every((r) => r === "F" || r === "L");
-  return allGood ? "bg-emerald-500" : "bg-orange-400";
+function getAggregateDotStyle(_ratings: Rating[]): React.CSSProperties {
+  return { backgroundColor: "#9ca3af" };
 }
 
-function getRatingBadgeClass(rating: Rating): string {
+function getRatingBadgeStyle(rating: Rating): React.CSSProperties {
   switch (rating) {
     case "N":
-      return "bg-red-100 text-red-700 border-red-200";
+      return {
+        backgroundColor: "#990000",
+        color: "#fff",
+        borderColor: "#990000",
+      };
     case "P":
-      return "bg-orange-100 text-orange-700 border-orange-200";
+      return {
+        backgroundColor: "#ffff00",
+        color: "#000",
+        borderColor: "#d4d400",
+      };
     case "L":
-      return "bg-blue-100 text-blue-700 border-blue-200";
+      return {
+        backgroundColor: "#92d050",
+        color: "#000",
+        borderColor: "#7ab840",
+      };
     case "F":
-      return "bg-emerald-100 text-emerald-700 border-emerald-200";
+      return {
+        backgroundColor: "#00b04f",
+        color: "#000",
+        borderColor: "#009040",
+      };
     default:
-      return "bg-muted text-muted-foreground border-border";
+      return {};
   }
 }
 
@@ -432,6 +420,130 @@ function RichTextEditor({
   );
 }
 
+// ─── Add / Edit Evidence Dialog ──────────────────────────────────
+
+function EvidenceDialog({
+  open,
+  onOpenChange,
+  initialEvidence,
+  onSubmit,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  initialEvidence?: EvidenceItem & { index: number };
+  onSubmit: (item: EvidenceItem, index: number | null) => void;
+}) {
+  const [description, setDescription] = useState(
+    initialEvidence?.description ?? "",
+  );
+  const [link, setLink] = useState(initialEvidence?.link ?? "");
+  const [version, setVersion] = useState(initialEvidence?.version ?? "");
+
+  useEffect(() => {
+    if (open) {
+      setDescription(initialEvidence?.description ?? "");
+      setLink(initialEvidence?.link ?? "");
+      setVersion(initialEvidence?.version ?? "");
+    }
+  }, [open, initialEvidence]);
+
+  function handleSubmit() {
+    if (!description.trim()) return;
+    onSubmit(
+      {
+        description: description.trim(),
+        link: link.trim(),
+        version: version.trim(),
+      },
+      initialEvidence?.index ?? null,
+    );
+    onOpenChange(false);
+  }
+
+  const isEdit = initialEvidence !== undefined;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-lg" data-ocid="perform.evidence_dialog">
+        <DialogHeader>
+          <DialogTitle className="font-heading text-base">
+            {isEdit ? "Edit Work Product" : "Add Work Product"}
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          <div className="space-y-1.5">
+            <Label
+              htmlFor="ev-description"
+              className="font-body text-xs font-medium text-muted-foreground uppercase tracking-wide"
+            >
+              Description <span className="text-destructive">*</span>
+            </Label>
+            <Textarea
+              id="ev-description"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="Work product description..."
+              rows={3}
+              className="font-body text-sm resize-none"
+              data-ocid="perform.evidence_description_input"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label
+              htmlFor="ev-link"
+              className="font-body text-xs font-medium text-muted-foreground uppercase tracking-wide"
+            >
+              Link (optional)
+            </Label>
+            <Input
+              id="ev-link"
+              value={link}
+              onChange={(e) => setLink(e.target.value)}
+              placeholder="https://..."
+              className="font-body text-sm"
+              data-ocid="perform.evidence_link_input"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label
+              htmlFor="ev-version"
+              className="font-body text-xs font-medium text-muted-foreground uppercase tracking-wide"
+            >
+              Version (optional)
+            </Label>
+            <Input
+              id="ev-version"
+              value={version}
+              onChange={(e) => setVersion(e.target.value)}
+              placeholder="e.g. v1.2, 2024-01, Draft"
+              className="font-body text-sm"
+              data-ocid="perform.evidence_version_input"
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            className="font-body"
+            data-ocid="perform.evidence_dialog_cancel_button"
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSubmit}
+            disabled={!description.trim()}
+            className="spice-gradient text-white border-0 font-body"
+            data-ocid="perform.evidence_dialog_submit_button"
+          >
+            {isEdit ? "Save Changes" : "Add Work Product"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ─── Add / Edit Entry Dialog ──────────────────────────────────────
 
 function AddEntryDialog({
@@ -567,19 +679,21 @@ function SwEntriesTable({
   onDelete,
   isCompleted,
   openDialog,
+  onAddEvidence,
 }: {
   entries: SwEntry[];
   practiceId: string;
   onDelete: (id: string) => void;
   isCompleted?: boolean;
   openDialog: (entry?: SwEntry) => void;
+  onAddEvidence?: () => void;
 }) {
   const strengths = entries.filter((e) => e.type === "strength");
   const weaknesses = entries.filter((e) => e.type === "weakness");
 
   return (
     <div className="space-y-3">
-      {/* Header row with stats and add button */}
+      {/* Header row with stats and add buttons */}
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-3">
           <span className="text-xs font-body text-muted-foreground">
@@ -597,41 +711,34 @@ function SwEntriesTable({
           </span>
         </div>
         {!isCompleted && (
-          <Button
-            size="sm"
-            onClick={() => openDialog(undefined)}
-            className="spice-gradient text-white border-0 gap-1.5 font-body text-xs h-7 px-3"
-            data-ocid="perform.sw_add_button"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            Add Entry
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              onClick={() => openDialog(undefined)}
+              className="spice-gradient text-white border-0 gap-1.5 font-body text-xs h-7 px-3"
+              data-ocid="perform.sw_add_button"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Add Entry
+            </Button>
+            {onAddEvidence && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={onAddEvidence}
+                className="font-body text-xs gap-1 h-7 px-3"
+                data-ocid="perform.evidence_add_button"
+              >
+                <Plus className="h-3.5 w-3.5" /> Add Evidence
+              </Button>
+            )}
+          </div>
         )}
       </div>
 
       {/* Table of entries */}
-      {entries.length === 0 ? (
-        <div
-          className="rounded-md border border-dashed border-border/60 py-8 text-center"
-          data-ocid="perform.sw_entries_empty_state"
-        >
-          <p className="text-sm text-muted-foreground font-body italic">
-            No strengths or weaknesses recorded yet.
-          </p>
-          {!isCompleted && (
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => openDialog(undefined)}
-              className="mt-3 font-body text-xs gap-1"
-              data-ocid="perform.sw_add_first_button"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              Add First Entry
-            </Button>
-          )}
-        </div>
-      ) : (
+      {entries.length === 0 ? null : (
         <div className="rounded-md border border-border/60 overflow-hidden">
           <Table>
             <TableHeader>
@@ -748,24 +855,36 @@ function RatingSelector({
 }) {
   return (
     <div className="flex gap-1.5">
-      {RATING_OPTIONS.map((opt) => (
-        <button
-          key={opt.value}
-          type="button"
-          disabled={disabled}
-          onClick={() => onChange(value === opt.value ? "" : opt.value)}
-          className={cn(
-            "w-9 h-9 rounded-lg text-sm font-bold font-heading border-2 transition-all",
-            value === opt.value
-              ? opt.activeClass
-              : "bg-background border-border text-muted-foreground hover:bg-muted",
-            disabled && "opacity-60 cursor-not-allowed",
-          )}
-          data-ocid={`perform.practice_rating_button.${index}`}
-        >
-          {opt.label}
-        </button>
-      ))}
+      {RATING_OPTIONS.map((opt) => {
+        const isActive = value === opt.value;
+        const nplf = NPLF_COLORS[opt.value];
+        return (
+          <button
+            key={opt.value}
+            type="button"
+            disabled={disabled}
+            onClick={() => onChange(value === opt.value ? "" : opt.value)}
+            className={cn(
+              "w-10 h-10 rounded-lg text-sm font-bold font-heading border-2 transition-all",
+              !isActive &&
+                "bg-background border-border text-muted-foreground hover:bg-muted",
+              disabled && "opacity-60 cursor-not-allowed",
+            )}
+            style={
+              isActive
+                ? {
+                    backgroundColor: nplf.bg,
+                    color: nplf.color,
+                    borderColor: nplf.border,
+                  }
+                : undefined
+            }
+            data-ocid={`perform.practice_rating_button.${index}`}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
     </div>
   );
 }
@@ -788,26 +907,37 @@ function BPPracticePanel({
   isCompleted?: boolean;
   openSwDialog: (entry?: SwEntry) => void;
 }) {
-  // Work Products Inspected handlers
-  function updateEvidence(i: number, patch: Partial<EvidenceItem>) {
-    const updated = state.workProducts.map((item, idx) =>
-      idx === i ? { ...item, ...patch } : item,
-    );
-    onChange({ workProducts: updated });
+  const [evidenceDialogOpen, setEvidenceDialogOpen] = useState(false);
+  const [editingEvidence, setEditingEvidence] = useState<
+    (EvidenceItem & { index: number }) | undefined
+  >(undefined);
+
+  function handleOpenAddEvidence() {
+    setEditingEvidence(undefined);
+    setEvidenceDialogOpen(true);
+  }
+
+  function handleOpenEditEvidence(i: number) {
+    setEditingEvidence({ ...state.workProducts[i], index: i });
+    setEvidenceDialogOpen(true);
+  }
+
+  function handleEvidenceSubmit(item: EvidenceItem, index: number | null) {
+    if (index !== null) {
+      // Edit existing
+      const updated = state.workProducts.map((wp, idx) =>
+        idx === index ? item : wp,
+      );
+      onChange({ workProducts: updated });
+    } else {
+      // Add new
+      onChange({ workProducts: [...state.workProducts, item] });
+    }
   }
 
   function removeEvidence(i: number) {
     onChange({
       workProducts: state.workProducts.filter((_, idx) => idx !== i),
-    });
-  }
-
-  function addEvidence() {
-    onChange({
-      workProducts: [
-        ...state.workProducts,
-        { description: "", link: "", version: "" },
-      ],
     });
   }
 
@@ -821,7 +951,7 @@ function BPPracticePanel({
 
   return (
     <div className="space-y-5">
-      {/* Rating row — rating selector only, no heading */}
+      {/* Rating row */}
       <div className="flex items-center justify-end gap-4 pb-3 border-b border-border/40">
         <RatingSelector
           value={state.rating}
@@ -831,7 +961,7 @@ function BPPracticePanel({
         />
       </div>
 
-      {/* S&W Entries Table — no label heading */}
+      {/* S&W Entries Table */}
       <div className="space-y-2">
         <SwEntriesTable
           entries={state.swEntries ?? []}
@@ -839,129 +969,120 @@ function BPPracticePanel({
           onDelete={deleteSwEntry}
           isCompleted={isCompleted}
           openDialog={openSwDialog}
+          onAddEvidence={!isCompleted ? handleOpenAddEvidence : undefined}
         />
       </div>
 
       {/* Work Products Inspected */}
       <div className="space-y-2">
-        <Label className="font-body text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-          Work Products Inspected
-        </Label>
-        <div className="space-y-1.5">
-          {state.workProducts.map((ev, i) => {
-            const isLineItem = ev.description.trim() !== "";
-            return isLineItem ? (
-              <div
-                // biome-ignore lint/suspicious/noArrayIndexKey: evidence items have no stable IDs
-                key={`wp-${i}`}
-                className="flex items-center gap-2 px-3 py-2 rounded-md bg-muted/40 border border-border/40 text-sm"
-              >
-                <span className="font-medium font-body text-foreground flex-1 min-w-0 truncate">
-                  {ev.description}
-                </span>
-                <span className="shrink-0 text-muted-foreground font-body text-xs">
-                  |
-                </span>
-                {ev.link ? (
-                  <a
-                    href={ev.link}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-600 hover:text-blue-800 font-body text-xs truncate max-w-[140px]"
-                  >
-                    {ev.link}
-                  </a>
-                ) : (
-                  <span className="text-muted-foreground font-body text-xs">
-                    —
-                  </span>
-                )}
-                <span className="shrink-0 text-muted-foreground font-body text-xs">
-                  |
-                </span>
-                <span className="text-muted-foreground font-body text-xs shrink-0">
-                  {ev.version || "—"}
-                </span>
-                {!isCompleted && (
-                  <button
-                    type="button"
-                    onClick={() => removeEvidence(i)}
-                    className="shrink-0 text-muted-foreground hover:text-destructive transition-colors p-0.5 rounded ml-1"
-                    data-ocid={`perform.evidence_remove_button.${i + 1}`}
-                    aria-label="Remove evidence"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                )}
-              </div>
-            ) : (
-              <div
-                // biome-ignore lint/suspicious/noArrayIndexKey: evidence items have no stable IDs
-                key={`wp-input-${i}`}
-                className="border border-border/40 rounded-md p-2 space-y-1.5"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <Input
-                    value={ev.description}
-                    onChange={(e) =>
-                      updateEvidence(i, { description: e.target.value })
-                    }
-                    placeholder="Evidence description..."
-                    className="font-body text-sm flex-1"
-                    disabled={isCompleted}
-                    data-ocid={`perform.evidence_description_input.${i + 1}`}
-                  />
-                  {!isCompleted && (
-                    <button
-                      type="button"
-                      onClick={() => removeEvidence(i)}
-                      className="shrink-0 text-muted-foreground hover:text-destructive transition-colors p-1 rounded"
-                      data-ocid={`perform.evidence_remove_button.${i + 1}`}
-                      aria-label="Remove evidence"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  )}
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <Input
-                    value={ev.link}
-                    onChange={(e) =>
-                      updateEvidence(i, { link: e.target.value })
-                    }
-                    placeholder="Link (optional)"
-                    className="font-body text-sm"
-                    disabled={isCompleted}
-                    data-ocid={`perform.evidence_link_input.${i + 1}`}
-                  />
-                  <Input
-                    value={ev.version}
-                    onChange={(e) =>
-                      updateEvidence(i, { version: e.target.value })
-                    }
-                    placeholder="Version (optional)"
-                    className="font-body text-sm"
-                    disabled={isCompleted}
-                    data-ocid={`perform.evidence_version_input.${i + 1}`}
-                  />
-                </div>
-              </div>
-            );
-          })}
-          {!isCompleted && (
+        <div className="flex items-center justify-between">
+          <Label className="font-body text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+            Work Products Inspected
+          </Label>
+          {!isCompleted && state.workProducts.length > 0 && (
             <Button
               type="button"
               variant="outline"
               size="sm"
-              onClick={addEvidence}
-              className="font-body text-xs gap-1"
-              data-ocid="perform.evidence_add_button"
+              onClick={handleOpenAddEvidence}
+              className="font-body text-xs gap-1 h-7 px-3"
+              data-ocid="perform.evidence_add_inline_button"
             >
-              <Plus className="h-3.5 w-3.5" /> Add Evidence
+              <Plus className="h-3.5 w-3.5" /> Add
             </Button>
           )}
         </div>
+
+        {state.workProducts.length > 0 && (
+          <div className="rounded-md border border-border/60 overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-muted/30">
+                  <TableHead className="font-body text-xs">
+                    Description
+                  </TableHead>
+                  <TableHead className="font-body text-xs w-[160px]">
+                    Link
+                  </TableHead>
+                  <TableHead className="font-body text-xs w-[90px]">
+                    Version
+                  </TableHead>
+                  {!isCompleted && (
+                    <TableHead className="font-body text-xs w-[80px]">
+                      Actions
+                    </TableHead>
+                  )}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {state.workProducts.map((ev, i) => (
+                  <TableRow
+                    // biome-ignore lint/suspicious/noArrayIndexKey: evidence items have no stable IDs
+                    key={`wp-row-${i}`}
+                    data-ocid={`perform.evidence_row.${i + 1}`}
+                    className="border-b border-border/50 last:border-b-0"
+                  >
+                    <TableCell className="py-2 font-body text-xs text-foreground">
+                      {ev.description}
+                    </TableCell>
+                    <TableCell className="py-2">
+                      {ev.link ? (
+                        <a
+                          href={ev.link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-600 hover:text-blue-800 font-body text-xs truncate block max-w-[150px]"
+                        >
+                          {ev.link}
+                        </a>
+                      ) : (
+                        <span className="text-muted-foreground font-body text-xs">
+                          —
+                        </span>
+                      )}
+                    </TableCell>
+                    <TableCell className="py-2 font-body text-xs text-muted-foreground">
+                      {ev.version || "—"}
+                    </TableCell>
+                    {!isCompleted && (
+                      <TableCell className="py-2">
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEditEvidence(i)}
+                            className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                            title="Edit"
+                            data-ocid={`perform.evidence_edit_button.${i + 1}`}
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => removeEvidence(i)}
+                            className="p-1 rounded hover:bg-destructive/10 transition-colors text-muted-foreground hover:text-destructive"
+                            title="Delete"
+                            data-ocid={`perform.evidence_remove_button.${i + 1}`}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </TableCell>
+                    )}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
       </div>
+
+      {/* Evidence Dialog */}
+      <EvidenceDialog
+        open={evidenceDialogOpen}
+        onOpenChange={setEvidenceDialogOpen}
+        initialEvidence={editingEvidence}
+        onSubmit={handleEvidenceSubmit}
+      />
     </div>
   );
 }
@@ -976,7 +1097,7 @@ interface TreeNodeData {
   processId: string;
   level?: number;
   paId?: string;
-  dotClass?: string;
+  dotStyle?: React.CSSProperties;
   children?: TreeNodeData[];
 }
 
@@ -988,6 +1109,7 @@ function TreeNode({
   onSelect,
   onToggle,
   index,
+  ratings,
 }: {
   node: TreeNodeData;
   depth: number;
@@ -996,6 +1118,7 @@ function TreeNode({
   onSelect: (n: SelectedNode) => void;
   onToggle: (key: string) => void;
   index: number;
+  ratings: RatingsMap;
 }) {
   const nodeKey = `${node.type}:${node.processId}:${node.id}`;
   const isExpanded = expandedNodes.has(nodeKey);
@@ -1006,6 +1129,26 @@ function TreeNode({
     selected?.processId === node.processId;
 
   const paddingLeft = 8 + depth * 14;
+
+  // Compute the rating letter to show on the right badge
+  let nodeRating: Rating = "";
+  if (node.type === "process") {
+    nodeRating =
+      (ratings[`${node.processId}_0_${node.processId}`]?.rating as Rating) ??
+      "";
+  } else if (node.type === "pa") {
+    nodeRating =
+      (ratings[`${node.processId}_5_${node.id}`]?.rating as Rating) ?? "";
+  } else if (node.type === "bp") {
+    nodeRating =
+      (ratings[`${node.processId}_1_${node.id}`]?.rating as Rating) ?? "";
+  } else if (node.type === "gp") {
+    const lvl = node.level ?? 2;
+    nodeRating =
+      (ratings[`${node.processId}_${lvl}_${node.id}`]?.rating as Rating) ?? "";
+  }
+
+  const nplf = nodeRating ? NPLF_COLORS[nodeRating] : null;
 
   function handleLabelClick() {
     onSelect({
@@ -1035,7 +1178,7 @@ function TreeNode({
     <div>
       <div
         className={cn(
-          "w-full flex items-center gap-0.5 py-0.5 rounded-sm group",
+          "w-full flex items-center gap-0.5 py-0.5 rounded-sm group overflow-hidden",
         )}
         style={{ paddingLeft }}
       >
@@ -1063,7 +1206,7 @@ function TreeNode({
           onClick={handleLabelClick}
           data-ocid={ocidMap[node.type]}
           className={cn(
-            "flex-1 flex items-center gap-1.5 py-1 pr-2 rounded-sm text-sm transition-colors text-left",
+            "flex-1 min-w-0 flex items-center gap-1.5 py-1 pr-1 rounded-sm text-sm transition-colors text-left overflow-hidden",
             isSelected
               ? "bg-accent/15 text-accent font-medium"
               : "text-foreground hover:bg-muted/70",
@@ -1071,14 +1214,15 @@ function TreeNode({
           )}
         >
           {/* Status dot */}
-          {node.dotClass && (
+          {node.dotStyle && (
             <span
-              className={cn("h-2 w-2 rounded-full shrink-0", node.dotClass)}
+              className="h-2 w-2 rounded-full shrink-0"
+              style={node.dotStyle}
             />
           )}
 
-          {/* Label text */}
-          <span className="truncate font-body text-xs leading-snug">
+          {/* Label text — truncates to make room for rating badge */}
+          <span className="truncate font-body text-xs leading-snug min-w-0 flex-1">
             {node.label}
             {node.sublabel && (
               <span className="text-muted-foreground font-normal ml-1 text-[11px]">
@@ -1086,6 +1230,18 @@ function TreeNode({
               </span>
             )}
           </span>
+
+          {/* Rating badge — always visible at far right, never hidden */}
+          {nodeRating && nplf ? (
+            <span
+              className="ml-auto shrink-0 min-w-[20px] h-[18px] text-[10px] font-bold rounded px-1 flex items-center justify-center"
+              style={{ backgroundColor: nplf.bg, color: nplf.color }}
+            >
+              {nodeRating}
+            </span>
+          ) : (
+            <span className="ml-auto shrink-0 min-w-[20px] h-[18px]" />
+          )}
         </button>
       </div>
 
@@ -1102,6 +1258,7 @@ function TreeNode({
               onSelect={onSelect}
               onToggle={onToggle}
               index={i + 1}
+              ratings={ratings}
             />
           ))}
         </div>
@@ -1118,12 +1275,14 @@ function PASummaryView({
   ratings,
   onEdit,
   isCompleted,
+  onRatingChange,
 }: {
   paId: string;
   processId: string;
   ratings: RatingsMap;
   onEdit: (practiceId: string, level: number, entry: SwEntry) => void;
   isCompleted?: boolean;
+  onRatingChange?: (rating: Rating) => void;
 }) {
   const [filter, setFilter] = useState<"all" | "strengths" | "weaknesses">(
     "all",
@@ -1245,17 +1404,37 @@ function PASummaryView({
     onEdit(editingMeta.practiceId, editingMeta.level, updated);
   }
 
+  // PA-level rating stored at level 5, practiceId = paId
+  const paRatingKey = `${processId}_5_${paId}`;
+  const paLevelRating: Rating = (ratings[paRatingKey]?.rating as Rating) ?? "";
+
   return (
     <div className="space-y-4">
-      <div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <h2 className="font-bold font-heading text-foreground">
-            {paId} — {PA_LABELS[paId]}
-          </h2>
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h2 className="text-sm font-semibold font-heading text-foreground">
+              <span className="font-bold">{paId}</span>
+              {PA_LABELS[paId] ? ` — ${PA_LABELS[paId]}` : ""}
+            </h2>
+          </div>
+          <p className="text-xs text-muted-foreground font-body mt-1">
+            {processId} — Consolidated Strengths & Weaknesses
+          </p>
         </div>
-        <p className="text-sm text-muted-foreground font-body mt-1">
-          {processId} — Consolidated Strengths & Weaknesses
-        </p>
+        {onRatingChange && (
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="text-xs font-body text-muted-foreground whitespace-nowrap">
+              PA Rating:
+            </span>
+            <RatingSelector
+              value={paLevelRating}
+              onChange={onRatingChange}
+              index={0}
+              disabled={isCompleted}
+            />
+          </div>
+        )}
       </div>
 
       {/* Filter tabs */}
@@ -1346,10 +1525,8 @@ function PASummaryView({
                         {rating ? (
                           <Badge
                             variant="outline"
-                            className={cn(
-                              "font-body text-xs",
-                              getRatingBadgeClass(rating),
-                            )}
+                            className="font-body text-xs"
+                            style={getRatingBadgeStyle(rating)}
                           >
                             {rating}
                           </Badge>
@@ -1420,214 +1597,403 @@ function ProcessOverviewView({
   processId,
   processInfo,
   ratings,
-  onSelectPA,
+  isCompleted,
+  onEdit,
+  onRatingChange,
 }: {
   processId: string;
   processInfo: { targetLevel: string };
   ratings: RatingsMap;
-  onSelectPA: (node: SelectedNode) => void;
+  isCompleted?: boolean;
+  onEdit: (practiceId: string, level: number, entry: SwEntry) => void;
+  onRatingChange: (rating: Rating) => void;
 }) {
+  const [filter, setFilter] = useState<"all" | "strengths" | "weaknesses">(
+    "all",
+  );
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingMeta, setEditingMeta] = useState<{
+    entry: SwEntry;
+    practiceId: string;
+    level: number;
+  } | null>(null);
+
   const targetLevel =
     processInfo.targetLevel === "NA"
       ? 0
       : Number.parseInt(processInfo.targetLevel, 10);
   const processName = getProcessName(processId);
 
-  const paRows = useMemo(() => {
-    const rows: Array<{
-      paId: string;
-      label: string;
-      total: number;
-      rated: number;
+  // Process-level rating key: `${processId}_0_${processId}`
+  const processRatingKey = `${processId}_0_${processId}`;
+  const processLevelRating: Rating =
+    (ratings[processRatingKey]?.rating as Rating) ?? "";
+
+  // Collect ALL S&W entries across all PAs for this process
+  const allEntries = useMemo(() => {
+    const result: Array<{
+      entry: SwEntry;
+      practiceId: string;
+      rating: Rating;
+      level: number;
     }> = [];
 
+    // PA1.1 — Base Practices
     if (targetLevel >= 1) {
       const bps = BASE_PRACTICES[processId] ?? [];
-      const rated = bps.filter(
-        (bp) => !!ratings[`${processId}_1_${bp.id}`]?.rating,
-      ).length;
-      rows.push({
-        paId: "PA1.1",
-        label: PA_LABELS["PA1.1"],
-        total: bps.length,
-        rated,
-      });
+      for (const bp of bps) {
+        const key = `${processId}_1_${bp.id}`;
+        const state = ratings[key] ?? defaultPracticeState();
+        const entries = state.swEntries ?? [];
+        const legacyStrengths: SwEntry[] = [];
+        const legacyWeaknesses: SwEntry[] = [];
+        if (
+          entries.length === 0 &&
+          (state.strengths?.trim() || state.weaknesses?.trim())
+        ) {
+          if (state.strengths?.trim()) {
+            legacyStrengths.push({
+              id: `legacy-s-${bp.id}`,
+              type: "strength",
+              text: state.strengths,
+            });
+          }
+          if (state.weaknesses?.trim()) {
+            legacyWeaknesses.push({
+              id: `legacy-w-${bp.id}`,
+              type: "weakness",
+              text: state.weaknesses,
+            });
+          }
+        }
+        const allForPractice =
+          entries.length > 0
+            ? entries
+            : [...legacyStrengths, ...legacyWeaknesses];
+        for (const entry of allForPractice) {
+          result.push({
+            entry,
+            practiceId: bp.id,
+            rating: state.rating,
+            level: 1,
+          });
+        }
+      }
     }
+
+    // PA2.x — Level 2 Generic Practices
     if (targetLevel >= 2) {
       for (const attr of LEVEL2_ATTRIBUTES) {
-        const gps = attr.practices;
-        const rated = gps.filter(
-          (gp) => !!ratings[`${processId}_2_${gp.id}`]?.rating,
-        ).length;
-        rows.push({
-          paId: attr.id,
-          label: PA_LABELS[attr.id] ?? attr.name,
-          total: gps.length,
-          rated,
-        });
+        for (const gp of attr.practices) {
+          const key = `${processId}_2_${gp.id}`;
+          const state = ratings[key] ?? defaultPracticeState();
+          const entries = state.swEntries ?? [];
+          const legacyStrengths: SwEntry[] = [];
+          const legacyWeaknesses: SwEntry[] = [];
+          if (
+            entries.length === 0 &&
+            (state.strengths?.trim() || state.weaknesses?.trim())
+          ) {
+            if (state.strengths?.trim()) {
+              legacyStrengths.push({
+                id: `legacy-s-${gp.id}`,
+                type: "strength",
+                text: state.strengths,
+              });
+            }
+            if (state.weaknesses?.trim()) {
+              legacyWeaknesses.push({
+                id: `legacy-w-${gp.id}`,
+                type: "weakness",
+                text: state.weaknesses,
+              });
+            }
+          }
+          const allForPractice =
+            entries.length > 0
+              ? entries
+              : [...legacyStrengths, ...legacyWeaknesses];
+          for (const entry of allForPractice) {
+            result.push({
+              entry,
+              practiceId: gp.id,
+              rating: state.rating,
+              level: 2,
+            });
+          }
+        }
       }
     }
+
+    // PA3.x — Level 3 Generic Practices
     if (targetLevel >= 3) {
       for (const attr of LEVEL3_ATTRIBUTES) {
-        const gps = attr.practices;
-        const rated = gps.filter(
-          (gp) => !!ratings[`${processId}_3_${gp.id}`]?.rating,
-        ).length;
-        rows.push({
-          paId: attr.id,
-          label: PA_LABELS[attr.id] ?? attr.name,
-          total: gps.length,
-          rated,
-        });
+        for (const gp of attr.practices) {
+          const key = `${processId}_3_${gp.id}`;
+          const state = ratings[key] ?? defaultPracticeState();
+          const entries = state.swEntries ?? [];
+          const legacyStrengths: SwEntry[] = [];
+          const legacyWeaknesses: SwEntry[] = [];
+          if (
+            entries.length === 0 &&
+            (state.strengths?.trim() || state.weaknesses?.trim())
+          ) {
+            if (state.strengths?.trim()) {
+              legacyStrengths.push({
+                id: `legacy-s-${gp.id}`,
+                type: "strength",
+                text: state.strengths,
+              });
+            }
+            if (state.weaknesses?.trim()) {
+              legacyWeaknesses.push({
+                id: `legacy-w-${gp.id}`,
+                type: "weakness",
+                text: state.weaknesses,
+              });
+            }
+          }
+          const allForPractice =
+            entries.length > 0
+              ? entries
+              : [...legacyStrengths, ...legacyWeaknesses];
+          for (const entry of allForPractice) {
+            result.push({
+              entry,
+              practiceId: gp.id,
+              rating: state.rating,
+              level: 3,
+            });
+          }
+        }
       }
     }
-    return rows;
+
+    return result;
   }, [processId, ratings, targetLevel]);
 
-  const totalAll = paRows.reduce((s, r) => s + r.total, 0);
-  const ratedAll = paRows.reduce((s, r) => s + r.rated, 0);
+  const strengthsCount = allEntries.filter(
+    (e) => e.entry.type === "strength",
+  ).length;
+  const weaknessesCount = allEntries.filter(
+    (e) => e.entry.type === "weakness",
+  ).length;
+
+  const filtered = allEntries.filter((e) => {
+    if (filter === "strengths") return e.entry.type === "strength";
+    if (filter === "weaknesses") return e.entry.type === "weakness";
+    return true;
+  });
+
+  function openEditEntry(entry: SwEntry, practiceId: string, level: number) {
+    setEditingMeta({ entry, practiceId, level });
+    setEditDialogOpen(true);
+  }
+
+  function handleEditSubmit(updated: SwEntry) {
+    if (!editingMeta) return;
+    onEdit(editingMeta.practiceId, editingMeta.level, updated);
+  }
 
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="font-bold font-heading text-foreground text-lg">
-          {processId}
-        </h2>
-        <p className="text-muted-foreground font-body text-sm">{processName}</p>
-        <p className="text-xs text-muted-foreground font-body mt-1">
-          Target Level:{" "}
-          <span className="font-semibold">{processInfo.targetLevel}</span>
-        </p>
+      {/* Compact process header */}
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <span className="text-sm font-bold font-heading text-foreground">
+            {processId}
+          </span>
+          <span className="text-xs text-muted-foreground font-body ml-2">
+            {processName}
+          </span>
+          <p className="text-xs text-muted-foreground font-body mt-0.5">
+            Target Level:{" "}
+            <span className="font-semibold">{processInfo.targetLevel}</span>
+          </p>
+        </div>
+        {targetLevel !== 0 && (
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="text-xs font-body text-muted-foreground">
+              Rating:
+            </span>
+            <RatingSelector
+              value={processLevelRating}
+              onChange={onRatingChange}
+              index={0}
+              disabled={isCompleted}
+            />
+          </div>
+        )}
       </div>
 
       {targetLevel === 0 ? (
         <Card className="border-border/60">
           <CardContent className="py-10 text-center">
-            <p className="text-muted-foreground font-body text-sm">
+            <p className="text-muted-foreground font-body text-xs">
               This process is excluded from assessment (Target Level: NA).
             </p>
           </CardContent>
         </Card>
       ) : (
         <>
-          <div className="flex gap-3">
-            <div className="px-4 py-3 rounded-lg border border-border/40 bg-muted/30 min-w-[110px]">
-              <p className="text-xl font-bold font-heading">
-                {ratedAll}/{totalAll}
-              </p>
-              <p className="text-xs font-body text-muted-foreground">
-                Total Rated
-              </p>
-            </div>
-            <div className="px-4 py-3 rounded-lg border border-border/40 bg-blue-50 min-w-[110px]">
-              <p className="text-xl font-bold font-heading text-blue-700">
-                {Math.round((ratedAll / Math.max(totalAll, 1)) * 100)}%
-              </p>
-              <p className="text-xs font-body text-muted-foreground">
-                Complete
-              </p>
-            </div>
-          </div>
+          {/* Consolidated S&W summary */}
+          <Tabs
+            value={filter}
+            onValueChange={(v) => setFilter(v as typeof filter)}
+          >
+            <TabsList className="h-8">
+              <TabsTrigger
+                value="all"
+                className="font-body text-xs h-6 px-3"
+                data-ocid="perform.process_sw_filter_all_tab"
+              >
+                All ({allEntries.length})
+              </TabsTrigger>
+              <TabsTrigger
+                value="strengths"
+                className="font-body text-xs h-6 px-3"
+                data-ocid="perform.process_sw_filter_strengths_tab"
+              >
+                Strengths ({strengthsCount})
+              </TabsTrigger>
+              <TabsTrigger
+                value="weaknesses"
+                className="font-body text-xs h-6 px-3"
+                data-ocid="perform.process_sw_filter_weaknesses_tab"
+              >
+                Weaknesses ({weaknessesCount})
+              </TabsTrigger>
+            </TabsList>
 
-          <div className="rounded-md border border-border/60 overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-muted/30">
-                  <TableHead className="font-body text-xs">
-                    PA Section
-                  </TableHead>
-                  <TableHead className="font-body text-xs w-[60px]">
-                    Total
-                  </TableHead>
-                  <TableHead className="font-body text-xs w-[60px]">
-                    Rated
-                  </TableHead>
-                  <TableHead className="font-body text-xs w-[90px]">
-                    % Complete
-                  </TableHead>
-                  <TableHead className="font-body text-xs w-[80px]">
-                    Status
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {paRows.map((row) => {
-                  const pct = Math.round(
-                    (row.rated / Math.max(row.total, 1)) * 100,
-                  );
-                  return (
-                    <TableRow
-                      key={row.paId}
-                      className="cursor-pointer hover:bg-muted/40"
-                      onClick={() =>
-                        onSelectPA({
-                          type: "pa",
-                          id: row.paId,
-                          processId,
-                          paId: row.paId,
-                        })
-                      }
-                    >
-                      <TableCell className="font-body text-xs py-2">
-                        <span className="font-semibold">{row.paId}</span>
-                        <span className="text-muted-foreground ml-1">
-                          — {row.label}
-                        </span>
-                      </TableCell>
-                      <TableCell className="font-body text-xs py-2">
-                        {row.total}
-                      </TableCell>
-                      <TableCell className="font-body text-xs py-2">
-                        {row.rated}
-                      </TableCell>
-                      <TableCell className="font-body text-xs py-2">
-                        <div className="flex items-center gap-1.5">
-                          <div className="h-1.5 flex-1 bg-muted rounded-full overflow-hidden">
-                            <div
-                              className={cn(
-                                "h-full rounded-full transition-all",
-                                pct === 100
-                                  ? "bg-emerald-500"
-                                  : pct > 0
-                                    ? "bg-blue-500"
-                                    : "bg-muted-foreground/20",
+            <TabsContent value={filter} className="mt-3">
+              {filtered.length === 0 ? (
+                <div
+                  className="rounded-md border border-dashed border-border/60 py-10 text-center"
+                  data-ocid="perform.process_sw_empty_state"
+                >
+                  <p className="text-xs text-muted-foreground font-body italic">
+                    {allEntries.length === 0
+                      ? "No strengths or weaknesses recorded for this process yet."
+                      : "No entries match this filter."}
+                  </p>
+                  <p className="text-xs text-muted-foreground font-body mt-1">
+                    Select individual Base Practices or Generic Practices from
+                    the tree to add entries.
+                  </p>
+                </div>
+              ) : (
+                <div
+                  className="rounded-md border border-border/60 overflow-hidden"
+                  data-ocid="perform.process_sw_table"
+                >
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/30">
+                        <TableHead className="font-body text-xs w-[90px]">
+                          Practice
+                        </TableHead>
+                        <TableHead className="font-body text-xs w-[70px]">
+                          Rating
+                        </TableHead>
+                        <TableHead className="font-body text-xs w-[90px]">
+                          Type
+                        </TableHead>
+                        <TableHead className="font-body text-xs">
+                          Description
+                        </TableHead>
+                        {!isCompleted && (
+                          <TableHead className="font-body text-xs w-[80px]">
+                            Actions
+                          </TableHead>
+                        )}
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filtered.map(
+                        ({ entry, practiceId, rating, level }, idx) => (
+                          <TableRow
+                            key={`${practiceId}-${entry.id}`}
+                            data-ocid={`perform.process_sw_row.${idx + 1}`}
+                            className={cn(
+                              "transition-colors",
+                              entry.type === "strength"
+                                ? "bg-emerald-50/50 hover:bg-emerald-50 border-l-2 border-l-emerald-300"
+                                : "bg-red-50/50 hover:bg-red-50 border-l-2 border-l-red-300",
+                            )}
+                          >
+                            <TableCell className="font-mono text-xs py-2 text-muted-foreground">
+                              {practiceId}
+                            </TableCell>
+                            <TableCell className="py-2">
+                              {rating ? (
+                                <Badge
+                                  variant="outline"
+                                  className="font-body text-xs"
+                                  style={getRatingBadgeStyle(rating)}
+                                >
+                                  {rating}
+                                </Badge>
+                              ) : (
+                                <span className="text-muted-foreground font-body text-xs">
+                                  —
+                                </span>
                               )}
-                              style={{ width: `${pct}%` }}
-                            />
-                          </div>
-                          <span>{pct}%</span>
-                        </div>
-                      </TableCell>
-                      <TableCell className="py-2">
-                        <span
-                          className={cn(
-                            "text-xs font-body",
-                            pct === 100
-                              ? "text-emerald-600"
-                              : pct > 0
-                                ? "text-blue-600"
-                                : "text-muted-foreground",
-                          )}
-                        >
-                          {pct === 100
-                            ? "✓ Done"
-                            : pct > 0
-                              ? "In Progress"
-                              : "Pending"}
-                        </span>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </div>
-
-          <p className="text-xs text-muted-foreground font-body italic">
-            Click a PA row to view its consolidated Strengths & Weaknesses, or
-            select a practice from the tree.
-          </p>
+                            </TableCell>
+                            <TableCell className="py-2">
+                              <Badge
+                                variant="outline"
+                                className={cn(
+                                  "font-body text-xs",
+                                  entry.type === "strength"
+                                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                    : "bg-red-50 text-red-700 border-red-200",
+                                )}
+                              >
+                                {entry.type === "strength"
+                                  ? "Strength"
+                                  : "Weakness"}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="py-2 max-w-xs">
+                              <div className="text-xs font-body text-foreground leading-relaxed">
+                                {renderRichText(entry.text)}
+                              </div>
+                            </TableCell>
+                            {!isCompleted && (
+                              <TableCell className="py-2">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    openEditEntry(entry, practiceId, level)
+                                  }
+                                  className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                                  title="Edit"
+                                  data-ocid={`perform.process_sw_edit_button.${idx + 1}`}
+                                >
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </button>
+                              </TableCell>
+                            )}
+                          </TableRow>
+                        ),
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </TabsContent>
+          </Tabs>
         </>
+      )}
+
+      {editingMeta && (
+        <AddEntryDialog
+          open={editDialogOpen}
+          onOpenChange={setEditDialogOpen}
+          initialEntry={editingMeta.entry}
+          practiceId={`${processId} ${editingMeta.practiceId}`}
+          onSubmit={handleEditSubmit}
+        />
       )}
     </div>
   );
@@ -1688,10 +2054,10 @@ function RootOverviewView({
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="font-bold font-heading text-foreground text-lg">
+        <h2 className="text-sm font-semibold font-heading text-foreground">
           ASPICE — Automotive SPICE v4.0
         </h2>
-        <p className="text-sm text-muted-foreground font-body">
+        <p className="text-xs text-muted-foreground font-body">
           Assessment Overview
         </p>
       </div>
@@ -1827,18 +2193,32 @@ function BPGPRightPanel({
   );
 }
 
+// ─── Module-level helper (stable, no closure over component state) ───────────
+
+function buildPAList(tl: number): string[] {
+  const pas: string[] = [];
+  if (tl >= 1) pas.push("PA1.1");
+  if (tl >= 2) {
+    pas.push("PA2.1");
+    pas.push("PA2.2");
+  }
+  if (tl >= 3) {
+    pas.push("PA3.1");
+    pas.push("PA3.2");
+  }
+  return pas;
+}
+
 // ─── Main Component ──────────────────────────────────────────────
 
 export function PerformAssessment() {
-  const { currentAssessmentId, currentAssessmentTitle, navigateTo } =
-    useAppContext();
+  const { currentAssessmentId, navigateTo } = useAppContext();
   const { data: assessments } = useGetAllAssessments();
   const { data: processConfig, isLoading: loadingConfig } =
     useGetProcessGroupConfig(currentAssessmentId);
   const { data: savedRatings, isLoading: loadingRatings } =
     useGetAllPracticeRatingsForAssessment(currentAssessmentId);
   const savePracticeRating = useSavePracticeRating();
-  const updateStepMutation = useUpdateAssessmentStep();
 
   const [selectedNode, setSelectedNode] = useState<SelectedNode | null>(null);
   const [ratings, setRatings] = useState<RatingsMap>({});
@@ -1859,21 +2239,40 @@ export function PerformAssessment() {
     (a) => a.id === currentAssessmentId,
   );
   const isCompleted = currentAssessment?.status === "Completed";
-  const enabledProcesses = buildEnabledProcesses(processConfig ?? null);
 
-  // ─── Bug Fix 2: Wrap toggleNode, expandAll, collapseAll in useCallback ───
+  // ─── KEY FIX: Memoize enabledProcesses so its reference is stable across renders.
+  // Without useMemo, buildEnabledProcesses returns a new array every render,
+  // which triggers the useEffect below on every re-render (e.g. every state update),
+  // resetting expandedNodes and collapsing the tree each time the user interacts.
+  const enabledProcesses = useMemo(
+    () => buildEnabledProcesses(processConfig ?? null),
+    [processConfig],
+  );
+
+  // ─── Tree expand/collapse logic ───────────────────────────────────────────
+  // Use a ref to store the toggle function so TreeNode always gets the latest
+  // version without needing to be re-rendered.
+  const expandedNodesRef = useRef<Set<string>>(new Set());
+  expandedNodesRef.current = expandedNodes;
+
   const toggleNode = useCallback((key: string) => {
     setExpandedNodes((prev) => {
       const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
       return next;
     });
-  }, []);
+  }, []); // stable — only uses setExpandedNodes functional form
 
-  // Default: expand all process and PA nodes
+  // Default: expand all process and PA nodes on first load
+  const hasInitialized = useRef(false);
   useEffect(() => {
     if (enabledProcesses.length === 0) return;
+    if (hasInitialized.current) return; // only run once
+    hasInitialized.current = true;
     const keys = new Set<string>();
     keys.add("root:root:root");
     for (const proc of enabledProcesses) {
@@ -2139,6 +2538,48 @@ export function PerformAssessment() {
         }
       }
 
+      // Save process-level rating (level 0, practiceId = processId)
+      const processLevelState = getState(processId, 0, processId);
+      if (
+        processLevelState.rating ||
+        (processLevelState.swEntries ?? []).length > 0
+      ) {
+        const serialized = serializeState(processLevelState);
+        savePromises.push(
+          savePracticeRating.mutateAsync({
+            assessmentId: currentAssessmentId,
+            processId,
+            level: BigInt(0),
+            practiceId: processId,
+            rating: processLevelState.rating,
+            strengths: serialized.strengths,
+            weaknesses: serialized.weaknesses,
+            workProductsInspected: serialized.workProductsInspected,
+          }),
+        );
+      }
+
+      // Save PA-level ratings (level 5, practiceId = paId)
+      const pas = buildPAList(targetLevel);
+      for (const paId of pas) {
+        const paLevelState = getState(processId, 5, paId);
+        if (paLevelState.rating) {
+          const serialized = serializeState(paLevelState);
+          savePromises.push(
+            savePracticeRating.mutateAsync({
+              assessmentId: currentAssessmentId,
+              processId,
+              level: BigInt(5),
+              practiceId: paId,
+              rating: paLevelState.rating,
+              strengths: serialized.strengths,
+              weaknesses: serialized.weaknesses,
+              workProductsInspected: serialized.workProductsInspected,
+            }),
+          );
+        }
+      }
+
       await Promise.all(savePromises);
     },
     [currentAssessmentId, enabledProcesses, savePracticeRating],
@@ -2158,32 +2599,8 @@ export function PerformAssessment() {
     }
   }
 
-  async function handleSaveAndContinue() {
-    if (!currentAssessmentId) return;
-    await handleSaveAll();
-    await updateStepMutation.mutateAsync({
-      id: currentAssessmentId,
-      step: "results",
-    });
-    toast.success("Navigating to View Results");
-    navigateTo("results");
-  }
-
   // ─── Tree building ───────────────────────────────────────────
-
-  function buildPAList(tl: number): string[] {
-    const pas: string[] = [];
-    if (tl >= 1) pas.push("PA1.1");
-    if (tl >= 2) {
-      pas.push("PA2.1");
-      pas.push("PA2.2");
-    }
-    if (tl >= 3) {
-      pas.push("PA3.1");
-      pas.push("PA3.2");
-    }
-    return pas;
-  }
+  // buildPAList is defined at module level above the component.
 
   function getPABpGpRatings(processId: string, paId: string): Rating[] {
     if (paId === "PA1.1") {
@@ -2224,7 +2641,7 @@ export function PerformAssessment() {
         processId,
         level: 1,
         paId,
-        dotClass: getRatingDotClass(
+        dotStyle: getRatingDotStyle(
           ratings[`${processId}_1_${bp.id}`]?.rating ?? "",
         ),
       }));
@@ -2247,7 +2664,7 @@ export function PerformAssessment() {
       processId,
       level,
       paId,
-      dotClass: getRatingDotClass(
+      dotStyle: getRatingDotStyle(
         ratings[`${processId}_${level}_${gp.id}`]?.rating ?? "",
       ),
     }));
@@ -2271,7 +2688,7 @@ export function PerformAssessment() {
           sublabel: PA_LABELS[paId],
           processId: proc.id,
           paId,
-          dotClass: getAggregateDotClass(leafRatings),
+          dotStyle: getAggregateDotStyle(leafRatings),
           children: buildLeafNodes(proc.id, paId),
         };
       });
@@ -2282,7 +2699,7 @@ export function PerformAssessment() {
         label: proc.id,
         sublabel: getProcessName(proc.id),
         processId: proc.id,
-        dotClass: getAggregateDotClass(allRatings),
+        dotStyle: getAggregateDotStyle(allRatings),
         children: paNodes,
       };
     });
@@ -2296,7 +2713,10 @@ export function PerformAssessment() {
     };
   }, [enabledProcesses, ratings]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Bug Fix 2: expandAll/collapseAll wrapped in useCallback with treeData dependency
+  // expandAll/collapseAll — use a ref to treeData so they stay stable
+  const treeDataRef = useRef<TreeNodeData>(treeData);
+  treeDataRef.current = treeData;
+
   const expandAll = useCallback(() => {
     const keys = new Set<string>();
     function collect(node: TreeNodeData) {
@@ -2305,9 +2725,9 @@ export function PerformAssessment() {
         for (const c of node.children) collect(c);
       }
     }
-    collect(treeData);
+    collect(treeDataRef.current);
     setExpandedNodes(keys);
-  }, [treeData]);
+  }, []); // stable — reads treeData via ref
 
   const collapseAll = useCallback(() => {
     setExpandedNodes(new Set());
@@ -2428,50 +2848,29 @@ export function PerformAssessment() {
       style={{ flex: "1 1 0", minHeight: 0, overflow: "hidden" }}
     >
       {/* Page Header */}
-      <div className="flex items-start justify-between gap-4 pb-3 shrink-0">
-        <div>
-          <p className="text-xs text-muted-foreground font-body mb-1 uppercase tracking-wide">
-            Current Assessment
-          </p>
-          <h1 className="text-xl font-bold font-heading text-foreground leading-tight">
-            {currentAssessmentTitle}
-          </h1>
-          <p className="text-muted-foreground text-sm mt-0.5 font-body">
-            Perform Assessment
-          </p>
-        </div>
+      <div className="flex items-center justify-between gap-4 pb-3 shrink-0">
+        <h1 className="text-xl font-bold font-heading text-foreground leading-tight">
+          Perform Assessment
+        </h1>
         <div className="flex items-center gap-2 shrink-0">
           {currentAssessment && (
             <StatusBadge status={currentAssessment.status} />
           )}
           {!isCompleted && (
-            <>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={handleSaveAll}
-                disabled={isSaving}
-                className="gap-1.5"
-                data-ocid="perform.save_button"
-              >
-                {isSaving ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Save className="h-3.5 w-3.5" />
-                )}
-                Save All
-              </Button>
-              <Button
-                size="sm"
-                onClick={handleSaveAndContinue}
-                disabled={isSaving}
-                className="spice-gradient text-white border-0 gap-1.5"
-                data-ocid="perform.save_continue_button"
-              >
-                {isSaving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                Save & Continue →
-              </Button>
-            </>
+            <Button
+              size="sm"
+              onClick={handleSaveAll}
+              disabled={isSaving}
+              className="spice-gradient text-white border-0 gap-1.5"
+              data-ocid="perform.save_button"
+            >
+              {isSaving ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Save className="h-3.5 w-3.5" />
+              )}
+              Save
+            </Button>
           )}
         </div>
       </div>
@@ -2568,7 +2967,7 @@ function DraggableThreePanelLayout({
 }: {
   selectedNode: SelectedNode | null;
   setSelectedNode: (n: SelectedNode) => void;
-  setDescNotesOpen: (fn: (v: boolean) => boolean) => void;
+  setDescNotesOpen: React.Dispatch<React.SetStateAction<boolean>>;
   toggleNode: (key: string) => void;
   expandAll: () => void;
   collapseAll: () => void;
@@ -2648,8 +3047,9 @@ function DraggableThreePanelLayout({
           flexShrink: 0,
           display: "flex",
           flexDirection: "column",
-          borderRight: "1px solid var(--border)",
+          borderRight: "3px solid var(--border)",
           overflow: "hidden",
+          alignSelf: "stretch",
         }}
       >
         {/* Tree header */}
@@ -2689,19 +3089,32 @@ function DraggableThreePanelLayout({
               expandedNodes={expandedNodes}
               onSelect={(n) => {
                 setSelectedNode(n);
-                setDescNotesOpen(() => false);
+                setDescNotesOpen(false);
               }}
               onToggle={toggleNode}
               index={0}
+              ratings={ratings}
             />
           </div>
         </div>
 
-        <Separator />
+        {/* Thick divider between tree and description panel */}
+        <div
+          style={{
+            height: 4,
+            flexShrink: 0,
+            background: "var(--border)",
+          }}
+        />
 
         {/* Description Panel — fixed 220px at bottom of left panel */}
         <div
-          style={{ height: 220, flexShrink: 0, overflow: "auto" }}
+          style={{
+            height: 220,
+            flexShrink: 0,
+            overflow: "auto",
+            background: "hsl(var(--muted) / 0.25)",
+          }}
           data-ocid="perform.description_panel"
         >
           <div className="p-3 space-y-1.5">
@@ -2764,13 +3177,14 @@ function DraggableThreePanelLayout({
       {/* ── Drag handle ── */}
       <div
         style={{
-          width: 4,
+          width: 6,
           cursor: "col-resize",
           background: isDragging ? "var(--accent)" : "var(--border)",
           flexShrink: 0,
+          alignSelf: "stretch",
           transition: isDragging ? "none" : "background 0.15s",
         }}
-        className="hover:bg-accent/50"
+        className="hover:bg-accent/70"
         onMouseDown={handleDragStart}
         data-ocid="perform.drag_handle"
         title="Drag to resize panels"
@@ -2795,7 +3209,23 @@ function DraggableThreePanelLayout({
                   processId={selectedNode.processId}
                   processInfo={procInfo}
                   ratings={ratings}
-                  onSelectPA={(node) => setSelectedNode(node)}
+                  isCompleted={isCompleted}
+                  onEdit={(practiceId, level, updated) =>
+                    editSwEntryForPractice(
+                      selectedNode.processId,
+                      level,
+                      practiceId,
+                      updated,
+                    )
+                  }
+                  onRatingChange={(r) =>
+                    updatePracticeState(
+                      selectedNode.processId,
+                      0,
+                      selectedNode.processId,
+                      { rating: r },
+                    )
+                  }
                 />
               ) : null;
             })()}
@@ -2813,6 +3243,14 @@ function DraggableThreePanelLayout({
                 );
               }}
               isCompleted={!!isCompleted}
+              onRatingChange={(r) =>
+                updatePracticeState(
+                  selectedNode.processId,
+                  5,
+                  selectedNode.paId ?? selectedNode.id,
+                  { rating: r },
+                )
+              }
             />
           )}
           {(selectedNode?.type === "bp" || selectedNode?.type === "gp") && (

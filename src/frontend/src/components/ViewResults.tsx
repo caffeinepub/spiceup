@@ -1,12 +1,4 @@
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAppContext } from "@/context/AppContext";
 import {
@@ -17,26 +9,10 @@ import {
   PROCESS_GROUPS,
 } from "@/data/aspiceData";
 import {
-  useGetAllAssessments,
   useGetAllPracticeRatingsForAssessment,
   useGetProcessGroupConfig,
 } from "@/hooks/useQueries";
 import { BarChart2, ClipboardX } from "lucide-react";
-import { useState } from "react";
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Legend,
-  PolarAngleAxis,
-  PolarGrid,
-  Radar,
-  RadarChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
 import type { PracticeRating } from "../backend.d";
 
 // ─── Types ─────────────────────────────────────────────────────
@@ -69,16 +45,9 @@ interface ProcessResult {
   targetLevel: number;
   practices: PracticeRow[];
   rollup: ProcessRollup;
+  // PA-level overall ratings keyed by paId ("PA1.1", "PA2.1", etc.)
+  paRatings: Record<string, Rating | null>;
 }
-
-// ─── Rating color helpers ───────────────────────────────────────
-
-const RATING_FILL: Record<Rating, string> = {
-  N: ASPICE_RATING_COLORS.N.bg,
-  P: ASPICE_RATING_COLORS.P.bg,
-  L: ASPICE_RATING_COLORS.L.bg,
-  F: ASPICE_RATING_COLORS.F.bg,
-};
 
 // ─── Data builder ───────────────────────────────────────────────
 
@@ -192,12 +161,34 @@ function buildProcessResults(
         rollup.pctF = Math.round((rollup.F / rollup.total) * 100);
       }
 
+      // PA-level overall ratings — stored at level 5 with practiceId = paId
+      // (e.g. "PA1.1", "PA2.1" ...) by the Perform Assessment save logic
+      const paRatings: Record<string, Rating | null> = {};
+      const paIds = ["PA1.1"];
+      if (targetLevel >= 2) {
+        paIds.push("PA2.1", "PA2.2");
+      }
+      if (targetLevel >= 3) {
+        paIds.push("PA3.1", "PA3.2");
+      }
+      for (const paId of paIds) {
+        const r = procRatings.find(
+          (pr) => Number(pr.level) === 5 && pr.practiceId === paId,
+        );
+        const val =
+          r?.rating && ["N", "P", "L", "F"].includes(r.rating)
+            ? (r.rating as Rating)
+            : null;
+        paRatings[paId] = val;
+      }
+
       results.push({
         id: proc.id,
         label: proc.name,
         targetLevel,
         practices: practiceRows,
         rollup,
+        paRatings,
       });
     }
   }
@@ -205,30 +196,62 @@ function buildProcessResults(
   return results;
 }
 
-// ─── Summary Cards ──────────────────────────────────────────────
+// ─── Capability Level Calculator ────────────────────────────────
 
-function SummaryCard({
-  label,
-  value,
-  accent,
-  index,
-}: {
-  label: string;
-  value: number;
-  accent: string;
-  index: number;
-}) {
-  return (
-    <Card
-      data-ocid={`results.summary_card.${index}`}
-      className="border-border/60 stat-card-hover"
-    >
-      <CardContent className="py-5 px-5">
-        <p className={`text-3xl font-bold font-heading ${accent}`}>{value}</p>
-        <p className="text-xs text-muted-foreground font-body mt-1">{label}</p>
-      </CardContent>
-    </Card>
-  );
+function computeCapabilityLevel(
+  targetLevel: number,
+  paRatings: Record<string, Rating | null>,
+): number | null {
+  const get = (paId: string): Rating | null => paRatings[paId] ?? null;
+
+  if (targetLevel === 1) {
+    const pa11 = get("PA1.1");
+    if (pa11 === null) return null;
+    return pa11 === "L" || pa11 === "F" ? 1 : 0;
+  }
+
+  if (targetLevel === 2) {
+    const pa11 = get("PA1.1");
+    const pa21 = get("PA2.1");
+    const pa22 = get("PA2.2");
+    // If any of the PA2 ratings are not available, partial results are still ok
+    if (pa11 === null) return null;
+    if (
+      pa11 === "F" &&
+      (pa21 === "L" || pa21 === "F") &&
+      (pa22 === "L" || pa22 === "F")
+    )
+      return 2;
+    if (pa11 === "L" || pa11 === "F") return 1;
+    return 0;
+  }
+
+  if (targetLevel === 3) {
+    const pa11 = get("PA1.1");
+    const pa21 = get("PA2.1");
+    const pa22 = get("PA2.2");
+    const pa31 = get("PA3.1");
+    const pa32 = get("PA3.2");
+    if (pa11 === null) return null;
+    if (
+      pa11 === "F" &&
+      pa21 === "F" &&
+      pa22 === "F" &&
+      (pa31 === "L" || pa31 === "F") &&
+      (pa32 === "L" || pa32 === "F")
+    )
+      return 3;
+    if (
+      pa11 === "F" &&
+      (pa21 === "L" || pa21 === "F") &&
+      (pa22 === "L" || pa22 === "F")
+    )
+      return 2;
+    if (pa11 === "L" || pa11 === "F") return 1;
+    return 0;
+  }
+
+  return null;
 }
 
 // ─── Cross-Process Matrix Table ─────────────────────────────────
@@ -278,15 +301,15 @@ function ResultsMatrixTable({
     return Math.max(max, bpCount);
   }, 0);
 
-  // GP counts per PA
+  // GP counts per PA (IDs in data have no spaces: "PA2.1", "PA2.2", etc.)
   const pa21Count =
-    LEVEL2_ATTRIBUTES.find((pa) => pa.id === "PA 2.1")?.practices.length ?? 6;
+    LEVEL2_ATTRIBUTES.find((pa) => pa.id === "PA2.1")?.practices.length ?? 6;
   const pa22Count =
-    LEVEL2_ATTRIBUTES.find((pa) => pa.id === "PA 2.2")?.practices.length ?? 4;
+    LEVEL2_ATTRIBUTES.find((pa) => pa.id === "PA2.2")?.practices.length ?? 4;
   const pa31Count =
-    LEVEL3_ATTRIBUTES.find((pa) => pa.id === "PA 3.1")?.practices.length ?? 4;
+    LEVEL3_ATTRIBUTES.find((pa) => pa.id === "PA3.1")?.practices.length ?? 4;
   const pa32Count =
-    LEVEL3_ATTRIBUTES.find((pa) => pa.id === "PA 3.2")?.practices.length ?? 4;
+    LEVEL3_ATTRIBUTES.find((pa) => pa.id === "PA3.2")?.practices.length ?? 4;
 
   // Build rating lookup per process: { practiceId -> rating }
   const processRatingLookup: Record<string, Record<string, Rating | null>> = {};
@@ -297,18 +320,18 @@ function ResultsMatrixTable({
     }
   }
 
-  // PA 2.1 GPs
+  // PA 2.1 GPs (IDs in data have no spaces: "PA2.1", "PA2.2", etc.)
   const pa21GPs =
-    LEVEL2_ATTRIBUTES.find((pa) => pa.id === "PA 2.1")?.practices ?? [];
+    LEVEL2_ATTRIBUTES.find((pa) => pa.id === "PA2.1")?.practices ?? [];
   // PA 2.2 GPs
   const pa22GPs =
-    LEVEL2_ATTRIBUTES.find((pa) => pa.id === "PA 2.2")?.practices ?? [];
+    LEVEL2_ATTRIBUTES.find((pa) => pa.id === "PA2.2")?.practices ?? [];
   // PA 3.1 GPs
   const pa31GPs =
-    LEVEL3_ATTRIBUTES.find((pa) => pa.id === "PA 3.1")?.practices ?? [];
+    LEVEL3_ATTRIBUTES.find((pa) => pa.id === "PA3.1")?.practices ?? [];
   // PA 3.2 GPs
   const pa32GPs =
-    LEVEL3_ATTRIBUTES.find((pa) => pa.id === "PA 3.2")?.practices ?? [];
+    LEVEL3_ATTRIBUTES.find((pa) => pa.id === "PA3.2")?.practices ?? [];
 
   return (
     <div className="overflow-x-auto rounded-lg border border-border/60">
@@ -322,35 +345,83 @@ function ResultsMatrixTable({
             >
               Process
             </th>
+            {/* PA 1.1: overall rating col + BP cols */}
+            <th
+              className="px-2 py-2 text-center font-heading font-semibold text-foreground border border-border/40 bg-slate-200 min-w-[40px]"
+              rowSpan={2}
+              title="PA 1.1 overall rating"
+            >
+              PA 1.1
+            </th>
             <th
               className="px-2 py-2 text-center font-heading font-semibold text-foreground border border-border/40 bg-slate-100"
               colSpan={maxBPs}
             >
-              PA 1.1 — Base Practices
+              Base Practices
+            </th>
+            {/* PA 2.1: overall rating col + GP cols */}
+            <th
+              className="px-2 py-2 text-center font-heading font-semibold text-foreground border border-border/40 bg-blue-200 min-w-[40px]"
+              rowSpan={2}
+              title="PA 2.1 overall rating"
+            >
+              PA 2.1
             </th>
             <th
               className="px-2 py-2 text-center font-heading font-semibold text-foreground border border-border/40 bg-blue-50"
               colSpan={pa21Count}
             >
-              PA 2.1
+              GPs
+            </th>
+            {/* PA 2.2 */}
+            <th
+              className="px-2 py-2 text-center font-heading font-semibold text-foreground border border-border/40 bg-indigo-200 min-w-[40px]"
+              rowSpan={2}
+              title="PA 2.2 overall rating"
+            >
+              PA 2.2
             </th>
             <th
               className="px-2 py-2 text-center font-heading font-semibold text-foreground border border-border/40 bg-indigo-50"
               colSpan={pa22Count}
             >
-              PA 2.2
+              GPs
+            </th>
+            {/* PA 3.1 */}
+            <th
+              className="px-2 py-2 text-center font-heading font-semibold text-foreground border border-border/40 bg-violet-200 min-w-[40px]"
+              rowSpan={2}
+              title="PA 3.1 overall rating"
+            >
+              PA 3.1
             </th>
             <th
               className="px-2 py-2 text-center font-heading font-semibold text-foreground border border-border/40 bg-violet-50"
               colSpan={pa31Count}
             >
-              PA 3.1
+              GPs
+            </th>
+            {/* PA 3.2 */}
+            <th
+              className="px-2 py-2 text-center font-heading font-semibold text-foreground border border-border/40 bg-purple-200 min-w-[40px]"
+              rowSpan={2}
+              title="PA 3.2 overall rating"
+            >
+              PA 3.2
             </th>
             <th
               className="px-2 py-2 text-center font-heading font-semibold text-foreground border border-border/40 bg-purple-50"
               colSpan={pa32Count}
             >
-              PA 3.2
+              GPs
+            </th>
+            {/* Capability Level */}
+            <th
+              className="px-2 py-2 text-center font-heading font-semibold text-foreground border border-border/40 bg-amber-200 min-w-[44px]"
+              rowSpan={2}
+              title="Capability Level"
+            >
+              CL
             </th>
           </tr>
           {/* Sub-header row */}
@@ -408,6 +479,43 @@ function ResultsMatrixTable({
             const targetLevel = proc.targetLevel;
             const rowBg = rowIdx % 2 === 0 ? "bg-white" : "bg-muted/10";
 
+            // Helper to render a PA overall rating cell
+            function PaOverallCell({
+              paId,
+              minLevel,
+            }: { paId: string; minLevel: number }) {
+              if (targetLevel < minLevel) {
+                return (
+                  <td className="px-1 py-1.5 text-center border border-border/30 bg-muted/20 min-w-[40px]">
+                    <span className="text-muted-foreground/40 text-xs">—</span>
+                  </td>
+                );
+              }
+              const rating = proc.paRatings[paId] ?? null;
+              if (!rating) {
+                return (
+                  <td className="px-1 py-1.5 text-center border border-border/30 bg-muted/10 min-w-[40px]">
+                    <span className="text-muted-foreground/50 text-xs">—</span>
+                  </td>
+                );
+              }
+              const color = ASPICE_RATING_COLORS[rating];
+              return (
+                <td className="px-1 py-1.5 text-center border border-border/30 min-w-[40px]">
+                  <span
+                    className="inline-flex items-center justify-center w-7 h-7 rounded text-xs font-bold border-2"
+                    style={{
+                      backgroundColor: color.bg,
+                      color: color.text,
+                      borderColor: color.bg,
+                    }}
+                  >
+                    {rating}
+                  </span>
+                </td>
+              );
+            }
+
             return (
               <tr
                 key={proc.id}
@@ -422,6 +530,9 @@ function ResultsMatrixTable({
                     </span>
                   </div>
                 </td>
+
+                {/* PA 1.1 overall rating */}
+                <PaOverallCell paId="PA1.1" minLevel={1} />
 
                 {/* PA 1.1 — BPs */}
                 {Array.from({ length: maxBPs }, (_, i) => {
@@ -447,6 +558,9 @@ function ResultsMatrixTable({
                   );
                 })}
 
+                {/* PA 2.1 overall rating */}
+                <PaOverallCell paId="PA2.1" minLevel={2} />
+
                 {/* PA 2.1 GPs */}
                 {pa21GPs.map((gp) => (
                   <MatrixRatingCell
@@ -457,6 +571,9 @@ function ResultsMatrixTable({
                     greyed={targetLevel < 2}
                   />
                 ))}
+
+                {/* PA 2.2 overall rating */}
+                <PaOverallCell paId="PA2.2" minLevel={2} />
 
                 {/* PA 2.2 GPs */}
                 {pa22GPs.map((gp) => (
@@ -469,6 +586,9 @@ function ResultsMatrixTable({
                   />
                 ))}
 
+                {/* PA 3.1 overall rating */}
+                <PaOverallCell paId="PA3.1" minLevel={3} />
+
                 {/* PA 3.1 GPs */}
                 {pa31GPs.map((gp) => (
                   <MatrixRatingCell
@@ -480,6 +600,9 @@ function ResultsMatrixTable({
                   />
                 ))}
 
+                {/* PA 3.2 overall rating */}
+                <PaOverallCell paId="PA3.2" minLevel={3} />
+
                 {/* PA 3.2 GPs */}
                 {pa32GPs.map((gp) => (
                   <MatrixRatingCell
@@ -490,6 +613,30 @@ function ResultsMatrixTable({
                     greyed={targetLevel < 3}
                   />
                 ))}
+
+                {/* Capability Level */}
+                {(() => {
+                  const cl = computeCapabilityLevel(
+                    targetLevel,
+                    proc.paRatings,
+                  );
+                  if (cl === null) {
+                    return (
+                      <td className="px-1 py-1.5 text-center border border-border/30 bg-amber-50/40 min-w-[44px]">
+                        <span className="text-muted-foreground/50 text-xs">
+                          —
+                        </span>
+                      </td>
+                    );
+                  }
+                  return (
+                    <td className="px-1 py-1.5 text-center border border-border/30 bg-amber-50/40 min-w-[44px]">
+                      <span className="inline-flex items-center justify-center w-7 h-7 rounded text-xs font-bold bg-amber-400 text-white border-2 border-amber-500">
+                        {cl}
+                      </span>
+                    </td>
+                  );
+                })()}
               </tr>
             );
           })}
@@ -499,173 +646,19 @@ function ResultsMatrixTable({
   );
 }
 
-// ─── Stacked Bar Chart ──────────────────────────────────────────
-
-function StackedBarChartView({
-  processes,
-}: {
-  processes: ProcessResult[];
-}) {
-  const data = processes.map((p) => ({
-    process: p.id,
-    N: p.rollup.N,
-    P: p.rollup.P,
-    L: p.rollup.L,
-    F: p.rollup.F,
-  }));
-
-  return (
-    <Card data-ocid="results.bar_chart" className="border-border/60">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-base font-heading">
-          Rating Distribution per Process
-        </CardTitle>
-        <p className="text-xs text-muted-foreground font-body">
-          Count of N / P / L / F ratings stacked per process area
-        </p>
-      </CardHeader>
-      <CardContent className="pt-2">
-        <ResponsiveContainer width="100%" height={320}>
-          <BarChart
-            data={data}
-            margin={{ top: 8, right: 20, left: 0, bottom: 8 }}
-          >
-            <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-            <XAxis
-              dataKey="process"
-              tick={{ fontSize: 11, fontFamily: "monospace" }}
-              tickLine={false}
-              axisLine={{ stroke: "hsl(var(--border))" }}
-            />
-            <YAxis
-              tick={{ fontSize: 11 }}
-              tickLine={false}
-              axisLine={false}
-              allowDecimals={false}
-            />
-            <Tooltip
-              contentStyle={{
-                background: "hsl(var(--card))",
-                border: "1px solid hsl(var(--border))",
-                borderRadius: "8px",
-                fontSize: 12,
-              }}
-            />
-            <Legend
-              wrapperStyle={{ fontSize: 12, paddingTop: 8 }}
-              iconType="square"
-            />
-            <Bar
-              dataKey="N"
-              name="Not Satisfied (N)"
-              fill={RATING_FILL.N}
-              stackId="a"
-              radius={[0, 0, 0, 0]}
-            />
-            <Bar
-              dataKey="P"
-              name="Partially Satisfied (P)"
-              fill={RATING_FILL.P}
-              stackId="a"
-            />
-            <Bar
-              dataKey="L"
-              name="Largely Satisfied (L)"
-              fill={RATING_FILL.L}
-              stackId="a"
-            />
-            <Bar
-              dataKey="F"
-              name="Fully Satisfied (F)"
-              fill={RATING_FILL.F}
-              stackId="a"
-              radius={[3, 3, 0, 0]}
-            />
-          </BarChart>
-        </ResponsiveContainer>
-      </CardContent>
-    </Card>
-  );
-}
-
-// ─── Radar Chart ────────────────────────────────────────────────
-
-function RadarChartView({ processes }: { processes: ProcessResult[] }) {
-  const data = processes.map((p) => ({
-    process: p.id,
-    fullySatisfied:
-      p.rollup.total > 0 ? Math.round((p.rollup.F / p.rollup.total) * 100) : 0,
-  }));
-
-  return (
-    <Card data-ocid="results.radar_chart" className="border-border/60">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-base font-heading">
-          Maturity Overview — Fully Satisfied %
-        </CardTitle>
-        <p className="text-xs text-muted-foreground font-body">
-          % of practices rated "F" (Fully Satisfied) per process
-        </p>
-      </CardHeader>
-      <CardContent className="pt-2">
-        <ResponsiveContainer width="100%" height={320}>
-          <RadarChart
-            data={data}
-            margin={{ top: 20, right: 30, bottom: 20, left: 30 }}
-          >
-            <PolarGrid stroke="hsl(var(--border))" />
-            <PolarAngleAxis
-              dataKey="process"
-              tick={{
-                fontSize: 11,
-                fontFamily: "monospace",
-                fill: "hsl(var(--foreground))",
-              }}
-            />
-            <Radar
-              name="Fully Satisfied %"
-              dataKey="fullySatisfied"
-              stroke={RATING_FILL.F}
-              fill={RATING_FILL.F}
-              fillOpacity={0.25}
-              strokeWidth={2}
-            />
-            <Tooltip
-              contentStyle={{
-                background: "hsl(var(--card))",
-                border: "1px solid hsl(var(--border))",
-                borderRadius: "8px",
-                fontSize: 12,
-              }}
-              formatter={(value: number) => [`${value}%`, "Fully Satisfied"]}
-            />
-          </RadarChart>
-        </ResponsiveContainer>
-      </CardContent>
-    </Card>
-  );
-}
-
 // ─── Main Component ─────────────────────────────────────────────
 
 export function ViewResults() {
   const { currentAssessmentId, navigateTo } = useAppContext();
-  const [selectedAssessmentId, setSelectedAssessmentId] = useState<
-    bigint | null
-  >(currentAssessmentId);
-
-  const { data: assessments, isLoading: assessmentsLoading } =
-    useGetAllAssessments();
 
   const { data: config, isLoading: configLoading } =
-    useGetProcessGroupConfig(selectedAssessmentId);
+    useGetProcessGroupConfig(currentAssessmentId);
 
   const { data: ratings, isLoading: ratingsLoading } =
-    useGetAllPracticeRatingsForAssessment(selectedAssessmentId);
+    useGetAllPracticeRatingsForAssessment(currentAssessmentId);
 
   const isLoading =
-    assessmentsLoading ||
-    (selectedAssessmentId != null && (configLoading || ratingsLoading));
+    currentAssessmentId != null && (configLoading || ratingsLoading);
 
   // Build process results
   const processResults: ProcessResult[] =
@@ -673,78 +666,25 @@ export function ViewResults() {
       ? buildProcessResults(config.enabledGroups, config.processLevels, ratings)
       : [];
 
-  // Summary counts
-  const allRatings = ratings ?? [];
-  const ratedPractices = allRatings.filter(
-    (r) => r.rating && ["N", "P", "L", "F"].includes(r.rating),
-  );
-  const totalRated = ratedPractices.length;
-  const countN = ratedPractices.filter((r) => r.rating === "N").length;
-  const countP = ratedPractices.filter((r) => r.rating === "P").length;
-  const countL = ratedPractices.filter((r) => r.rating === "L").length;
-  const countF = ratedPractices.filter((r) => r.rating === "F").length;
-
-  const hasRatings = totalRated > 0;
+  const hasRatings =
+    (ratings?.filter((r) => r.rating && ["N", "P", "L", "F"].includes(r.rating))
+      .length ?? 0) > 0;
 
   return (
     <div className="page-enter space-y-6">
       {/* Page Header */}
       <div>
         <h1 className="text-2xl font-bold font-heading text-foreground">
-          View Results
+          Results
         </h1>
         <p className="text-muted-foreground text-sm mt-1 font-body">
-          Assessment results summary with practice ratings, process rollups, and
-          visualizations
+          Assessment results summary with practice ratings across all process
+          areas
         </p>
       </div>
 
-      {/* Assessment Selector */}
-      <Card className="border-border/60">
-        <CardContent className="py-4 px-5">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-            <label
-              htmlFor="assessment-select"
-              className="text-sm font-semibold font-heading text-foreground shrink-0"
-            >
-              Assessment:
-            </label>
-            <Select
-              value={selectedAssessmentId?.toString() ?? ""}
-              onValueChange={(val) => {
-                setSelectedAssessmentId(val ? BigInt(val) : null);
-              }}
-            >
-              <SelectTrigger
-                id="assessment-select"
-                data-ocid="results.assessment_select"
-                className="max-w-sm"
-              >
-                <SelectValue placeholder="Select an assessment…" />
-              </SelectTrigger>
-              <SelectContent>
-                {assessments?.map((a) => (
-                  <SelectItem key={a.id.toString()} value={a.id.toString()}>
-                    {a.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {selectedAssessmentId && assessments && (
-              <Badge
-                variant="outline"
-                className="text-xs font-body shrink-0 self-start sm:self-auto"
-              >
-                {assessments.find((a) => a.id === selectedAssessmentId)
-                  ?.status ?? "—"}
-              </Badge>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
       {/* No assessment selected */}
-      {!selectedAssessmentId && (
+      {!currentAssessmentId && (
         <Card
           data-ocid="results.empty_state"
           className="border-dashed border-border/60"
@@ -755,8 +695,8 @@ export function ViewResults() {
               No assessment selected
             </p>
             <p className="text-muted-foreground/60 font-body text-xs text-center max-w-xs">
-              Select an assessment from the dropdown above to view its results,
-              or go to the{" "}
+              Select an assessment from the dropdown in the top-right corner, or
+              go to the{" "}
               <button
                 type="button"
                 className="text-accent hover:underline"
@@ -771,55 +711,16 @@ export function ViewResults() {
       )}
 
       {/* Loading skeleton */}
-      {selectedAssessmentId && isLoading && (
+      {currentAssessmentId && isLoading && (
         <div className="space-y-4">
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-            {[1, 2, 3, 4, 5].map((i) => (
-              <Skeleton key={i} className="h-20 rounded-xl" />
-            ))}
-          </div>
           <Skeleton className="h-64 rounded-xl" />
           <Skeleton className="h-40 rounded-xl" />
         </div>
       )}
 
       {/* Results content */}
-      {selectedAssessmentId && !isLoading && (
+      {currentAssessmentId && !isLoading && (
         <>
-          {/* Summary Cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-            <SummaryCard
-              label="Total Rated"
-              value={totalRated}
-              accent="text-foreground"
-              index={1}
-            />
-            <SummaryCard
-              label="Not Achieved (N)"
-              value={countN}
-              accent="text-red-800"
-              index={2}
-            />
-            <SummaryCard
-              label="Partially Achieved (P)"
-              value={countP}
-              accent="text-yellow-600"
-              index={3}
-            />
-            <SummaryCard
-              label="Largely Achieved (L)"
-              value={countL}
-              accent="text-lime-600"
-              index={4}
-            />
-            <SummaryCard
-              label="Fully Achieved (F)"
-              value={countF}
-              accent="text-green-600"
-              index={5}
-            />
-          </div>
-
           {/* No ratings yet */}
           {!hasRatings && (
             <Card
@@ -844,14 +745,6 @@ export function ViewResults() {
                 </p>
               </CardContent>
             </Card>
-          )}
-
-          {/* Charts */}
-          {hasRatings && processResults.length > 0 && (
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-              <StackedBarChartView processes={processResults} />
-              <RadarChartView processes={processResults} />
-            </div>
           )}
 
           {/* Results Summary Matrix */}

@@ -1,4 +1,3 @@
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -32,29 +31,12 @@ interface CoAssessorEntry {
   id: string;
 }
 
-function StatusBadge({ status }: { status: string }) {
-  const styles: Record<string, string> = {
-    Active: "bg-blue-50 text-blue-700 border-blue-200",
-    Completed: "bg-emerald-50 text-emerald-700 border-emerald-200",
-    Draft: "bg-gray-50 text-gray-600 border-gray-200",
-  };
-  return (
-    <Badge
-      variant="outline"
-      className={`font-body text-xs ${styles[status] ?? "bg-gray-50 text-gray-600 border-gray-200"}`}
-    >
-      {status}
-    </Badge>
-  );
-}
-
 const defaultFormData = {
   startDate: "",
   endDate: "",
   sponsor: "",
   leadAssessor: "",
   leadAssessorId: "",
-  intacsId: "",
   assessedParty: "",
   assessedSite: "",
   unitDepartment: "",
@@ -96,8 +78,7 @@ function FormSection({
 }
 
 export function AssessmentInfo() {
-  const { currentAssessmentId, currentAssessmentTitle, navigateTo } =
-    useAppContext();
+  const { currentAssessmentId, navigateTo } = useAppContext();
   const { data: assessments } = useGetAllAssessments();
   const { data: infoData, isLoading } =
     useGetAssessmentInfoData(currentAssessmentId);
@@ -139,7 +120,6 @@ export function AssessmentInfo() {
         sponsor: infoData.sponsor || "",
         leadAssessor: infoData.leadAssessor || "",
         leadAssessorId,
-        intacsId: infoData.intacsId || "",
         assessedParty: infoData.assessedParty || "",
         assessedSite: infoData.assessedSite || "",
         unitDepartment: infoData.unitDepartment || "",
@@ -198,7 +178,7 @@ export function AssessmentInfo() {
       coAssessor: JSON.stringify(
         coAssessors.map(({ name, id }) => ({ name, id })),
       ),
-      intacsId: formData.intacsId,
+      intacsId: "",
       // Store leadAssessorId in assessorBody field (hidden from UI)
       assessorBody: formData.leadAssessorId,
       assessedParty: formData.assessedParty,
@@ -221,7 +201,7 @@ export function AssessmentInfo() {
     };
   }
 
-  async function handleSaveDraft() {
+  async function handleSaveAndContinue() {
     if (!currentAssessmentId) return;
     try {
       await Promise.all([
@@ -231,24 +211,7 @@ export function AssessmentInfo() {
           step: "assessment-info",
         }),
       ]);
-      toast.success("Draft saved successfully");
-    } catch {
-      toast.error("Failed to save draft");
-    }
-  }
-
-  async function handleSaveAndContinue() {
-    if (!currentAssessmentId) return;
-    try {
-      await Promise.all([
-        saveMutation.mutateAsync(buildPayload()),
-        updateStepMutation.mutateAsync({
-          id: currentAssessmentId,
-          step: "target-profile",
-        }),
-      ]);
-      toast.success("Saved — navigating to Define Target Profile");
-      navigateTo("target-profile");
+      toast.success("Saved successfully");
     } catch {
       toast.error("Failed to save");
     }
@@ -283,16 +246,13 @@ export function AssessmentInfo() {
   return (
     <div className="page-enter space-y-6">
       {/* Page Header */}
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="text-xs text-muted-foreground font-body mb-1 uppercase tracking-wide">
-            Current Assessment
-          </p>
-          <h1 className="text-2xl font-bold font-heading text-foreground">
-            {currentAssessmentTitle}
-          </h1>
-        </div>
-        {currentAssessment && <StatusBadge status={currentAssessment.status} />}
+      <div>
+        <h1 className="text-2xl font-bold font-heading text-foreground">
+          Assessment Info
+        </h1>
+        <p className="text-muted-foreground text-sm mt-1 font-body">
+          Configure the details for the current assessment
+        </p>
       </div>
 
       {isCompleted && (
@@ -366,17 +326,7 @@ export function AssessmentInfo() {
                     data-ocid="assessment_info.sponsor_input"
                   />
                 </div>
-                <div className="space-y-2">
-                  <Label className="font-body font-medium">INTACS ID</Label>
-                  <Input
-                    value={formData.intacsId}
-                    onChange={(e) => update("intacsId", e.target.value)}
-                    placeholder="Enter INTACS ID"
-                    className="font-body"
-                    disabled={isCompleted}
-                    data-ocid="assessment_info.intacs_id_input"
-                  />
-                </div>
+
                 <div className="space-y-2">
                   <Label className="font-body font-medium">Lead Assessor</Label>
                   <Input
@@ -773,22 +723,13 @@ export function AssessmentInfo() {
           {!isCompleted && (
             <div className="flex items-center gap-3 pt-2 pb-6">
               <Button
-                variant="outline"
-                onClick={handleSaveDraft}
-                disabled={isSaving}
-                data-ocid="assessment_info.save_draft_button"
-              >
-                {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Save Draft
-              </Button>
-              <Button
                 onClick={handleSaveAndContinue}
                 disabled={isSaving}
                 className="spice-gradient text-white border-0"
-                data-ocid="assessment_info.save_continue_button"
+                data-ocid="assessment_info.save_button"
               >
                 {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Save and Continue →
+                Save
               </Button>
             </div>
           )}

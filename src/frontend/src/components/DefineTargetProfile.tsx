@@ -1,4 +1,3 @@
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -12,7 +11,7 @@ import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { useAppContext } from "@/context/AppContext";
-import { DEFAULT_ENABLED_GROUPS, PROCESS_GROUPS } from "@/data/aspiceData";
+import { PROCESS_GROUPS } from "@/data/aspiceData";
 import {
   useGetAllAssessments,
   useGetProcessGroupConfig,
@@ -23,36 +22,17 @@ import { AlertCircle, LayoutDashboard, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
-function StatusBadge({ status }: { status: string }) {
-  const styles: Record<string, string> = {
-    Active: "bg-blue-50 text-blue-700 border-blue-200",
-    Completed: "bg-emerald-50 text-emerald-700 border-emerald-200",
-    Draft: "bg-gray-50 text-gray-600 border-gray-200",
-  };
-  return (
-    <Badge
-      variant="outline"
-      className={`font-body text-xs ${styles[status] ?? "bg-gray-50 text-gray-600 border-gray-200"}`}
-    >
-      {status}
-    </Badge>
-  );
-}
-
 type Level = "1" | "2" | "3" | "NA";
 
 export function DefineTargetProfile() {
-  const { currentAssessmentId, currentAssessmentTitle, navigateTo } =
-    useAppContext();
+  const { currentAssessmentId, navigateTo } = useAppContext();
   const { data: assessments } = useGetAllAssessments();
   const { data: config, isLoading } =
     useGetProcessGroupConfig(currentAssessmentId);
   const saveMutation = useSaveProcessGroupConfig();
   const updateStepMutation = useUpdateAssessmentStep();
 
-  const [enabledGroups, setEnabledGroups] = useState<Set<string>>(
-    new Set(DEFAULT_ENABLED_GROUPS),
-  );
+  const [enabledGroups, setEnabledGroups] = useState<Set<string>>(new Set());
   const [processLevels, setProcessLevels] = useState<Record<string, Level>>({});
 
   const currentAssessment = assessments?.find(
@@ -78,7 +58,7 @@ export function DefineTargetProfile() {
         const groups = JSON.parse(config.enabledGroups) as string[];
         setEnabledGroups(new Set(groups));
       } catch {
-        setEnabledGroups(new Set(DEFAULT_ENABLED_GROUPS));
+        setEnabledGroups(new Set());
       }
       try {
         const levels = JSON.parse(config.processLevels) as Record<
@@ -130,28 +110,10 @@ export function DefineTargetProfile() {
     });
   }
 
-  async function handleSaveDraft() {
+  async function handleSave() {
     try {
       await save();
-      toast.success("Draft saved successfully");
-    } catch {
-      toast.error("Failed to save draft");
-    }
-  }
-
-  async function handleSaveAndContinue() {
-    if (enabledGroups.size === 0) {
-      toast.error("Please enable at least one process group");
-      return;
-    }
-    try {
-      await save();
-      await updateStepMutation.mutateAsync({
-        id: currentAssessmentId!,
-        step: "planning",
-      });
-      toast.success("Saved — navigating to Assessment Planning");
-      navigateTo("planning");
+      toast.success("Saved successfully");
     } catch {
       toast.error("Failed to save");
     }
@@ -185,19 +147,13 @@ export function DefineTargetProfile() {
   return (
     <div className="page-enter space-y-6">
       {/* Page Header */}
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="text-xs text-muted-foreground font-body mb-1 uppercase tracking-wide">
-            Current Assessment
-          </p>
-          <h1 className="text-2xl font-bold font-heading text-foreground">
-            {currentAssessmentTitle}
-          </h1>
-          <p className="text-muted-foreground text-sm mt-1 font-body">
-            Define Target Profile
-          </p>
-        </div>
-        {currentAssessment && <StatusBadge status={currentAssessment.status} />}
+      <div>
+        <h1 className="text-2xl font-bold font-heading text-foreground">
+          Scope
+        </h1>
+        <p className="text-muted-foreground text-sm mt-1 font-body">
+          Enable process groups and set target capability levels
+        </p>
       </div>
 
       {isCompleted && (
@@ -331,22 +287,13 @@ export function DefineTargetProfile() {
           {!isCompleted && (
             <div className="flex items-center gap-3 pt-2 pb-6">
               <Button
-                variant="outline"
-                onClick={handleSaveDraft}
-                disabled={isSaving}
-                data-ocid="target_profile.save_draft_button"
-              >
-                {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Save Draft
-              </Button>
-              <Button
-                onClick={handleSaveAndContinue}
+                onClick={handleSave}
                 disabled={isSaving}
                 className="spice-gradient text-white border-0"
-                data-ocid="target_profile.save_continue_button"
+                data-ocid="target_profile.save_button"
               >
                 {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Save &amp; Continue →
+                Save
               </Button>
             </div>
           )}

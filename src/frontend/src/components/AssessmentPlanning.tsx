@@ -1,8 +1,5 @@
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -23,51 +20,24 @@ import {
 } from "@/hooks/useQueries";
 import {
   AlertCircle,
-  ChevronDown,
-  ChevronUp,
-  Copy,
   LayoutDashboard,
   Loader2,
   Plus,
-  Save,
   Trash2,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import type { AssessmentDay } from "../backend.d";
 
-interface SessionData {
-  sid: string;
-  sessionName: string;
-  processId: string;
-  notes: string;
-}
-
-interface DayData {
+interface RowData {
+  rid: string;
   backendId: bigint | null;
-  dayNumber: number;
   date: string;
-  timeFrom: string;
-  timeTo: string;
-  sessions: SessionData[];
-  collapsed: boolean;
-  saving: boolean;
-}
-
-function StatusBadge({ status }: { status: string }) {
-  const styles: Record<string, string> = {
-    Active: "bg-blue-50 text-blue-700 border-blue-200",
-    Completed: "bg-emerald-50 text-emerald-700 border-emerald-200",
-    Draft: "bg-gray-50 text-gray-600 border-gray-200",
-  };
-  return (
-    <Badge
-      variant="outline"
-      className={`font-body text-xs ${styles[status] ?? "bg-gray-50 text-gray-600 border-gray-200"}`}
-    >
-      {status}
-    </Badge>
-  );
+  processId: string;
+  timeStart: string;
+  timeEnd: string;
+  duration: string;
+  attendees: string;
 }
 
 function buildEnabledProcessList(
@@ -90,9 +60,23 @@ function buildEnabledProcessList(
   }
 }
 
+function calcDuration(start: string, end: string): string {
+  if (!start || !end) return "";
+  const [sh, sm] = start.split(":").map(Number);
+  const [eh, em] = end.split(":").map(Number);
+  const totalStart = sh * 60 + sm;
+  const totalEnd = eh * 60 + em;
+  const diff = totalEnd - totalStart;
+  if (diff <= 0) return "";
+  const h = Math.floor(diff / 60);
+  const m = diff % 60;
+  if (h === 0) return `${m}m`;
+  if (m === 0) return `${h}h`;
+  return `${h}h ${m}m`;
+}
+
 export function AssessmentPlanning() {
-  const { currentAssessmentId, currentAssessmentTitle, navigateTo } =
-    useAppContext();
+  const { currentAssessmentId, navigateTo } = useAppContext();
   const { data: assessments } = useGetAllAssessments();
   const { data: savedDays, isLoading: loadingDays } =
     useGetAssessmentDays(currentAssessmentId);
@@ -102,8 +86,8 @@ export function AssessmentPlanning() {
   const deleteDayMutation = useDeleteAssessmentDay();
   const updateStepMutation = useUpdateAssessmentStep();
 
-  const [days, setDays] = useState<DayData[]>([]);
-  const [saveAllPending, setSaveAllPending] = useState(false);
+  const [rows, setRows] = useState<RowData[]>([]);
+  const [savePending, setSavePending] = useState(false);
 
   const currentAssessment = assessments?.find(
     (a) => a.id === currentAssessmentId,
@@ -111,196 +95,146 @@ export function AssessmentPlanning() {
   const isCompleted = currentAssessment?.status === "Completed";
   const enabledProcesses = buildEnabledProcessList(processConfig ?? null);
 
-  // Load saved days into local state
+  // Load saved days into flat rows
   useEffect(() => {
     if (savedDays && savedDays.length > 0) {
-      const loaded: DayData[] = savedDays.map((d: AssessmentDay) => {
-        let sessions: SessionData[] = [];
+      const loaded: RowData[] = [];
+      for (const d of savedDays as AssessmentDay[]) {
         try {
           const raw = JSON.parse(d.sessions) as Array<{
+            rid?: string;
             processId: string;
-            notes: string;
-            sid?: string;
-            sessionName?: string;
+            attendees?: string;
           }>;
-          sessions = raw.map((s, i) => ({
-            sid: s.sid ?? `loaded-${i}`,
-            sessionName: s.sessionName ?? "",
-            processId: s.processId,
-            notes: s.notes,
-          }));
+          for (const s of raw) {
+            loaded.push({
+              rid: s.rid ?? `loaded-${d.id}-${Math.random()}`,
+              backendId: d.id,
+              date: d.date,
+              processId: s.processId,
+              timeStart: d.timeFrom,
+              timeEnd: d.timeTo,
+              duration: calcDuration(d.timeFrom, d.timeTo),
+              attendees: s.attendees ?? "",
+            });
+          }
         } catch {
-          sessions = [];
+          loaded.push({
+            rid: `loaded-${d.id}`,
+            backendId: d.id,
+            date: d.date,
+            processId: "",
+            timeStart: d.timeFrom,
+            timeEnd: d.timeTo,
+            duration: calcDuration(d.timeFrom, d.timeTo),
+            attendees: "",
+          });
         }
-        return {
-          backendId: d.id,
-          dayNumber: Number(d.dayNumber),
-          date: d.date,
-          timeFrom: d.timeFrom,
-          timeTo: d.timeTo,
-          sessions,
-          collapsed: false,
-          saving: false,
-        };
-      });
-      setDays(loaded);
+      }
+      if (loaded.length > 0) setRows(loaded);
     }
   }, [savedDays]);
 
-  function addDay() {
-    const maxNum = days.reduce((max, d) => Math.max(max, d.dayNumber), 0);
-    setDays((prev) => [
+  function addRow() {
+    setRows((prev) => [
       ...prev,
       {
+        rid: `${Date.now()}-${Math.random()}`,
         backendId: null,
-        dayNumber: maxNum + 1,
         date: "",
-        timeFrom: "",
-        timeTo: "",
-        sessions: [],
-        collapsed: false,
-        saving: false,
+        processId: enabledProcesses[0] ?? "",
+        timeStart: "",
+        timeEnd: "",
+        duration: "",
+        attendees: "",
       },
     ]);
   }
 
-  function updateDay(index: number, patch: Partial<DayData>) {
-    setDays((prev) =>
-      prev.map((d, i) => (i === index ? { ...d, ...patch } : d)),
+  function updateRow(index: number, patch: Partial<RowData>) {
+    setRows((prev) =>
+      prev.map((r, i) => {
+        if (i !== index) return r;
+        const updated = { ...r, ...patch };
+        // auto-calc duration when time changes
+        if ("timeStart" in patch || "timeEnd" in patch) {
+          updated.duration = calcDuration(updated.timeStart, updated.timeEnd);
+        }
+        return updated;
+      }),
     );
   }
 
-  function removeDay(index: number) {
-    const day = days[index];
-    if (day.backendId && currentAssessmentId) {
+  function removeRow(index: number) {
+    const row = rows[index];
+    if (row.backendId && currentAssessmentId) {
       deleteDayMutation.mutate({
-        id: day.backendId,
+        id: row.backendId,
         assessmentId: currentAssessmentId,
       });
     }
-    setDays((prev) => prev.filter((_, i) => i !== index));
+    setRows((prev) => prev.filter((_, i) => i !== index));
   }
 
-  function copyDay(index: number) {
-    const day = days[index];
-    const maxNum = days.reduce((max, d) => Math.max(max, d.dayNumber), 0);
-    setDays((prev) => [
-      ...prev,
-      {
-        ...day,
-        backendId: null,
-        dayNumber: maxNum + 1,
-        collapsed: false,
-      },
-    ]);
-  }
-
-  function addSession(dayIndex: number) {
-    setDays((prev) =>
-      prev.map((d, i) =>
-        i === dayIndex
-          ? {
-              ...d,
-              sessions: [
-                ...d.sessions,
-                {
-                  sid: `${Date.now()}-${Math.random()}`,
-                  sessionName: "",
-                  processId: enabledProcesses[0] ?? "",
-                  notes: "",
-                },
-              ],
-            }
-          : d,
-      ),
-    );
-  }
-
-  function updateSession(
-    dayIndex: number,
-    sessionIndex: number,
-    patch: Partial<SessionData>,
-  ) {
-    setDays((prev) =>
-      prev.map((d, i) =>
-        i === dayIndex
-          ? {
-              ...d,
-              sessions: d.sessions.map((s, si) =>
-                si === sessionIndex ? { ...s, ...patch } : s,
-              ),
-            }
-          : d,
-      ),
-    );
-  }
-
-  function removeSession(dayIndex: number, sessionIndex: number) {
-    setDays((prev) =>
-      prev.map((d, i) =>
-        i === dayIndex
-          ? {
-              ...d,
-              sessions: d.sessions.filter((_, si) => si !== sessionIndex),
-            }
-          : d,
-      ),
-    );
-  }
-
-  async function saveDay(index: number) {
+  async function handleSave() {
     if (!currentAssessmentId) return;
-    const day = days[index];
-    updateDay(index, { saving: true });
+    setSavePending(true);
     try {
-      // Delete old record if exists
-      if (day.backendId) {
-        await deleteDayMutation.mutateAsync({
-          id: day.backendId,
-          assessmentId: currentAssessmentId,
-        });
+      // Delete all existing backend records first
+      const existingIds = new Set<bigint>();
+      for (const row of rows) {
+        if (row.backendId) existingIds.add(row.backendId);
       }
-      const newId = await saveDayMutation.mutateAsync({
-        assessmentId: currentAssessmentId,
-        dayNumber: BigInt(day.dayNumber),
-        date: day.date,
-        timeFrom: day.timeFrom,
-        timeTo: day.timeTo,
-        sessions: JSON.stringify(day.sessions),
-      });
-      updateDay(index, { saving: false, backendId: newId });
-      toast.success(`Day ${day.dayNumber} saved`);
-    } catch {
-      updateDay(index, { saving: false });
-      toast.error(`Failed to save Day ${day.dayNumber}`);
-    }
-  }
+      await Promise.all(
+        Array.from(existingIds).map((id) =>
+          deleteDayMutation.mutateAsync({
+            id,
+            assessmentId: currentAssessmentId,
+          }),
+        ),
+      );
 
-  async function handleSaveAll() {
-    if (!currentAssessmentId) return;
-    setSaveAllPending(true);
-    try {
-      await Promise.all(days.map((_, i) => saveDay(i)));
-      toast.success("All days saved");
-    } catch {
-      toast.error("Some days failed to save");
-    } finally {
-      setSaveAllPending(false);
-    }
-  }
+      // Save each row as its own day record
+      const savedIds = new Map<number, bigint>();
+      await Promise.all(
+        rows.map(async (row, i) => {
+          const sessions = JSON.stringify([
+            {
+              rid: row.rid,
+              processId: row.processId,
+              attendees: row.attendees,
+            },
+          ]);
+          const newId = await saveDayMutation.mutateAsync({
+            assessmentId: currentAssessmentId,
+            dayNumber: BigInt(i + 1),
+            date: row.date,
+            timeFrom: row.timeStart,
+            timeTo: row.timeEnd,
+            sessions,
+          });
+          savedIds.set(i, newId);
+        }),
+      );
 
-  async function handleContinue() {
-    if (!currentAssessmentId) return;
-    try {
-      await handleSaveAll();
+      // Update rows with new backend IDs
+      setRows((prev) =>
+        prev.map((r, i) => ({
+          ...r,
+          backendId: savedIds.get(i) ?? r.backendId,
+        })),
+      );
+
       await updateStepMutation.mutateAsync({
         id: currentAssessmentId,
-        step: "perform",
+        step: "planning",
       });
-      toast.success("Navigating to Perform Assessment");
-      navigateTo("perform");
+
+      toast.success("Schedule saved");
     } catch {
-      toast.error("Failed to save and continue");
+      toast.error("Failed to save schedule");
+    } finally {
+      setSavePending(false);
     }
   }
 
@@ -332,24 +266,12 @@ export function AssessmentPlanning() {
   return (
     <div className="page-enter space-y-6">
       {/* Page Header */}
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="text-xs text-muted-foreground font-body mb-1 uppercase tracking-wide">
-            Current Assessment
-          </p>
-          <h1 className="text-2xl font-bold font-heading text-foreground">
-            {currentAssessmentTitle}
-          </h1>
-          <p className="text-muted-foreground text-sm mt-1 font-body">
-            Assessment Planning
-          </p>
-        </div>
-        {currentAssessment && <StatusBadge status={currentAssessment.status} />}
-      </div>
-
       <div>
-        <p className="text-sm text-muted-foreground font-body">
-          Manage your assessment sessions with enhanced planning tools
+        <h1 className="text-2xl font-bold font-heading text-foreground">
+          Schedule
+        </h1>
+        <p className="text-muted-foreground text-sm mt-1 font-body">
+          Plan your assessment sessions
         </p>
       </div>
 
@@ -366,292 +288,197 @@ export function AssessmentPlanning() {
       {isLoading ? (
         <div className="space-y-4">
           {[1, 2].map((i) => (
-            <Skeleton key={i} className="h-48 w-full rounded-xl" />
+            <Skeleton key={i} className="h-12 w-full rounded-xl" />
           ))}
         </div>
       ) : (
         <div className="space-y-4">
-          {/* Day Cards */}
-          {days.map((day, dayIndex) => (
-            <Card
-              key={`day-${day.dayNumber}`}
-              className="border-border/60"
-              data-ocid={`planning.day_card.${dayIndex + 1}`}
-            >
-              {/* Day Header */}
-              <CardHeader className="pb-0">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full spice-gradient flex items-center justify-center shrink-0">
-                      <span className="text-white text-xs font-bold font-heading">
-                        {day.dayNumber}
-                      </span>
-                    </div>
-                    <div>
-                      <p className="font-semibold font-heading text-sm text-foreground">
-                        Day {day.dayNumber}
-                      </p>
-                      <p className="text-xs text-muted-foreground font-body">
-                        {day.sessions.length} session
-                        {day.sessions.length !== 1 ? "s" : ""}
-                        {day.date && ` · ${day.date}`}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    {!isCompleted && (
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                        onClick={() => saveDay(dayIndex)}
-                        disabled={day.saving}
-                        title="Save day"
-                        data-ocid={`planning.day_save_button.${dayIndex + 1}`}
-                      >
-                        {day.saving ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Save className="h-4 w-4" />
-                        )}
-                      </Button>
-                    )}
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                      onClick={() => copyDay(dayIndex)}
-                      title="Copy day"
+          {/* Table */}
+          <div className="rounded-lg border border-border/60 overflow-x-auto">
+            <table className="w-full text-sm font-body border-collapse">
+              <thead>
+                <tr className="border-b border-border/60 bg-muted/30">
+                  <th className="text-left px-3 py-2.5 text-xs font-semibold font-heading text-muted-foreground uppercase tracking-wide whitespace-nowrap">
+                    Date
+                  </th>
+                  <th className="text-left px-3 py-2.5 text-xs font-semibold font-heading text-muted-foreground uppercase tracking-wide whitespace-nowrap">
+                    Process
+                  </th>
+                  <th className="text-left px-3 py-2.5 text-xs font-semibold font-heading text-muted-foreground uppercase tracking-wide whitespace-nowrap">
+                    Time Start
+                  </th>
+                  <th className="text-left px-3 py-2.5 text-xs font-semibold font-heading text-muted-foreground uppercase tracking-wide whitespace-nowrap">
+                    End
+                  </th>
+                  <th className="text-left px-3 py-2.5 text-xs font-semibold font-heading text-muted-foreground uppercase tracking-wide whitespace-nowrap">
+                    Duration
+                  </th>
+                  <th className="text-left px-3 py-2.5 text-xs font-semibold font-heading text-muted-foreground uppercase tracking-wide">
+                    Attendees
+                  </th>
+                  {!isCompleted && <th className="px-3 py-2.5 w-10" />}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan={isCompleted ? 6 : 7}
+                      className="text-center py-8 text-muted-foreground text-sm font-body italic"
+                      data-ocid="planning.table.empty_state"
                     >
-                      <Copy className="h-4 w-4" />
-                    </Button>
-                    {!isCompleted && (
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                        onClick={() => removeDay(dayIndex)}
-                        title="Delete day"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    )}
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                      onClick={() =>
-                        updateDay(dayIndex, { collapsed: !day.collapsed })
-                      }
-                      data-ocid={`planning.day_collapse_button.${dayIndex + 1}`}
-                    >
-                      {day.collapsed ? (
-                        <ChevronDown className="h-4 w-4" />
-                      ) : (
-                        <ChevronUp className="h-4 w-4" />
-                      )}
-                    </Button>
-                  </div>
-                </div>
-              </CardHeader>
-
-              {/* Day Content (collapsible) */}
-              {!day.collapsed && (
-                <CardContent className="pt-4 space-y-4">
-                  {/* Date & Time */}
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div className="space-y-1.5">
-                      <Label className="font-body text-xs font-medium">
-                        Date
-                      </Label>
+                      No sessions added yet. Click "Add Row" to begin.
+                    </td>
+                  </tr>
+                )}
+                {rows.map((row, index) => (
+                  <tr
+                    key={row.rid}
+                    className="border-b border-border/30 hover:bg-muted/20 transition-colors"
+                    data-ocid={`planning.row.${index + 1}`}
+                  >
+                    {/* Date */}
+                    <td className="px-3 py-2 whitespace-nowrap">
                       <Input
                         type="date"
-                        value={day.date}
+                        value={row.date}
                         onChange={(e) =>
-                          updateDay(dayIndex, { date: e.target.value })
+                          updateRow(index, { date: e.target.value })
                         }
-                        className="font-body h-9"
+                        className="h-8 text-xs font-body w-36"
                         disabled={isCompleted}
+                        data-ocid={`planning.date_input.${index + 1}`}
                       />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="font-body text-xs font-medium">
-                        Time From
-                      </Label>
-                      <Input
-                        type="time"
-                        value={day.timeFrom}
-                        onChange={(e) =>
-                          updateDay(dayIndex, { timeFrom: e.target.value })
-                        }
-                        className="font-body h-9"
-                        disabled={isCompleted}
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="font-body text-xs font-medium">
-                        Time To
-                      </Label>
-                      <Input
-                        type="time"
-                        value={day.timeTo}
-                        onChange={(e) =>
-                          updateDay(dayIndex, { timeTo: e.target.value })
-                        }
-                        className="font-body h-9"
-                        disabled={isCompleted}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Sessions */}
-                  {day.sessions.length > 0 && (
-                    <div className="space-y-2">
-                      <p className="text-xs font-medium font-body text-muted-foreground uppercase tracking-wide">
-                        Sessions
-                      </p>
-                      {day.sessions.map((session, sessionIndex) => (
-                        <div
-                          key={session.sid}
-                          className="flex items-center gap-2 p-2 rounded-lg bg-muted/40 border border-border/40"
+                    </td>
+                    {/* Process */}
+                    <td className="px-3 py-2 whitespace-nowrap">
+                      {enabledProcesses.length > 0 ? (
+                        <Select
+                          value={row.processId}
+                          onValueChange={(v) =>
+                            updateRow(index, { processId: v })
+                          }
+                          disabled={isCompleted}
                         >
-                          <span className="text-xs font-body text-muted-foreground w-5 shrink-0 font-medium">
-                            #{sessionIndex + 1}
-                          </span>
-                          {/* Session Name */}
-                          <Input
-                            value={session.sessionName}
-                            onChange={(e) =>
-                              updateSession(dayIndex, sessionIndex, {
-                                sessionName: e.target.value,
-                              })
-                            }
-                            placeholder="Session name"
-                            className="h-8 text-xs font-body w-32 shrink-0"
-                            disabled={isCompleted}
-                          />
-                          {/* Process selector */}
-                          {enabledProcesses.length > 0 ? (
-                            <Select
-                              value={session.processId}
-                              onValueChange={(v) =>
-                                updateSession(dayIndex, sessionIndex, {
-                                  processId: v,
-                                })
-                              }
-                              disabled={isCompleted}
-                            >
-                              <SelectTrigger className="h-8 text-xs font-body w-28 shrink-0">
-                                <SelectValue placeholder="Process" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {enabledProcesses.map((pid) => (
-                                  <SelectItem
-                                    key={pid}
-                                    value={pid}
-                                    className="text-xs"
-                                  >
-                                    {pid}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          ) : (
-                            <Input
-                              value={session.processId}
-                              onChange={(e) =>
-                                updateSession(dayIndex, sessionIndex, {
-                                  processId: e.target.value,
-                                })
-                              }
-                              placeholder="Process ID"
-                              className="h-8 text-xs font-body w-28 shrink-0"
-                              disabled={isCompleted}
-                            />
-                          )}
-                          {/* Notes */}
-                          <Input
-                            value={session.notes}
-                            onChange={(e) =>
-                              updateSession(dayIndex, sessionIndex, {
-                                notes: e.target.value,
-                              })
-                            }
-                            placeholder="Notes"
-                            className="h-8 text-xs font-body flex-1 min-w-0"
-                            disabled={isCompleted}
-                          />
-                          {!isCompleted && (
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
-                              onClick={() =>
-                                removeSession(dayIndex, sessionIndex)
-                              }
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </Button>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                          <SelectTrigger
+                            className="h-8 text-xs font-body w-28"
+                            data-ocid={`planning.process_select.${index + 1}`}
+                          >
+                            <SelectValue placeholder="Process" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {enabledProcesses.map((pid) => (
+                              <SelectItem
+                                key={pid}
+                                value={pid}
+                                className="text-xs"
+                              >
+                                {pid}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <Input
+                          value={row.processId}
+                          onChange={(e) =>
+                            updateRow(index, { processId: e.target.value })
+                          }
+                          placeholder="Process ID"
+                          className="h-8 text-xs font-body w-28"
+                          disabled={isCompleted}
+                          data-ocid={`planning.process_input.${index + 1}`}
+                        />
+                      )}
+                    </td>
+                    {/* Time Start */}
+                    <td className="px-3 py-2 whitespace-nowrap">
+                      <Input
+                        type="time"
+                        value={row.timeStart}
+                        onChange={(e) =>
+                          updateRow(index, { timeStart: e.target.value })
+                        }
+                        className="h-8 text-xs font-body w-28"
+                        disabled={isCompleted}
+                        data-ocid={`planning.time_start_input.${index + 1}`}
+                      />
+                    </td>
+                    {/* Time End */}
+                    <td className="px-3 py-2 whitespace-nowrap">
+                      <Input
+                        type="time"
+                        value={row.timeEnd}
+                        onChange={(e) =>
+                          updateRow(index, { timeEnd: e.target.value })
+                        }
+                        className="h-8 text-xs font-body w-28"
+                        disabled={isCompleted}
+                        data-ocid={`planning.time_end_input.${index + 1}`}
+                      />
+                    </td>
+                    {/* Duration (auto-calculated) */}
+                    <td className="px-3 py-2 whitespace-nowrap">
+                      <span className="text-xs font-body text-foreground px-2 py-1 rounded bg-muted/40 inline-block min-w-[48px] text-center">
+                        {row.duration || "—"}
+                      </span>
+                    </td>
+                    {/* Attendees */}
+                    <td className="px-3 py-2">
+                      <Input
+                        value={row.attendees}
+                        onChange={(e) =>
+                          updateRow(index, { attendees: e.target.value })
+                        }
+                        placeholder="Names or count"
+                        className="h-8 text-xs font-body min-w-[160px]"
+                        disabled={isCompleted}
+                        data-ocid={`planning.attendees_input.${index + 1}`}
+                      />
+                    </td>
+                    {/* Delete */}
+                    {!isCompleted && (
+                      <td className="px-3 py-2 text-center">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                          onClick={() => removeRow(index)}
+                          data-ocid={`planning.delete_button.${index + 1}`}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
-                  {/* Add Session */}
-                  {!isCompleted && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="gap-1.5 text-xs h-8"
-                      onClick={() => addSession(dayIndex)}
-                      data-ocid={`planning.add_session_button.${dayIndex + 1}`}
-                    >
-                      <Plus className="h-3.5 w-3.5" />
-                      Add Session
-                    </Button>
-                  )}
-                </CardContent>
-              )}
-            </Card>
-          ))}
-
-          {/* Add Day Button */}
+          {/* Actions */}
           {!isCompleted && (
-            <Button
-              variant="outline"
-              className="w-full gap-2 border-dashed"
-              onClick={addDay}
-              data-ocid="planning.add_day_button"
-            >
-              <Plus className="h-4 w-4" />
-              Add Day
-            </Button>
-          )}
-
-          {/* Action Buttons */}
-          {!isCompleted && (
-            <div className="flex items-center gap-3 pt-2 pb-6">
+            <div className="flex items-center gap-3 pt-1 pb-6">
               <Button
                 variant="outline"
-                onClick={handleSaveAll}
-                disabled={saveAllPending}
+                size="sm"
+                className="gap-1.5 text-xs h-8"
+                onClick={addRow}
+                data-ocid="planning.add_row_button"
               >
-                {saveAllPending && (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                )}
-                Save All
+                <Plus className="h-3.5 w-3.5" />
+                Add Row
               </Button>
               <Button
-                onClick={handleContinue}
-                disabled={saveAllPending}
+                onClick={handleSave}
+                disabled={savePending}
                 className="spice-gradient text-white border-0"
-                data-ocid="planning.continue_button"
+                data-ocid="planning.save_button"
               >
-                {saveAllPending && (
+                {savePending && (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 )}
-                Continue to Perform Assessment →
+                Save
               </Button>
             </div>
           )}

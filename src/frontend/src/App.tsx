@@ -1,4 +1,14 @@
+import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Toaster } from "@/components/ui/sonner";
+import { useAppContext } from "@/context/AppContext";
+import { useGetAllAssessments } from "@/hooks/useQueries";
 import { cn } from "@/lib/utils";
 import {
   BarChart2,
@@ -6,7 +16,6 @@ import {
   CheckSquare,
   ClipboardList,
   FileText,
-  Flame,
   LayoutDashboard,
   Menu,
   Target,
@@ -30,10 +39,10 @@ type NavItem = {
 const NAV_ITEMS: NavItem[] = [
   { id: "dashboard", label: "My Dashboard", icon: LayoutDashboard },
   { id: "assessment-info", label: "Assessment Info", icon: ClipboardList },
-  { id: "target-profile", label: "Define Target Profile", icon: Target },
-  { id: "planning", label: "Assessment Planning", icon: CalendarDays },
+  { id: "target-profile", label: "Scope", icon: Target },
+  { id: "planning", label: "Schedule", icon: CalendarDays },
   { id: "perform", label: "Perform Assessment", icon: CheckSquare },
-  { id: "results", label: "View Results", icon: BarChart2 },
+  { id: "results", label: "Results", icon: BarChart2 },
   { id: "reports", label: "Generate Report", icon: FileText },
 ];
 
@@ -72,11 +81,11 @@ function Sidebar({
       {/* Brand */}
       <div className="px-5 pt-6 pb-5 border-b border-sidebar-border">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 overflow-hidden">
+          <div className="flex items-center justify-center shrink-0 overflow-hidden">
             <img
               src="/assets/generated/infineon-logo.png"
               alt="Infineon"
-              className="w-full h-full object-contain"
+              className="h-8 w-auto object-contain"
             />
           </div>
           <div>
@@ -144,6 +153,64 @@ function Sidebar({
   );
 }
 
+function AssessmentHeaderBar({ active }: { active: string }) {
+  const { currentAssessmentId, currentAssessmentTitle, setCurrentAssessment } =
+    useAppContext();
+  const { data: assessments } = useGetAllAssessments();
+
+  if (active === "dashboard") return null;
+
+  const currentAssessment = assessments?.find(
+    (a) => a.id === currentAssessmentId,
+  );
+
+  const statusStyles: Record<string, string> = {
+    Active: "bg-blue-50 text-blue-700 border-blue-200",
+    Completed: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    Draft: "bg-gray-50 text-gray-600 border-gray-200",
+  };
+
+  return (
+    <div className="flex items-center justify-end gap-3 px-6 py-2.5 border-b border-border bg-background shrink-0">
+      <span className="text-xs text-muted-foreground font-body">
+        Assessment:
+      </span>
+      <Select
+        value={currentAssessmentId?.toString() ?? ""}
+        onValueChange={(val) => {
+          if (!val || !assessments) return;
+          const a = assessments.find((x) => x.id.toString() === val);
+          if (a) setCurrentAssessment(a.id, a.name);
+        }}
+      >
+        <SelectTrigger
+          className="h-8 text-sm w-[220px] font-body"
+          data-ocid="header.assessment_select"
+        >
+          <SelectValue placeholder="Select assessment…">
+            {currentAssessmentTitle || "Select assessment…"}
+          </SelectValue>
+        </SelectTrigger>
+        <SelectContent>
+          {assessments?.map((a) => (
+            <SelectItem key={a.id.toString()} value={a.id.toString()}>
+              {a.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {currentAssessment && (
+        <Badge
+          variant="outline"
+          className={`font-body text-xs shrink-0 ${statusStyles[currentAssessment.status] ?? "bg-gray-50 text-gray-600 border-gray-200"}`}
+        >
+          {currentAssessment.status}
+        </Badge>
+      )}
+    </div>
+  );
+}
+
 export default function App() {
   const [active, setActive] = useState("dashboard");
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -193,11 +260,11 @@ export default function App() {
               <Menu className="h-5 w-5" />
             </button>
             <div className="flex items-center gap-2">
-              <div className="w-6 h-6 rounded flex items-center justify-center overflow-hidden">
+              <div className="flex items-center justify-center overflow-hidden">
                 <img
                   src="/assets/generated/infineon-logo.png"
                   alt="Infineon"
-                  className="w-full h-full object-contain"
+                  className="h-6 w-auto object-contain"
                 />
               </div>
               <span className="font-bold font-heading text-foreground">
@@ -205,6 +272,9 @@ export default function App() {
               </span>
             </div>
           </header>
+
+          {/* Global Assessment Selector Header */}
+          <AssessmentHeaderBar active={active} />
 
           {/* Page Content */}
           {active === "perform" ? (
@@ -219,6 +289,10 @@ export default function App() {
               >
                 {renderPage(active)}
               </div>
+            </main>
+          ) : active === "results" ? (
+            <main className="flex-1 overflow-y-auto">
+              <div className="px-6 py-6">{renderPage(active)}</div>
             </main>
           ) : (
             <main className="flex-1 overflow-y-auto">

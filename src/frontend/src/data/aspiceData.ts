@@ -10,24 +10,24 @@
 
 export const ASPICE_RATING_COLORS = {
   F: {
-    bg: "#22c55e",
-    text: "#fff",
-    tailwind: "bg-green-500 text-white border-green-600",
+    bg: "#00b04f",
+    text: "#000",
+    tailwind: "bg-green-500 text-black border-green-600",
   },
   L: {
-    bg: "#84cc16",
-    text: "#fff",
-    tailwind: "bg-lime-500 text-white border-lime-600",
+    bg: "#92d050",
+    text: "#000",
+    tailwind: "bg-lime-400 text-black border-lime-500",
   },
   P: {
-    bg: "#eab308",
-    text: "#fff",
-    tailwind: "bg-yellow-500 text-white border-yellow-600",
+    bg: "#ffff00",
+    text: "#000",
+    tailwind: "bg-yellow-300 text-black border-yellow-400",
   },
   N: {
-    bg: "#991b1b",
+    bg: "#990000",
     text: "#fff",
-    tailwind: "bg-red-800 text-white border-red-900",
+    tailwind: "bg-red-900 text-white border-red-950",
   },
   NA: {
     bg: "#9ca3af",
