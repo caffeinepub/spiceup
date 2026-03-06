@@ -46,10 +46,16 @@ function buildEnabledProcessList(
   if (!config) return [];
   try {
     const enabledGroups = JSON.parse(config.enabledGroups) as string[];
+    const processLevels = JSON.parse(config.processLevels) as Record<
+      string,
+      string
+    >;
     const processes: string[] = [];
     for (const group of PROCESS_GROUPS) {
       if (enabledGroups.includes(group.id)) {
         for (const p of group.processes) {
+          if (processLevels[p.id] === "NA" || processLevels[p.id] === undefined)
+            continue;
           processes.push(p.id);
         }
       }
@@ -430,7 +436,7 @@ export function AssessmentPlanning() {
                         onChange={(e) =>
                           updateRow(index, { attendees: e.target.value })
                         }
-                        placeholder="Names or count"
+                        placeholder="Names"
                         className="h-8 text-xs font-body min-w-[160px]"
                         disabled={isCompleted}
                         data-ocid={`planning.attendees_input.${index + 1}`}

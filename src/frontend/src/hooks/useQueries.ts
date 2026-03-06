@@ -1,3 +1,9 @@
+import { useAuth } from "@/context/AuthContext";
+import {
+  canUserAccessAssessment,
+  migrateOrphanedAssessments,
+  setAssessmentOwnership,
+} from "@/utils/authStorage";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   Assessment,
@@ -24,11 +30,24 @@ function isCanisterStoppedError(err: unknown): boolean {
 
 export function useGetAllAssessments() {
   const { actor, isFetching } = useActor();
+  const { currentUser } = useAuth();
   return useQuery<Assessment[]>({
-    queryKey: ["assessments"],
+    queryKey: ["assessments", currentUser?.userId],
     queryFn: async () => {
       if (!actor) return [];
-      return actor.getAllAssessments();
+      const all = await actor.getAllAssessments();
+      // Migrate any assessments that have no ownership record to admin
+      migrateOrphanedAssessments(all.map((a) => a.id.toString()));
+      if (!currentUser) return [];
+      // Filter by ownership/access
+      return all.filter((a) =>
+        canUserAccessAssessment(
+          currentUser.username,
+          currentUser.role,
+          currentUser.userId,
+          a.id.toString(),
+        ),
+      );
     },
     enabled: !!actor && !isFetching,
   });
@@ -36,6 +55,7 @@ export function useGetAllAssessments() {
 
 export function useCreateAssessment() {
   const { actor, isFetching } = useActor();
+  const { currentUser } = useAuth();
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ name }: { name: string }) => {
@@ -46,7 +66,16 @@ export function useCreateAssessment() {
           "CANISTER_STOPPED: The backend connection is unavailable. It may be restarting after a recent deployment.",
         );
       try {
-        return await actor.createAssessment(name);
+        const newId = await actor.createAssessment(name);
+        // Register ownership in localStorage
+        if (currentUser) {
+          setAssessmentOwnership(
+            newId.toString(),
+            currentUser.userId,
+            currentUser.username,
+          );
+        }
+        return newId;
       } catch (err) {
         if (isCanisterStoppedError(err)) {
           // Force-remove the cached actor so a fresh one is created on next attempt
@@ -291,6 +320,8 @@ export function useGetAllPracticeRatingsForAssessment(
       }
     },
     enabled: !!actor && !isFetching && assessmentId != null,
+    staleTime: 0,
+    refetchOnMount: true,
   });
 }
 

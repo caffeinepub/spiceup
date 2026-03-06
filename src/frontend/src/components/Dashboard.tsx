@@ -23,6 +23,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useAppContext } from "@/context/AppContext";
+import { useAuth } from "@/context/AuthContext";
 import { useCanisterHealth } from "@/hooks/useCanisterHealth";
 import {
   useDeleteAssessment,
@@ -31,6 +32,7 @@ import {
   useGetAllReports,
   useMarkAssessmentCompleted,
 } from "@/hooks/useQueries";
+import { getAssessmentOwnership } from "@/utils/authStorage";
 import {
   AlertCircle,
   CheckCircle2,
@@ -50,6 +52,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import type { Assessment } from "../backend.d";
 import { CreateNewAssessmentModal } from "./CreateNewAssessmentModal";
+import { ManageAccessDialog } from "./auth/ManageAccessDialog";
 
 function formatDate(time: bigint): string {
   const ms = Number(time / BigInt(1_000_000));
@@ -115,6 +118,7 @@ function KpiCard({
 export function Dashboard() {
   const [createOpen, setCreateOpen] = useState(false);
   const { setCurrentAssessment, navigateTo } = useAppContext();
+  const { currentUser } = useAuth();
   const canisterHealth = useCanisterHealth();
 
   const { data: assessments, isLoading: loadingAssessments } =
@@ -301,6 +305,12 @@ export function Dashboard() {
                       Status
                     </TableHead>
                     <TableHead className="font-heading text-xs uppercase tracking-wide text-muted-foreground">
+                      Created By
+                    </TableHead>
+                    <TableHead className="font-heading text-xs uppercase tracking-wide text-muted-foreground">
+                      Created
+                    </TableHead>
+                    <TableHead className="font-heading text-xs uppercase tracking-wide text-muted-foreground">
                       Last Updated
                     </TableHead>
                     <TableHead className="font-heading text-xs uppercase tracking-wide text-muted-foreground text-right">
@@ -309,118 +319,141 @@ export function Dashboard() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {assessments.map((assessment: Assessment, index: number) => (
-                    <TableRow
-                      key={String(assessment.id)}
-                      className="hover:bg-muted/30"
-                      data-ocid={`dashboard.assessments_table.row.${index + 1}`}
-                    >
-                      <TableCell>
-                        <p className="font-medium font-body text-foreground text-sm">
-                          {assessment.name}
-                        </p>
-                        <p className="text-xs text-muted-foreground font-body mt-0.5 capitalize">
-                          Step:{" "}
-                          {assessment.currentStep?.replace(/-/g, " ") ||
-                            "Not started"}
-                        </p>
-                      </TableCell>
-                      <TableCell>
-                        <StatusBadge status={assessment.status} />
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground font-body">
-                        {formatDate(assessment.updatedAt)}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          {assessment.status === "Completed" ? (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="gap-1.5 text-xs h-8 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-200"
-                              onClick={() =>
-                                handleContinue(assessment, index + 1)
-                              }
-                              data-ocid={`dashboard.continue_button.${index + 1}`}
-                            >
-                              <Eye className="h-3 w-3" />
-                              View
-                            </Button>
-                          ) : (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="gap-1.5 text-xs h-8 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-200"
-                              onClick={() =>
-                                handleContinue(assessment, index + 1)
-                              }
-                              data-ocid={`dashboard.continue_button.${index + 1}`}
-                            >
-                              <Play className="h-3 w-3" />
-                              Continue
-                            </Button>
-                          )}
-                          {assessment.status !== "Completed" && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="gap-1.5 text-xs h-8 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200"
-                              onClick={() => handleMarkCompleted(assessment.id)}
-                              disabled={markCompletedMutation.isPending}
-                              data-ocid={`dashboard.mark_completed_button.${index + 1}`}
-                            >
-                              {markCompletedMutation.isPending ? (
-                                <Loader2 className="h-3 w-3 animate-spin" />
-                              ) : (
-                                <CheckSquare className="h-3 w-3" />
-                              )}
-                              Mark Completed
-                            </Button>
-                          )}
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
+                  {assessments.map((assessment: Assessment, index: number) => {
+                    const ownership = getAssessmentOwnership(
+                      assessment.id.toString(),
+                    );
+                    const isOwner =
+                      currentUser?.role === "admin" ||
+                      ownership?.ownerUserId === currentUser?.userId;
+                    return (
+                      <TableRow
+                        key={String(assessment.id)}
+                        className="hover:bg-muted/30"
+                        data-ocid={`dashboard.assessments_table.row.${index + 1}`}
+                      >
+                        <TableCell>
+                          <p className="font-medium font-body text-foreground text-sm">
+                            {assessment.name}
+                          </p>
+                          <p className="text-xs text-muted-foreground font-body mt-0.5 capitalize">
+                            Step:{" "}
+                            {assessment.currentStep?.replace(/-/g, " ") ||
+                              "Not started"}
+                          </p>
+                        </TableCell>
+                        <TableCell>
+                          <StatusBadge status={assessment.status} />
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground font-body">
+                          {ownership?.createdBy ?? "unknown"}
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground font-body whitespace-nowrap">
+                          {formatDate(assessment.createdAt)}
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground font-body whitespace-nowrap">
+                          {formatDate(assessment.updatedAt)}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-2 flex-wrap">
+                            {assessment.status === "Completed" ? (
                               <Button
                                 size="sm"
                                 variant="outline"
-                                className="gap-1.5 text-xs h-8 hover:bg-red-50 hover:text-red-700 hover:border-red-200"
-                                data-ocid={`dashboard.delete_button.${index + 1}`}
+                                className="gap-1.5 text-xs h-8 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-200"
+                                onClick={() =>
+                                  handleContinue(assessment, index + 1)
+                                }
+                                data-ocid={`dashboard.continue_button.${index + 1}`}
                               >
-                                <Trash2 className="h-3 w-3" />
-                                Delete
+                                <Eye className="h-3 w-3" />
+                                View
                               </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>
-                                  Delete Assessment
-                                </AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  Are you sure you want to delete &ldquo;
-                                  {assessment.name}&rdquo;? This action cannot
-                                  be undone and all assessment data will be
-                                  permanently lost.
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel
-                                  data-ocid={`dashboard.delete_cancel_button.${index + 1}`}
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="gap-1.5 text-xs h-8 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-200"
+                                onClick={() =>
+                                  handleContinue(assessment, index + 1)
+                                }
+                                data-ocid={`dashboard.continue_button.${index + 1}`}
+                              >
+                                <Play className="h-3 w-3" />
+                                Continue
+                              </Button>
+                            )}
+                            {assessment.status !== "Completed" && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="gap-1.5 text-xs h-8 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200"
+                                onClick={() =>
+                                  handleMarkCompleted(assessment.id)
+                                }
+                                disabled={markCompletedMutation.isPending}
+                                data-ocid={`dashboard.mark_completed_button.${index + 1}`}
+                              >
+                                {markCompletedMutation.isPending ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : (
+                                  <CheckSquare className="h-3 w-3" />
+                                )}
+                                Mark Completed
+                              </Button>
+                            )}
+                            {/* Manage Access — only for owner or admin */}
+                            {isOwner && (
+                              <ManageAccessDialog
+                                assessmentId={assessment.id}
+                                assessmentName={assessment.name}
+                              />
+                            )}
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="gap-1.5 text-xs h-8 hover:bg-red-50 hover:text-red-700 hover:border-red-200"
+                                  data-ocid={`dashboard.delete_button.${index + 1}`}
                                 >
-                                  Cancel
-                                </AlertDialogCancel>
-                                <AlertDialogAction
-                                  onClick={() => handleDelete(assessment.id)}
-                                  className="bg-red-600 hover:bg-red-700 text-white"
-                                  data-ocid={`dashboard.delete_confirm_button.${index + 1}`}
-                                >
-                                  Delete Assessment
-                                </AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                                  <Trash2 className="h-3 w-3" />
+                                  Delete
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>
+                                    Delete Assessment
+                                  </AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    Are you sure you want to delete &ldquo;
+                                    {assessment.name}&rdquo;? This action cannot
+                                    be undone and all assessment data will be
+                                    permanently lost.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel
+                                    data-ocid={`dashboard.delete_cancel_button.${index + 1}`}
+                                  >
+                                    Cancel
+                                  </AlertDialogCancel>
+                                  <AlertDialogAction
+                                    onClick={() => handleDelete(assessment.id)}
+                                    className="bg-red-600 hover:bg-red-700 text-white"
+                                    data-ocid={`dashboard.delete_confirm_button.${index + 1}`}
+                                  >
+                                    Delete Assessment
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             ) : (

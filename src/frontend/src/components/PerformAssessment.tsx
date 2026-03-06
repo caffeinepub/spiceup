@@ -3120,11 +3120,11 @@ function DraggableThreePanelLayout({
           <div className="p-3 space-y-1.5">
             {descContent ? (
               <>
-                <p className="text-[11px] font-mono text-muted-foreground/70 uppercase tracking-wider">
-                  {descContent.id}
-                </p>
-                <p className="text-xs font-semibold font-heading text-foreground leading-snug">
-                  {descContent.title}
+                <p className="text-xs font-heading text-foreground leading-snug">
+                  <span className="font-mono text-muted-foreground/70 text-[11px] uppercase tracking-wider mr-1.5">
+                    {descContent.id}
+                  </span>
+                  <span className="font-semibold">{descContent.title}</span>
                 </p>
                 <p className="text-[11px] text-muted-foreground font-body leading-relaxed">
                   {descContent.text}

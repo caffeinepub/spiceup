@@ -1,38 +1,89 @@
-# Infineon ASPICE Assessment Tool
+# Infineon ASPICE Assessment Tool — Authentication & Authorization
 
 ## Current State
-Full-stack ASPICE assessment app with: Dashboard, Assessment Info, Define Target Profile, Assessment Planning, Upload Work Products, Perform Assessment, View Results, Generate Report. Backend is Motoko with stable storage.
+
+- No login system. App opens directly to the Dashboard.
+- All assessments are visible to anyone who opens the app.
+- All backend functions accept any caller with no ownership or role checks.
+- Assessment records have no owner field.
+- AppContext holds: currentAssessmentId, currentAssessmentTitle, activePage, navigateTo.
+- Session is persisted via localStorage (page, assessment ID/title).
+- Backend: Motoko canister with Assessment, AssessmentInfoData, ProcessGroupConfig, AssessmentDay, PracticeRating stable maps.
 
 ## Requested Changes (Diff)
 
 ### Add
-- Global rating color system: F (green, 86-100), L (yellow-green, 51-85), P (yellow, 16-50), N (dark red, 0-15), NA (gray) — applied everywhere ratings appear (badges, table cells, charts, perform assessment buttons)
-- Assessment Info: Lead Assessor ID field and up to 3 Co-Assessors each with name + INTACS ID fields (dynamic add/remove up to 3)
-- Assessment Info: "Application Parameters" as its own separate card section (move checkboxes out of Project Information)
-- Assessment Planning: Session Name field added to each session row (one line display: Session Name | Process | Notes)
-- View Results: Complete redesign — cross-process summary table with Process Areas as rows, and PA1.1 (all BPs), PA2.1 (all GPs), PA2.2 (all GPs), PA3.1 (all GPs), PA3.2 (all GPs) as column groups; each cell shows the rating with the defined color code
+
+**Backend**
+- `User` type: `{ id: Nat; username: Text; passwordHash: Text; role: Text; createdAt: Time }` (role = "admin" | "user")
+- `Session` type: `{ token: Text; userId: Nat; username: Text; role: Text; expiresAt: Time }`
+- `AssessmentAccess` type: `{ assessmentId: Nat; grantedToUsername: Text; grantedByUserId: Nat }` — for shared access records
+- Stable maps: `userEntries`, `sessionEntries`, `accessEntries`
+- Seed logic in `postupgrade` and actor init: if no user with username "admin" exists, create one with passwordHash of "admin" and role "admin"
+- `Assessment` type gains `ownerUserId: Nat` and `createdBy: Text` fields
+- Migration: on postupgrade, any existing assessments with no owner get ownerUserId = admin's userId
+- Auth API:
+  - `register(username, password) -> { ok: Nat } | { err: Text }` — creates user with role "user"; fails if username taken
+  - `login(username, password) -> { ok: { token: Text; username: Text; role: Text } } | { err: Text }` — validates credentials, creates session token (UUID-like from hash+time), 30-day expiry
+  - `logout(token) -> ()` — deletes session
+  - `getSession(token) -> { ok: { userId: Nat; username: Text; role: Text } } | { err: Text }` — validates token not expired
+  - `changePassword(token, oldPassword, newPassword) -> { ok: () } | { err: Text }`
+- Access sharing API:
+  - `grantAccess(token, assessmentId, targetUsername) -> { ok: () } | { err: Text }` — only owner can grant; validates targetUsername exists
+  - `revokeAccess(token, assessmentId, targetUsername) -> { ok: () } | { err: Text }` — only owner can revoke
+  - `getAssessmentAccessList(token, assessmentId) -> { ok: [Text] } | { err: Text }` — returns list of usernames who have access
+- Authorization enforcement on all existing write functions: validate session token, check ownership or shared access or admin role
+- `getAllAssessments(token)` returns only assessments owned by or shared with the calling user (admin sees all)
+- `createAssessment(token, name)` sets ownerUserId and createdBy from session
+- `Assessment` type gains `createdBy: Text` field visible to frontend
+
+**Frontend**
+- `AuthContext` with: `currentUser: { userId, username, role } | null`, `sessionToken: string | null`, `login()`, `logout()`, `isAdmin: boolean`
+- Session token persisted in localStorage (`infineon_session_token`) for persistent login
+- On app load: call `getSession(token)` to restore auth state; if invalid/expired show login page
+- `LoginPage` component: username + password fields, login button, link to signup
+- `SignupPage` component: username + password + confirm password fields, submit, link back to login
+- `UserProfileMenu` dropdown in top-right header: shows username + role badge, "Change Password" option, "Logout" option
+- `ChangePasswordDialog` modal: old password, new password, confirm new password fields
+- `ManageAccessDialog` modal (inside Dashboard or AssessmentInfo): input to grant access by username, list of current grantees with revoke buttons
+- All backend calls pass `sessionToken` as first argument
+- Assessments list in Dashboard shows `createdBy` column (admin view shows all, user sees own + shared)
+- Route guard: if no valid session, always show login page regardless of stored page
 
 ### Modify
-- Assessment Info: Remove "Assessor Body" field (field + state + backend still stores it but hide from UI)
-- Assessment Info: Remove "Target Profile" field from Standards & Classification section — there is no such field currently but ensure "Target Capability Level" is kept (it stays)
-- Define Target Profile: Remove the process count text "(X processes)" from each group header
-- Define Target Profile: Remove the disabled group hint text "This group is disabled and will be excluded from Planning and Perform Assessment."
-- Define Target Profile: Change from single-column stacked list to 2-column grid layout so all process groups are visible at once; each group card has toggle + collapsible process list below it
-- Assessment Planning: Session rows display all info (Session Name, Process, Notes) in a single compact line
-- App.tsx: Remove "Upload Work Products" from navigation items entirely
-- View Results: Replace the existing per-process collapsible table with a single cross-process matrix table
+
+- `Assessment` type: add `ownerUserId: Nat` and `createdBy: Text`
+- All backend write functions: add `token: Text` as first param, validate session, check authorization
+- `getAllAssessments`: add `token: Text` param, filter by ownership + shared access (admin bypasses)
+- `createAssessment`: add `token: Text` param, set owner from session
+- `AppContext`: integrate with `AuthContext` for session-aware state
+- `useQueries.ts`: all hooks pass `sessionToken` to backend calls
+- `AssessmentHeaderBar`: add `UserProfileMenu` component in the right side
+- Dashboard: "Manage Access" button per assessment row (only owner can see it); show `createdBy` column
 
 ### Remove
-- Upload Work Products navigation item from sidebar
-- Assessor Body field from Assessment Info UI
-- Process count "(X processes)" text from Define Target Profile
-- Disabled group hint text in Define Target Profile
+
+- Nothing removed from existing functionality.
 
 ## Implementation Plan
-1. Define ASPICE_RATING_COLORS constant with hex codes and Tailwind classes matching the image legend (F=green #22c55e, L=#a3e635 lime/yellow-green, P=yellow #eab308, N=dark red #991b1b, NA=gray)
-2. AssessmentInfo.tsx: Remove assessorBody field UI; add Lead Assessor ID input; replace single coAssessor with dynamic list of up to 3 co-assessors (each with name + ID); move Application Parameters checkboxes into separate FormSection card
-3. DefineTargetProfile.tsx: Remove process count span; remove disabled hint paragraph; switch PROCESS_GROUPS map to 2-column CSS grid; each group is a card with toggle in header and collapsible process rows
-4. AssessmentPlanning.tsx: Add sessionName field to SessionData interface; add Session Name input to each session row; display in one compact line: [#] [Session Name] [Process dropdown] [Notes] [×]
-5. App.tsx: Remove "work-products" nav item and its Upload Work Products case from renderPage
-6. ViewResults.tsx: Redesign results section — build cross-process matrix table where rows = processes, columns = PA1.1 BPs + PA2.1 GPs + PA2.2 GPs + PA3.1 GPs + PA3.2 GPs; each cell is a colored rating badge using the ASPICE color scheme; keep charts but apply consistent colors
-7. Apply ASPICE rating colors globally: N/P/L/F/NA color scheme from the image used in all RatingBadge components, rating selector buttons in Perform Assessment, chart fill colors, and View Results cells
+
+1. **Backend (Motoko)**:
+   - Add User, Session, AssessmentAccess types and stable maps
+   - Add password hashing (SHA256-based using Text concatenation salt trick since no crypto lib — use a deterministic hash combining username+password+salt constant)
+   - Implement register, login, logout, getSession, changePassword
+   - Implement grantAccess, revokeAccess, getAssessmentAccessList
+   - Add ownerUserId + createdBy to Assessment type
+   - Enforce auth on all existing write functions and getAllAssessments
+   - Migration: seed admin user, reassign orphaned assessments to admin
+   - Full preupgrade/postupgrade for all new stable maps
+
+2. **Frontend**:
+   - Create `AuthContext.tsx` with token persistence and session restore on load
+   - Create `LoginPage.tsx` and `SignupPage.tsx`
+   - Create `UserProfileMenu.tsx` with profile dropdown and change password dialog
+   - Create `ManageAccessDialog.tsx` for sharing/revoking access per assessment
+   - Wrap app in `AuthProvider`; show login page if no valid session
+   - Update all `useQueries.ts` hooks to pass token
+   - Update `AppContext` to clear on logout
+   - Update Dashboard to show createdBy, manage access button
+   - Update AssessmentHeaderBar to include UserProfileMenu

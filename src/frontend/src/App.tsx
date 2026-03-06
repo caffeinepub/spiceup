@@ -8,6 +8,7 @@ import {
 } from "@/components/ui/select";
 import { Toaster } from "@/components/ui/sonner";
 import { useAppContext } from "@/context/AppContext";
+import { AuthProvider, useAuth } from "@/context/AuthContext";
 import { useGetAllAssessments } from "@/hooks/useQueries";
 import { cn } from "@/lib/utils";
 import {
@@ -28,6 +29,9 @@ import { DefineTargetProfile } from "./components/DefineTargetProfile";
 import { GenerateReport } from "./components/GenerateReport";
 import { PerformAssessment } from "./components/PerformAssessment";
 import { ViewResults } from "./components/ViewResults";
+import { LoginPage } from "./components/auth/LoginPage";
+import { SignupPage } from "./components/auth/SignupPage";
+import { UserProfileMenu } from "./components/auth/UserProfileMenu";
 import { AppProvider } from "./context/AppContext";
 
 type NavItem = {
@@ -158,8 +162,6 @@ function AssessmentHeaderBar({ active }: { active: string }) {
     useAppContext();
   const { data: assessments } = useGetAllAssessments();
 
-  if (active === "dashboard") return null;
-
   const currentAssessment = assessments?.find(
     (a) => a.id === currentAssessmentId,
   );
@@ -171,52 +173,67 @@ function AssessmentHeaderBar({ active }: { active: string }) {
   };
 
   return (
-    <div className="flex items-center justify-end gap-3 px-6 py-2.5 border-b border-border bg-background shrink-0">
-      <span className="text-xs text-muted-foreground font-body">
-        Assessment:
-      </span>
-      <Select
-        value={currentAssessmentId?.toString() ?? ""}
-        onValueChange={(val) => {
-          if (!val || !assessments) return;
-          const a = assessments.find((x) => x.id.toString() === val);
-          if (a) setCurrentAssessment(a.id, a.name);
-        }}
-      >
-        <SelectTrigger
-          className="h-8 text-sm w-[220px] font-body"
-          data-ocid="header.assessment_select"
-        >
-          <SelectValue placeholder="Select assessment…">
-            {currentAssessmentTitle || "Select assessment…"}
-          </SelectValue>
-        </SelectTrigger>
-        <SelectContent>
-          {assessments?.map((a) => (
-            <SelectItem key={a.id.toString()} value={a.id.toString()}>
-              {a.name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      {currentAssessment && (
-        <Badge
-          variant="outline"
-          className={`font-body text-xs shrink-0 ${statusStyles[currentAssessment.status] ?? "bg-gray-50 text-gray-600 border-gray-200"}`}
-        >
-          {currentAssessment.status}
-        </Badge>
-      )}
+    <div className="flex items-center justify-between gap-3 px-6 py-2.5 border-b border-border bg-background shrink-0">
+      {/* Left: assessment selector (hidden on dashboard) */}
+      <div className="flex items-center gap-3 flex-1">
+        {active !== "dashboard" && (
+          <>
+            <span className="text-xs text-muted-foreground font-body">
+              Assessment:
+            </span>
+            <Select
+              value={currentAssessmentId?.toString() ?? ""}
+              onValueChange={(val) => {
+                if (!val || !assessments) return;
+                const a = assessments.find((x) => x.id.toString() === val);
+                if (a) setCurrentAssessment(a.id, a.name);
+              }}
+            >
+              <SelectTrigger
+                className="h-8 text-sm w-[220px] font-body"
+                data-ocid="header.assessment_select"
+              >
+                <SelectValue placeholder="Select assessment…">
+                  {currentAssessmentTitle || "Select assessment…"}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {assessments?.map((a) => (
+                  <SelectItem key={a.id.toString()} value={a.id.toString()}>
+                    {a.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {currentAssessment && (
+              <Badge
+                variant="outline"
+                className={`font-body text-xs shrink-0 ${statusStyles[currentAssessment.status] ?? "bg-gray-50 text-gray-600 border-gray-200"}`}
+              >
+                {currentAssessment.status}
+              </Badge>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* Right: user profile menu — always visible */}
+      <div className="flex items-center gap-2 shrink-0">
+        <UserProfileMenu />
+      </div>
     </div>
   );
 }
 
-export default function App() {
-  const [active, setActive] = useState("dashboard");
+function AuthenticatedApp() {
+  const [active, setActive] = useState<string>(
+    () => localStorage.getItem("infineon_activePage") ?? "dashboard",
+  );
   const [mobileOpen, setMobileOpen] = useState(false);
 
   function navigateTo(page: string) {
     setActive(page);
+    localStorage.setItem("infineon_activePage", page);
     setMobileOpen(false);
   }
 
@@ -273,7 +290,7 @@ export default function App() {
             </div>
           </header>
 
-          {/* Global Assessment Selector Header */}
+          {/* Global Assessment Selector + Profile Header */}
           <AssessmentHeaderBar active={active} />
 
           {/* Page Content */}
@@ -323,5 +340,42 @@ export default function App() {
         <Toaster richColors position="top-right" />
       </div>
     </AppProvider>
+  );
+}
+
+function AppRouter() {
+  const { isAuthenticated, isInitializing } = useAuth();
+  const [showSignup, setShowSignup] = useState(false);
+
+  // While restoring session from localStorage, show nothing (flicker prevention)
+  if (isInitializing) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-3">
+          <img
+            src="/assets/generated/infineon-logo.png"
+            alt="Infineon"
+            className="h-10 w-auto object-contain opacity-60 animate-pulse"
+          />
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    if (showSignup) {
+      return <SignupPage onSwitchToLogin={() => setShowSignup(false)} />;
+    }
+    return <LoginPage onSwitchToSignup={() => setShowSignup(true)} />;
+  }
+
+  return <AuthenticatedApp />;
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppRouter />
+    </AuthProvider>
   );
 }
