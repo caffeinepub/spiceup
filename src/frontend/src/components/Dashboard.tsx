@@ -32,6 +32,7 @@ import {
   useGetAllReports,
   useMarkAssessmentCompleted,
 } from "@/hooks/useQueries";
+import { logAuditEvent } from "@/utils/auditLog";
 import { getAssessmentOwnership } from "@/utils/authStorage";
 import {
   AlertCircle,
@@ -156,8 +157,18 @@ export function Dashboard() {
   }
 
   async function handleDelete(id: bigint) {
+    const assessmentName =
+      assessments?.find((a) => a.id === id)?.name ?? String(id);
     try {
       await deleteAssessmentMutation.mutateAsync(id);
+      if (currentUser) {
+        logAuditEvent(
+          "assessment_deleted",
+          currentUser.username,
+          `Assessment "${assessmentName}" deleted`,
+          { assessmentId: String(id) },
+        );
+      }
       toast.success("Assessment deleted");
     } catch {
       toast.error("Failed to delete assessment");

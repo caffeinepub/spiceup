@@ -1,4 +1,5 @@
 import { useAuth } from "@/context/AuthContext";
+import { logAuditEvent } from "@/utils/auditLog";
 import {
   canUserAccessAssessment,
   migrateOrphanedAssessments,
@@ -73,6 +74,12 @@ export function useCreateAssessment() {
             newId.toString(),
             currentUser.userId,
             currentUser.username,
+          );
+          logAuditEvent(
+            "assessment_created",
+            currentUser.username,
+            `Assessment "${name}" created`,
+            { assessmentId: String(newId) },
           );
         }
         return newId;

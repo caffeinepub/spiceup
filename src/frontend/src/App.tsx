@@ -29,6 +29,8 @@ import { DefineTargetProfile } from "./components/DefineTargetProfile";
 import { GenerateReport } from "./components/GenerateReport";
 import { PerformAssessment } from "./components/PerformAssessment";
 import { ViewResults } from "./components/ViewResults";
+import { AdminAuditPage } from "./components/admin/AdminAuditPage";
+import { AdminUsersPage } from "./components/admin/AdminUsersPage";
 import { LoginPage } from "./components/auth/LoginPage";
 import { SignupPage } from "./components/auth/SignupPage";
 import { UserProfileMenu } from "./components/auth/UserProfileMenu";
@@ -50,7 +52,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: "reports", label: "Generate Report", icon: FileText },
 ];
 
-function renderPage(activeId: string) {
+function renderPage(activeId: string, isAdmin: boolean) {
   switch (activeId) {
     case "dashboard":
       return <Dashboard />;
@@ -66,6 +68,10 @@ function renderPage(activeId: string) {
       return <ViewResults />;
     case "reports":
       return <GenerateReport />;
+    case "admin-users":
+      return isAdmin ? <AdminUsersPage /> : <Dashboard />;
+    case "admin-audit":
+      return isAdmin ? <AdminAuditPage /> : <Dashboard />;
     default:
       return <Dashboard />;
   }
@@ -226,6 +232,7 @@ function AssessmentHeaderBar({ active }: { active: string }) {
 }
 
 function AuthenticatedApp() {
+  const { isAdmin } = useAuth();
   const [active, setActive] = useState<string>(
     () => localStorage.getItem("infineon_activePage") ?? "dashboard",
   );
@@ -304,17 +311,17 @@ function AuthenticatedApp() {
                   padding: "24px",
                 }}
               >
-                {renderPage(active)}
+                {renderPage(active, isAdmin)}
               </div>
             </main>
           ) : active === "results" ? (
             <main className="flex-1 overflow-y-auto">
-              <div className="px-6 py-6">{renderPage(active)}</div>
+              <div className="px-6 py-6">{renderPage(active, isAdmin)}</div>
             </main>
           ) : (
             <main className="flex-1 overflow-y-auto">
               <div className="max-w-5xl mx-auto px-6 py-8">
-                {renderPage(active)}
+                {renderPage(active, isAdmin)}
               </div>
             </main>
           )}

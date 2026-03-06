@@ -18,13 +18,15 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useAppContext } from "@/context/AppContext";
 import { useAuth } from "@/context/AuthContext";
-import { KeyRound, Loader2, LogOut, User } from "lucide-react";
+import { Activity, KeyRound, Loader2, LogOut, User, Users } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
 export function UserProfileMenu() {
-  const { currentUser, logout, changePassword } = useAuth();
+  const { currentUser, logout, changePassword, isAdmin } = useAuth();
+  const { navigateTo } = useAppContext();
   const [pwDialogOpen, setPwDialogOpen] = useState(false);
   const [oldPassword, setOldPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -123,6 +125,27 @@ export function UserProfileMenu() {
             </div>
           </div>
           <DropdownMenuSeparator />
+          {isAdmin && (
+            <>
+              <DropdownMenuItem
+                onClick={() => navigateTo("admin-users")}
+                className="gap-2 cursor-pointer font-body text-sm"
+                data-ocid="profile.manage_users_button"
+              >
+                <Users className="h-4 w-4 text-muted-foreground" />
+                Manage Users
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => navigateTo("admin-audit")}
+                className="gap-2 cursor-pointer font-body text-sm"
+                data-ocid="profile.activity_log_button"
+              >
+                <Activity className="h-4 w-4 text-muted-foreground" />
+                Activity Log
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+            </>
+          )}
           <DropdownMenuItem
             onClick={handleOpenPwDialog}
             className="gap-2 cursor-pointer font-body text-sm"

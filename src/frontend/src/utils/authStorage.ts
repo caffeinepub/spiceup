@@ -1,3 +1,5 @@
+import { logAuditEvent } from "./auditLog";
+
 // ─── Types ────────────────────────────────────────────────────
 
 export type UserRole = "admin" | "user";
@@ -8,6 +10,8 @@ export interface StoredUser {
   passwordHash: string;
   role: UserRole;
   createdAt: number;
+  suspended?: boolean;
+  lastActive?: number;
 }
 
 export interface StoredSession {
@@ -54,7 +58,7 @@ export function hashPassword(username: string, password: string): string {
 
 // ─── Internal helpers ─────────────────────────────────────────
 
-function getUsers(): StoredUser[] {
+export function getUsers(): StoredUser[] {
   try {
     return JSON.parse(localStorage.getItem(USERS_KEY) ?? "[]") as StoredUser[];
   } catch {
@@ -85,6 +89,12 @@ function getSession(token: string): StoredSession | null {
 
 function generateToken(userId: string): string {
   return `tok_${userId}_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+}
+
+function requireAdminSession(token: string): StoredSession | null {
+  const session = getSession(token);
+  if (!session || session.role !== "admin") return null;
+  return session;
 }
 
 // ─── Seed admin ───────────────────────────────────────────────
@@ -127,8 +137,11 @@ export function registerUser(
     passwordHash: hashPassword(username, password),
     role: "user",
     createdAt: Date.now(),
+    suspended: false,
+    lastActive: Date.now(),
   };
   saveUsers([...users, newUser]);
+  logAuditEvent("user_registered", username, `User "${username}" registered`);
   return { ok: { id } };
 }
 
@@ -146,6 +159,9 @@ export function loginUser(
   if (user.passwordHash !== hashPassword(user.username, password)) {
     return { err: "Invalid username or password" };
   }
+  if (user.suspended) {
+    return { err: "Account is suspended. Contact your administrator." };
+  }
   const token = generateToken(user.id);
   const session: StoredSession = {
     token,
@@ -156,6 +172,19 @@ export function loginUser(
   };
   localStorage.setItem(SESSION_KEY, JSON.stringify(session));
   localStorage.setItem(SESSION_TOKEN_KEY, token);
+
+  // Update lastActive
+  const idx = users.findIndex((u) => u.id === user.id);
+  if (idx >= 0) {
+    users[idx] = { ...users[idx], lastActive: Date.now() };
+    saveUsers(users);
+  }
+
+  logAuditEvent(
+    "user_login",
+    user.username,
+    `User "${user.username}" logged in`,
+  );
   return {
     ok: { token, username: user.username, role: user.role, userId: user.id },
   };
@@ -215,6 +244,159 @@ export function checkUsernameExists(username: string): boolean {
   return users.some((u) => u.username.toLowerCase() === username.toLowerCase());
 }
 
+// ─── Admin: User Management ───────────────────────────────────
+
+export function getAllUsers(): StoredUser[] {
+  return getUsers();
+}
+
+export function suspendUser(
+  adminToken: string,
+  targetUserId: string,
+): { ok: true } | { err: string } {
+  const session = requireAdminSession(adminToken);
+  if (!session) return { err: "Unauthorized" };
+  if (targetUserId === session.userId)
+    return { err: "Cannot suspend your own account" };
+
+  const users = getUsers();
+  const idx = users.findIndex((u) => u.id === targetUserId);
+  if (idx < 0) return { err: "User not found" };
+
+  users[idx] = { ...users[idx], suspended: true };
+  saveUsers(users);
+  logAuditEvent(
+    "admin_action",
+    session.username,
+    `Admin "${session.username}" suspended user "${users[idx].username}"`,
+    { targetUser: users[idx].username, action: "suspend" },
+  );
+  return { ok: true };
+}
+
+export function unsuspendUser(
+  adminToken: string,
+  targetUserId: string,
+): { ok: true } | { err: string } {
+  const session = requireAdminSession(adminToken);
+  if (!session) return { err: "Unauthorized" };
+
+  const users = getUsers();
+  const idx = users.findIndex((u) => u.id === targetUserId);
+  if (idx < 0) return { err: "User not found" };
+
+  users[idx] = { ...users[idx], suspended: false };
+  saveUsers(users);
+  logAuditEvent(
+    "admin_action",
+    session.username,
+    `Admin "${session.username}" reactivated user "${users[idx].username}"`,
+    { targetUser: users[idx].username, action: "unsuspend" },
+  );
+  return { ok: true };
+}
+
+export function deleteUserById(
+  adminToken: string,
+  targetUserId: string,
+): { ok: true } | { err: string } {
+  const session = requireAdminSession(adminToken);
+  if (!session) return { err: "Unauthorized" };
+  if (targetUserId === session.userId)
+    return { err: "Cannot delete your own account" };
+
+  const users = getUsers();
+  const idx = users.findIndex((u) => u.id === targetUserId);
+  if (idx < 0) return { err: "User not found" };
+
+  const targetUsername = users[idx].username;
+  const updated = users.filter((u) => u.id !== targetUserId);
+  saveUsers(updated);
+
+  // Clean up ownership — reassign to admin
+  const ownership = getOwnership();
+  let ownershipChanged = false;
+  for (const [assessmentId, record] of Object.entries(ownership)) {
+    if (record.ownerUserId === targetUserId) {
+      ownership[assessmentId] = {
+        ownerUserId: "admin",
+        createdBy: record.createdBy,
+      };
+      ownershipChanged = true;
+    }
+  }
+  if (ownershipChanged) saveOwnership(ownership);
+
+  // Remove from access lists
+  const accessMap = getAccessMap();
+  let accessChanged = false;
+  for (const assessmentId of Object.keys(accessMap)) {
+    const before = accessMap[assessmentId].length;
+    accessMap[assessmentId] = accessMap[assessmentId].filter(
+      (u) => u.toLowerCase() !== targetUsername.toLowerCase(),
+    );
+    if (accessMap[assessmentId].length !== before) accessChanged = true;
+  }
+  if (accessChanged) saveAccessMap(accessMap);
+
+  logAuditEvent(
+    "admin_action",
+    session.username,
+    `Admin "${session.username}" deleted user "${targetUsername}"`,
+    { targetUser: targetUsername, action: "delete" },
+  );
+  return { ok: true };
+}
+
+export function promoteUser(
+  adminToken: string,
+  targetUserId: string,
+): { ok: true } | { err: string } {
+  const session = requireAdminSession(adminToken);
+  if (!session) return { err: "Unauthorized" };
+
+  const users = getUsers();
+  const idx = users.findIndex((u) => u.id === targetUserId);
+  if (idx < 0) return { err: "User not found" };
+  if (users[idx].role === "admin") return { err: "User is already an admin" };
+
+  users[idx] = { ...users[idx], role: "admin" };
+  saveUsers(users);
+  logAuditEvent(
+    "admin_action",
+    session.username,
+    `Admin "${session.username}" promoted "${users[idx].username}" to admin`,
+    { targetUser: users[idx].username, action: "promote" },
+  );
+  return { ok: true };
+}
+
+export function demoteUser(
+  adminToken: string,
+  targetUserId: string,
+): { ok: true } | { err: string } {
+  const session = requireAdminSession(adminToken);
+  if (!session) return { err: "Unauthorized" };
+  if (targetUserId === session.userId)
+    return { err: "Cannot demote your own account" };
+
+  const users = getUsers();
+  const idx = users.findIndex((u) => u.id === targetUserId);
+  if (idx < 0) return { err: "User not found" };
+  if (users[idx].role === "user")
+    return { err: "User is already a regular user" };
+
+  users[idx] = { ...users[idx], role: "user" };
+  saveUsers(users);
+  logAuditEvent(
+    "admin_action",
+    session.username,
+    `Admin "${session.username}" demoted "${users[idx].username}" to user`,
+    { targetUser: users[idx].username, action: "demote" },
+  );
+  return { ok: true };
+}
+
 // ─── Ownership ────────────────────────────────────────────────
 
 type OwnershipRecord = Record<
@@ -265,6 +447,19 @@ export function migrateOrphanedAssessments(assessmentIds: string[]): void {
   if (changed) saveOwnership(ownership);
 }
 
+export function getAssessmentCountForUser(userId: string): number {
+  const ownership = getOwnership();
+  return Object.values(ownership).filter((r) => r.ownerUserId === userId)
+    .length;
+}
+
+export function getAssessmentIdsForUser(userId: string): string[] {
+  const ownership = getOwnership();
+  return Object.entries(ownership)
+    .filter(([, r]) => r.ownerUserId === userId)
+    .map(([id]) => id);
+}
+
 // ─── Access sharing ───────────────────────────────────────────
 
 type AccessRecord = Record<string, string[]>; // assessmentId -> usernames[]
@@ -285,6 +480,7 @@ export function grantAssessmentAccess(
   token: string,
   assessmentId: string,
   targetUsername: string,
+  actorUsername?: string,
 ): { ok: true } | { err: string } {
   const session = getSession(token);
   if (!session) return { err: "Not authenticated" };
@@ -312,6 +508,13 @@ export function grantAssessmentAccess(
   }
   map[assessmentId] = [...list, targetUsername];
   saveAccessMap(map);
+
+  logAuditEvent(
+    "access_granted",
+    actorUsername ?? session.username,
+    `"${actorUsername ?? session.username}" granted access to assessment #${assessmentId} for "${targetUsername}"`,
+    { assessmentId, targetUser: targetUsername },
+  );
   return { ok: true };
 }
 
@@ -319,6 +522,7 @@ export function revokeAssessmentAccess(
   token: string,
   assessmentId: string,
   targetUsername: string,
+  actorUsername?: string,
 ): { ok: true } | { err: string } {
   const session = getSession(token);
   if (!session) return { err: "Not authenticated" };
@@ -337,6 +541,13 @@ export function revokeAssessmentAccess(
     (u) => u.toLowerCase() !== targetUsername.toLowerCase(),
   );
   saveAccessMap(map);
+
+  logAuditEvent(
+    "access_revoked",
+    actorUsername ?? session.username,
+    `"${actorUsername ?? session.username}" revoked access to assessment #${assessmentId} from "${targetUsername}"`,
+    { assessmentId, targetUser: targetUsername },
+  );
   return { ok: true };
 }
 
