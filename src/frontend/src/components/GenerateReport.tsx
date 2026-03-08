@@ -81,7 +81,7 @@ export function GenerateReport() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `SpiceUp-Report-${String(report.id)}.txt`;
+    a.download = `QInsight-Report-${String(report.id)}.txt`;
     a.click();
     URL.revokeObjectURL(url);
     toast.success("Report downloaded");

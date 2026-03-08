@@ -94,16 +94,16 @@ function Sidebar({
           <div className="flex items-center justify-center shrink-0 overflow-hidden">
             <img
               src="/assets/generated/infineon-logo.png"
-              alt="Infineon"
+              alt="Q-Insight"
               className="h-8 w-auto object-contain"
             />
           </div>
           <div>
             <h1 className="text-lg font-bold text-sidebar-foreground font-heading leading-tight tracking-tight">
-              Infineon
+              Q&#8209;Insight
             </h1>
             <p className="text-[10px] text-sidebar-foreground/50 font-body leading-tight mt-0.5">
-              For Smart Assessments
+              For Smarter Assessments
             </p>
           </div>
         </div>
@@ -287,13 +287,18 @@ function AuthenticatedApp() {
               <div className="flex items-center justify-center overflow-hidden">
                 <img
                   src="/assets/generated/infineon-logo.png"
-                  alt="Infineon"
+                  alt="Q-Insight"
                   className="h-6 w-auto object-contain"
                 />
               </div>
-              <span className="font-bold font-heading text-foreground">
-                Infineon
-              </span>
+              <div>
+                <span className="font-bold font-heading text-foreground">
+                  Q&#8209;Insight
+                </span>
+                <p className="text-[10px] text-muted-foreground leading-tight">
+                  For Smarter Assessments
+                </p>
+              </div>
             </div>
           </header>
 
@@ -361,7 +366,7 @@ function AppRouter() {
         <div className="flex flex-col items-center gap-3">
           <img
             src="/assets/generated/infineon-logo.png"
-            alt="Infineon"
+            alt="Q-Insight"
             className="h-10 w-auto object-contain opacity-60 animate-pulse"
           />
         </div>

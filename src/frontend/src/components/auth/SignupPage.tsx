@@ -70,14 +70,14 @@ export function SignupPage({ onSwitchToLogin }: SignupPageProps) {
         <div className="flex flex-col items-center mb-8">
           <img
             src="/assets/generated/infineon-logo.png"
-            alt="Infineon"
+            alt="Q-Insight"
             className="h-10 w-auto object-contain mb-4"
           />
           <h1 className="text-2xl font-bold font-heading text-foreground tracking-tight">
             Create an account
           </h1>
           <p className="text-sm text-muted-foreground font-body mt-1">
-            Join Infineon Assessment Platform
+            Join Q&#8209;Insight Assessment Platform
           </p>
         </div>
 
