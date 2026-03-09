@@ -180,8 +180,16 @@ function AssessmentHeaderBar({ active }: { active: string }) {
 
   return (
     <div className="flex items-center justify-between gap-3 px-6 py-2.5 border-b border-border bg-background shrink-0">
-      {/* Left: assessment selector (hidden on dashboard) */}
+      {/* Left: app branding + assessment selector */}
       <div className="flex items-center gap-3 flex-1">
+        <div className="hidden md:flex flex-col leading-tight shrink-0 mr-1 border-r border-border/40 pr-3">
+          <span className="text-sm font-bold font-heading text-foreground tracking-tight">
+            Q&#8209;Insight
+          </span>
+          <span className="text-[10px] text-muted-foreground font-body leading-tight">
+            For Smarter Assessments
+          </span>
+        </div>
         {active !== "dashboard" && (
           <>
             <span className="text-xs text-muted-foreground font-body">
