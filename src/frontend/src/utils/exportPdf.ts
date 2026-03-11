@@ -1,11 +1,16 @@
 /**
  * exportPdf.ts
  * PDF export for Q-Insight assessment reports using jsPDF + jspdf-autotable.
+ * Uses window.jspdf (CDN-loaded) to avoid bundler dependency issues.
  */
 
-import { jsPDF } from "jspdf";
-import autoTable from "jspdf-autotable";
 import type { ReportData } from "./reportData";
+
+// CDN-loaded jsPDF globals
+const getJsPDF = (): any =>
+  (window as any).jspdf?.jsPDF ?? (window as any).jsPDF;
+const getAutoTable = (): any =>
+  (window as any).jspdf?.autoTable ?? (window as any).autoTable;
 
 // ─── Color constants ─────────────────────────────────────────────
 
@@ -32,14 +37,7 @@ const RATING_COLORS: Record<
   NA: { bg: [156, 163, 175], text: [255, 255, 255] },
 };
 
-function ratingCell(rating: string | null): {
-  content: string;
-  styles: {
-    fillColor: [number, number, number];
-    textColor: [number, number, number];
-    fontStyle: "bold";
-  };
-} {
+function ratingCell(rating: string | null): any {
   if (!rating || !RATING_COLORS[rating]) {
     return {
       content: "—",
@@ -58,7 +56,7 @@ function ratingCell(rating: string | null): {
 }
 
 function addFooter(
-  doc: jsPDF,
+  doc: any,
   pageNum: number,
   totalPages: number,
   generatedAt: string,
@@ -79,7 +77,7 @@ function addFooter(
 
 // ─── Page 1: Cover ───────────────────────────────────────────────
 
-function addCoverPage(doc: jsPDF, data: ReportData) {
+function addCoverPage(doc: any, data: ReportData) {
   const w = doc.internal.pageSize.getWidth();
   const h = doc.internal.pageSize.getHeight();
 
@@ -194,7 +192,8 @@ function addCoverPage(doc: jsPDF, data: ReportData) {
 
 // ─── Page 2: Executive Summary / Results Matrix ──────────────────
 
-function addResultsPage(doc: jsPDF, data: ReportData) {
+function addResultsPage(doc: any, data: ReportData) {
+  const autoTable = getAutoTable();
   doc.addPage();
   const w = doc.internal.pageSize.getWidth();
 
@@ -329,10 +328,11 @@ function addResultsPage(doc: jsPDF, data: ReportData) {
 // ─── Pages 3+: Per-Process Detail ────────────────────────────────
 
 function addProcessPage(
-  doc: jsPDF,
+  doc: any,
   proc: ReportData["processes"][0],
   assessmentName: string,
 ) {
+  const autoTable = getAutoTable();
   doc.addPage();
   const w = doc.internal.pageSize.getWidth();
 
@@ -389,9 +389,7 @@ function addProcessPage(
     tableWidth: "auto",
   });
 
-  currentY =
-    (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable
-      .finalY + 6;
+  currentY = doc.lastAutoTable.finalY + 6;
 
   // BP Ratings table
   if (proc.bpDetails.length > 0) {
@@ -430,9 +428,7 @@ function addProcessPage(
       },
     });
 
-    currentY =
-      (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable
-        .finalY + 6;
+    currentY = doc.lastAutoTable.finalY + 6;
   }
 
   // GP groups
@@ -477,9 +473,7 @@ function addProcessPage(
       },
     });
 
-    currentY =
-      (doc as jsPDF & { lastAutoTable: { finalY: number } }).lastAutoTable
-        .finalY + 6;
+    currentY = doc.lastAutoTable.finalY + 6;
   }
 
   // Evidence table (all BPs + GPs combined)
@@ -530,7 +524,13 @@ function addProcessPage(
 // ─── Main Export Function ────────────────────────────────────────
 
 export function exportToPdf(data: ReportData): void {
-  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+  const JsPDF = getJsPDF();
+  if (!JsPDF) {
+    alert("PDF export library not loaded. Please try again.");
+    return;
+  }
+
+  const doc = new JsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
 
   // Cover
   addCoverPage(doc, data);

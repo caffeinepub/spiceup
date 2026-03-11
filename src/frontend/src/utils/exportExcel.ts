@@ -1,26 +1,33 @@
 /**
  * exportExcel.ts
  * Excel (.xlsx) export for Q-Insight assessment reports using SheetJS (xlsx).
+ * Uses window.XLSX (CDN-loaded) to avoid bundler dependency issues.
  */
 
-import * as XLSX from "xlsx";
 import type { ReportData } from "./reportData";
+
+// CDN-loaded XLSX global
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const getXLSX = (): any => {
+  return (window as any).XLSX;
+};
 
 // ─── Helpers ─────────────────────────────────────────────────────
 
-function makeCell(value: string | number | null | undefined): XLSX.CellObject {
+function makeCell(value: string | number | null | undefined): any {
   const v = value ?? "";
   return { t: typeof v === "number" ? "n" : "s", v };
 }
 
 // SheetJS cell address helper
 function addr(col: number, row: number): string {
+  const XLSX = getXLSX();
   const colName = XLSX.utils.encode_col(col);
   return `${colName}${row + 1}`;
 }
 
-function buildExecutiveSummarySheet(data: ReportData): XLSX.WorkSheet {
-  const ws: XLSX.WorkSheet = {};
+function buildExecutiveSummarySheet(data: ReportData): any {
+  const ws: any = {};
   let row = 0;
 
   // ── Header ──
@@ -129,6 +136,8 @@ function buildExecutiveSummarySheet(data: ReportData): XLSX.WorkSheet {
     row++;
   }
 
+  const XLSX = getXLSX();
+
   // Set column widths
   ws["!cols"] = [
     { wch: 40 }, // Process
@@ -150,8 +159,8 @@ function buildExecutiveSummarySheet(data: ReportData): XLSX.WorkSheet {
   return ws;
 }
 
-function buildProcessSheet(proc: ReportData["processes"][0]): XLSX.WorkSheet {
-  const ws: XLSX.WorkSheet = {};
+function buildProcessSheet(proc: ReportData["processes"][0]): any {
+  const ws: any = {};
   let row = 0;
 
   // Header info
@@ -269,6 +278,8 @@ function buildProcessSheet(proc: ReportData["processes"][0]): XLSX.WorkSheet {
     }
   }
 
+  const XLSX = getXLSX();
+
   ws["!cols"] = [
     { wch: 22 }, // ID
     { wch: 55 }, // Title / Description
@@ -289,6 +300,12 @@ function buildProcessSheet(proc: ReportData["processes"][0]): XLSX.WorkSheet {
 // ─── Main Export Function ────────────────────────────────────────
 
 export function exportToExcel(data: ReportData): void {
+  const XLSX = getXLSX();
+  if (!XLSX) {
+    alert("Excel export library not loaded. Please try again.");
+    return;
+  }
+
   const wb = XLSX.utils.book_new();
 
   // Sheet 1: Executive Summary

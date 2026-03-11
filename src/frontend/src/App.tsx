@@ -21,7 +21,7 @@ import {
   Menu,
   Target,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AssessmentInfo } from "./components/AssessmentInfo";
 import { AssessmentPlanning } from "./components/AssessmentPlanning";
 import { Dashboard } from "./components/Dashboard";
@@ -145,21 +145,60 @@ function Sidebar({
         })}
       </nav>
 
-      {/* Footer */}
-      <div className="px-5 py-4 border-t border-sidebar-border">
-        <p className="text-[10px] text-sidebar-foreground/30 font-body text-center leading-relaxed">
-          © {new Date().getFullYear()} ·{" "}
-          <a
-            href={`https://caffeine.ai?utm_source=caffeine-footer&utm_medium=referral&utm_content=${encodeURIComponent(window.location.hostname)}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="hover:text-sidebar-foreground/60 transition-colors"
-          >
-            caffeine.ai
-          </a>
-        </p>
+      {/* Profile + Footer */}
+      <div className="border-t border-sidebar-border">
+        <div className="px-3 pt-3">
+          <UserProfileMenu variant="sidebar" />
+        </div>
+        <div className="px-5 py-3">
+          <p className="text-[10px] text-sidebar-foreground/30 font-body text-center leading-relaxed">
+            © {new Date().getFullYear()} ·{" "}
+            <a
+              href={`https://caffeine.ai?utm_source=caffeine-footer&utm_medium=referral&utm_content=${encodeURIComponent(window.location.hostname)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hover:text-sidebar-foreground/60 transition-colors"
+            >
+              caffeine.ai
+            </a>
+          </p>
+        </div>
       </div>
     </aside>
+  );
+}
+
+function AutosaveIndicator() {
+  const { autosaveStatus } = useAppContext();
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    if (autosaveStatus === "saving" || autosaveStatus === "saved") {
+      setVisible(true);
+    }
+    if (autosaveStatus === "idle") {
+      // Fade out
+      const t = setTimeout(() => setVisible(false), 400);
+      return () => clearTimeout(t);
+    }
+  }, [autosaveStatus]);
+
+  if (!visible && autosaveStatus === "idle") return null;
+
+  return (
+    <span
+      className={cn(
+        "text-xs font-body text-muted-foreground transition-opacity duration-300",
+        autosaveStatus === "idle" ? "opacity-0" : "opacity-100",
+      )}
+      aria-live="polite"
+      aria-atomic="true"
+    >
+      {autosaveStatus === "saving" && "Saving…"}
+      {autosaveStatus === "saved" && (
+        <span className="text-emerald-600">Saved ✓</span>
+      )}
+    </span>
   );
 }
 
@@ -179,62 +218,46 @@ function AssessmentHeaderBar({ active }: { active: string }) {
   };
 
   return (
-    <div className="flex items-center justify-between gap-3 px-6 py-2.5 border-b border-border bg-background shrink-0">
-      {/* Left: app branding + assessment selector */}
-      <div className="flex items-center gap-3 flex-1">
-        <div className="hidden md:flex flex-col leading-tight shrink-0 mr-1 border-r border-border/40 pr-3">
-          <span className="text-sm font-bold font-heading text-foreground tracking-tight">
-            Q&#8209;Insight
-          </span>
-          <span className="text-[10px] text-muted-foreground font-body leading-tight">
-            For Smarter Assessments
-          </span>
-        </div>
-        {active !== "dashboard" && (
-          <>
-            <span className="text-xs text-muted-foreground font-body">
-              Assessment:
-            </span>
-            <Select
-              value={currentAssessmentId?.toString() ?? ""}
-              onValueChange={(val) => {
-                if (!val || !assessments) return;
-                const a = assessments.find((x) => x.id.toString() === val);
-                if (a) setCurrentAssessment(a.id, a.name);
-              }}
-            >
-              <SelectTrigger
-                className="h-8 text-sm w-[220px] font-body"
-                data-ocid="header.assessment_select"
-              >
-                <SelectValue placeholder="Select assessment…">
-                  {currentAssessmentTitle || "Select assessment…"}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {assessments?.map((a) => (
-                  <SelectItem key={a.id.toString()} value={a.id.toString()}>
-                    {a.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {currentAssessment && (
-              <Badge
-                variant="outline"
-                className={`font-body text-xs shrink-0 ${statusStyles[currentAssessment.status] ?? "bg-gray-50 text-gray-600 border-gray-200"}`}
-              >
-                {currentAssessment.status}
-              </Badge>
-            )}
-          </>
-        )}
-      </div>
+    <div className="flex items-center justify-end gap-3 px-4 py-1.5 border-b border-border bg-background shrink-0">
+      {/* Autosave indicator */}
+      <AutosaveIndicator />
 
-      {/* Right: user profile menu — always visible */}
-      <div className="flex items-center gap-2 shrink-0">
-        <UserProfileMenu />
-      </div>
+      {active !== "dashboard" && (
+        <>
+          <Select
+            value={currentAssessmentId?.toString() ?? ""}
+            onValueChange={(val) => {
+              if (!val || !assessments) return;
+              const a = assessments.find((x) => x.id.toString() === val);
+              if (a) setCurrentAssessment(a.id, a.name);
+            }}
+          >
+            <SelectTrigger
+              className="h-8 text-sm w-[220px] font-body"
+              data-ocid="header.assessment_select"
+            >
+              <SelectValue placeholder="Select assessment…">
+                {currentAssessmentTitle || "Select assessment…"}
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              {assessments?.map((a) => (
+                <SelectItem key={a.id.toString()} value={a.id.toString()}>
+                  {a.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {currentAssessment && (
+            <Badge
+              variant="outline"
+              className={`font-body text-xs shrink-0 ${statusStyles[currentAssessment.status] ?? "bg-gray-50 text-gray-600 border-gray-200"}`}
+            >
+              {currentAssessment.status}
+            </Badge>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -310,7 +333,7 @@ function AuthenticatedApp() {
             </div>
           </header>
 
-          {/* Global Assessment Selector + Profile Header */}
+          {/* Global Assessment Selector + Autosave Header */}
           <AssessmentHeaderBar active={active} />
 
           {/* Page Content */}
@@ -321,7 +344,7 @@ function AuthenticatedApp() {
                   height: "100%",
                   display: "flex",
                   flexDirection: "column",
-                  padding: "24px",
+                  padding: "16px",
                 }}
               >
                 {renderPage(active, isAdmin)}
@@ -333,7 +356,7 @@ function AuthenticatedApp() {
             </main>
           ) : (
             <main className="flex-1 overflow-y-auto">
-              <div className="max-w-5xl mx-auto px-6 py-8">
+              <div className="max-w-6xl mx-auto px-6 py-6">
                 {renderPage(active, isAdmin)}
               </div>
             </main>

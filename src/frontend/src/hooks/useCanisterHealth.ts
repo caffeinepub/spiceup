@@ -4,62 +4,65 @@ import { createActorWithConfig } from "../config";
 
 export type CanisterStatus = "unknown" | "starting" | "ready" | "restarting";
 
-const MAX_POLL_ATTEMPTS = 40; // ~10 minutes at 15s intervals
-const POLL_INTERVAL_MS = 15_000;
-const INITIAL_DELAY_MS = 3_000;
-// How long to wait (ms) on initial mount before the first probe
-const STARTUP_CHECK_DELAY_MS = 2_000;
+// Poll every 5 seconds while restarting for fast reconnect
+const POLL_INTERVAL_MS = 5_000;
+// Initial probe delay on mount
+const STARTUP_CHECK_DELAY_MS = 1_500;
+// After this many consecutive network errors (not canister-stopped),
+// slow down to avoid hammering the network
+const SLOW_POLL_THRESHOLD = 6;
+const SLOW_POLL_INTERVAL_MS = 15_000;
 
 /**
  * Probes the canister by making a lightweight read-only call.
- * Returns true if the canister is reachable and running.
+ * Returns:
+ *   "ready"   - canister responded successfully
+ *   "stopped" - canister is explicitly stopped/frozen (IC0508/IC0503)
+ *   "error"   - transient network or unknown error (keep retrying)
  */
-async function probeCanister(): Promise<boolean> {
+async function probeCanister(): Promise<"ready" | "stopped" | "error"> {
   try {
     const actor = await createActorWithConfig();
-    // getAllAssessments is a cheap read-only call available on all deployments
     await actor.getAllAssessments();
-    return true;
+    return "ready";
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    // IC0508 = canister stopped, IC0503 = canister out of cycles/frozen
     if (
       msg.includes("IC0508") ||
       msg.includes("IC0503") ||
       (msg.toLowerCase().includes("canister") &&
-        msg.toLowerCase().includes("stopped"))
+        (msg.toLowerCase().includes("stopped") ||
+          msg.toLowerCase().includes("frozen")))
     ) {
-      return false;
+      return "stopped";
     }
-    // Any other error (network glitch, timeout) -- treat as not-ready
-    return false;
+    // Treat everything else as a transient error — keep retrying
+    return "error";
   }
 }
 
 interface CanisterHealthState {
   status: CanisterStatus;
-  /** How many poll attempts have been made (for progress indication) */
   attempts: number;
-  /** Estimated seconds until next probe */
+  consecutiveErrors: number;
   nextProbeIn: number;
 }
 
 /**
  * Hook that tracks canister health and actively polls when it's restarting.
  *
- * Automatically probes once on mount to detect a stopped canister after a
- * fresh deployment, so users see the banner immediately without needing to
- * click "Create New Assessment" first.
- *
- * Call `triggerRestart()` when an IC0508 error is detected manually. The hook
- * will start polling every POLL_INTERVAL_MS until the canister comes back, then
- * invalidate the actor cache so fresh queries are made.
+ * Key behaviours:
+ * - Auto-probes once on mount; if canister is down, starts polling immediately.
+ * - Polls every 5 s (slows to 15 s after 6 consecutive transient network errors).
+ * - NEVER stops polling on its own — keeps trying until the canister responds.
+ * - On recovery: flushes the stale actor and invalidates all queries.
  */
 export function useCanisterHealth() {
   const queryClient = useQueryClient();
   const [state, setState] = useState<CanisterHealthState>({
     status: "unknown",
     attempts: 0,
+    consecutiveErrors: 0,
     nextProbeIn: 0,
   });
 
@@ -67,6 +70,7 @@ export function useCanisterHealth() {
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isPollingRef = useRef(false);
   const attemptsRef = useRef(0);
+  const consecutiveErrorsRef = useRef(0);
   const hasInitialCheckRef = useRef(false);
 
   const stopPolling = useCallback(() => {
@@ -83,7 +87,7 @@ export function useCanisterHealth() {
 
   const startCountdown = useCallback((seconds: number) => {
     if (countdownRef.current) clearInterval(countdownRef.current);
-    let remaining = seconds;
+    let remaining = Math.ceil(seconds);
     setState((s) => ({ ...s, nextProbeIn: remaining }));
     countdownRef.current = setInterval(() => {
       remaining -= 1;
@@ -101,59 +105,71 @@ export function useCanisterHealth() {
     attemptsRef.current += 1;
     setState((s) => ({ ...s, attempts: attemptsRef.current }));
 
-    const ready = await probeCanister();
+    const result = await probeCanister();
 
-    if (!isPollingRef.current) return; // was stopped while probing
+    if (!isPollingRef.current) return;
 
-    if (ready) {
+    if (result === "ready") {
       stopPolling();
-      // Force-remove the stale actor so a fresh one is created
+      consecutiveErrorsRef.current = 0;
+      // Flush stale actor so a fresh one is created
       queryClient.removeQueries({ queryKey: ["actor"] });
-      // Invalidate all data queries so they refetch with the new actor
       queryClient.invalidateQueries({
         predicate: (q) => !q.queryKey.includes("actor"),
       });
       setState({
         status: "ready",
         attempts: attemptsRef.current,
+        consecutiveErrors: 0,
         nextProbeIn: 0,
       });
       return;
     }
 
-    if (attemptsRef.current >= MAX_POLL_ATTEMPTS) {
-      stopPolling();
-      setState((s) => ({ ...s, status: "restarting", nextProbeIn: 0 }));
-      return;
+    // For both "stopped" and transient "error", keep polling
+    if (result === "error") {
+      consecutiveErrorsRef.current += 1;
+    } else {
+      // canister explicitly stopped — reset error streak
+      consecutiveErrorsRef.current = 0;
     }
 
-    // Schedule next probe
-    startCountdown(POLL_INTERVAL_MS / 1000);
-    pollingRef.current = setTimeout(runPollLoop, POLL_INTERVAL_MS);
+    setState((s) => ({
+      ...s,
+      status: "restarting",
+      consecutiveErrors: consecutiveErrorsRef.current,
+    }));
+
+    // Slow down if we're getting many consecutive transient errors
+    const interval =
+      consecutiveErrorsRef.current >= SLOW_POLL_THRESHOLD
+        ? SLOW_POLL_INTERVAL_MS
+        : POLL_INTERVAL_MS;
+
+    startCountdown(interval / 1000);
+    pollingRef.current = setTimeout(runPollLoop, interval);
   }, [queryClient, stopPolling, startCountdown]);
 
-  /** Call this when an IC0508 / canister-stopped error is detected */
+  /** Call this when an IC0508 / canister-stopped error is detected externally */
   const triggerRestart = useCallback(() => {
-    if (isPollingRef.current) return; // already polling
+    if (isPollingRef.current) return;
     stopPolling();
     isPollingRef.current = true;
     attemptsRef.current = 0;
-    // Force-remove stale actor immediately
+    consecutiveErrorsRef.current = 0;
     queryClient.removeQueries({ queryKey: ["actor"] });
     setState({
       status: "restarting",
       attempts: 0,
-      nextProbeIn: INITIAL_DELAY_MS / 1000,
+      consecutiveErrors: 0,
+      nextProbeIn: POLL_INTERVAL_MS / 1000,
     });
-    // Small initial delay before first probe
-    startCountdown(INITIAL_DELAY_MS / 1000);
-    pollingRef.current = setTimeout(runPollLoop, INITIAL_DELAY_MS);
+    startCountdown(POLL_INTERVAL_MS / 1000);
+    pollingRef.current = setTimeout(runPollLoop, POLL_INTERVAL_MS);
   }, [queryClient, stopPolling, startCountdown, runPollLoop]);
 
-  /** Manually trigger a single probe attempt (e.g., user clicks "Check Now") */
+  /** Immediately probe without waiting for the next scheduled interval */
   const checkNow = useCallback(async () => {
-    if (!isPollingRef.current) return;
-    // Cancel the scheduled probe and run immediately
     if (pollingRef.current) {
       clearTimeout(pollingRef.current);
       pollingRef.current = null;
@@ -162,26 +178,24 @@ export function useCanisterHealth() {
       clearInterval(countdownRef.current);
       countdownRef.current = null;
     }
+    // Ensure polling flag is on even if not currently polling
+    isPollingRef.current = true;
     setState((s) => ({ ...s, nextProbeIn: 0 }));
     await runPollLoop();
   }, [runPollLoop]);
 
   /**
-   * On mount: do a single silent probe after a short delay.
-   * If the canister is stopped (e.g., right after a fresh deployment), start
-   * the polling loop so the amber banner appears immediately without the user
-   * needing to click anything first.
+   * On mount: silent probe. If the canister is down, kick off polling
+   * immediately so users see the banner without needing to trigger any action.
    */
   useEffect(() => {
     if (hasInitialCheckRef.current) return;
     hasInitialCheckRef.current = true;
 
     const timer = setTimeout(async () => {
-      // If we've already been triggered by an error, skip the startup probe
       if (isPollingRef.current) return;
-      const ready = await probeCanister();
-      if (!ready && !isPollingRef.current) {
-        // Canister is not reachable -- start polling loop automatically
+      const result = await probeCanister();
+      if (result !== "ready" && !isPollingRef.current) {
         triggerRestart();
       }
     }, STARTUP_CHECK_DELAY_MS);
@@ -189,16 +203,13 @@ export function useCanisterHealth() {
     return () => clearTimeout(timer);
   }, [triggerRestart]);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => stopPolling();
   }, [stopPolling]);
 
-  const isRestarting = state.status === "restarting";
-
   return {
     status: state.status,
-    isRestarting,
+    isRestarting: state.status === "restarting",
     attempts: state.attempts,
     nextProbeIn: state.nextProbeIn,
     triggerRestart,

@@ -29,6 +29,8 @@ interface AppContextValue {
   clearCurrentAssessment: () => void;
   activePage: string;
   navigateTo: (page: string) => void;
+  autosaveStatus: "idle" | "saving" | "saved";
+  setAutosaveStatus: (s: "idle" | "saving" | "saved") => void;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -49,6 +51,9 @@ export function AppProvider({
   const [currentAssessmentTitle, setCurrentAssessmentTitle] = useState<string>(
     persisted.title,
   );
+  const [autosaveStatus, setAutosaveStatus] = useState<
+    "idle" | "saving" | "saved"
+  >("idle");
 
   // Sync to localStorage whenever the current assessment changes
   useEffect(() => {
@@ -80,6 +85,8 @@ export function AppProvider({
         clearCurrentAssessment,
         activePage,
         navigateTo,
+        autosaveStatus,
+        setAutosaveStatus,
       }}
     >
       {children}

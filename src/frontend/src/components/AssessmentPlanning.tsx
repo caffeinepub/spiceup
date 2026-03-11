@@ -464,7 +464,7 @@ export function AssessmentPlanning() {
 
           {/* Actions */}
           {!isCompleted && (
-            <div className="flex items-center gap-3 pt-1 pb-6">
+            <div className="flex items-center gap-3 pt-1 pb-4">
               <Button
                 variant="outline"
                 size="sm"

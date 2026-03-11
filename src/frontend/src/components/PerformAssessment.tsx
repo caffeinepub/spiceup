@@ -1,6 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -28,6 +28,12 @@ import {
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useAppContext } from "@/context/AppContext";
 import {
   BASE_PRACTICES,
@@ -54,10 +60,9 @@ import {
   Italic,
   LayoutDashboard,
   List,
-  Loader2,
   Pencil,
   Plus,
-  Save,
+  Search,
   Trash2,
 } from "lucide-react";
 import type React from "react";
@@ -126,11 +131,32 @@ const NPLF_COLORS: Record<
 const RATING_OPTIONS: {
   value: Rating;
   label: string;
+  tooltip: string;
 }[] = [
-  { value: "N", label: "N" },
-  { value: "P", label: "P" },
-  { value: "L", label: "L" },
-  { value: "F", label: "F" },
+  {
+    value: "N",
+    label: "N",
+    tooltip:
+      "Not achieved (0–15%): The process is not implemented or fails to achieve its process outcomes.",
+  },
+  {
+    value: "P",
+    label: "P",
+    tooltip:
+      "Partially achieved (>15–50%): The implemented process achieves some of its process outcomes.",
+  },
+  {
+    value: "L",
+    label: "L",
+    tooltip:
+      "Largely achieved (>50–85%): The implemented process achieves most of its defined outcomes.",
+  },
+  {
+    value: "F",
+    label: "F",
+    tooltip:
+      "Fully achieved (>85–100%): The implemented process fully achieves its defined outcomes.",
+  },
 ];
 
 // ─── Helpers ────────────────────────────────────────────────────
@@ -669,178 +695,7 @@ function AddEntryDialog({
   );
 }
 
-// ─── S&W Entries Table (used for BP view) ────────────────────────
-// Bug fix: Dialog state is now lifted to the PerformAssessment main component
-// via openDialog callback, preventing blank-page bug caused by child remounts.
-
-function SwEntriesTable({
-  entries,
-  practiceId,
-  onDelete,
-  isCompleted,
-  openDialog,
-  onAddEvidence,
-}: {
-  entries: SwEntry[];
-  practiceId: string;
-  onDelete: (id: string) => void;
-  isCompleted?: boolean;
-  openDialog: (entry?: SwEntry) => void;
-  onAddEvidence?: () => void;
-}) {
-  const strengths = entries.filter((e) => e.type === "strength");
-  const weaknesses = entries.filter((e) => e.type === "weakness");
-
-  return (
-    <div className="space-y-3">
-      {/* Header row with stats and add buttons */}
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-3">
-          <span className="text-xs font-body text-muted-foreground">
-            <span className="inline-flex items-center gap-1">
-              <span className="h-2 w-2 rounded-full bg-emerald-500" />
-              {strengths.length} Strength{strengths.length !== 1 ? "s" : ""}
-            </span>
-          </span>
-          <span className="text-xs font-body text-muted-foreground">
-            <span className="inline-flex items-center gap-1">
-              <span className="h-2 w-2 rounded-full bg-red-500" />
-              {weaknesses.length} Weakness
-              {weaknesses.length !== 1 ? "es" : ""}
-            </span>
-          </span>
-        </div>
-        {!isCompleted && (
-          <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              onClick={() => openDialog(undefined)}
-              className="spice-gradient text-white border-0 gap-1.5 font-body text-xs h-7 px-3"
-              data-ocid="perform.sw_add_button"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              Add Entry
-            </Button>
-            {onAddEvidence && (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={onAddEvidence}
-                className="font-body text-xs gap-1 h-7 px-3"
-                data-ocid="perform.evidence_add_button"
-              >
-                <Plus className="h-3.5 w-3.5" /> Add Evidence
-              </Button>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Table of entries */}
-      {entries.length === 0 ? null : (
-        <div className="rounded-md border border-border/60 overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow className="bg-muted/30">
-                <TableHead className="font-body text-xs w-[90px]">
-                  Type
-                </TableHead>
-                <TableHead className="font-body text-xs w-[90px]">
-                  Practice
-                </TableHead>
-                <TableHead className="font-body text-xs">Description</TableHead>
-                {!isCompleted && (
-                  <TableHead className="font-body text-xs w-[80px]">
-                    Actions
-                  </TableHead>
-                )}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {entries.map((entry, idx) => (
-                <TableRow
-                  key={entry.id}
-                  data-ocid={`perform.sw_entry_row.${idx + 1}`}
-                  className={cn(
-                    "transition-colors border-b border-border/50 last:border-b-0",
-                    entry.type === "strength"
-                      ? "bg-emerald-50/60 hover:bg-emerald-50 border-l-2 border-l-emerald-300"
-                      : "bg-red-50/60 hover:bg-red-50 border-l-2 border-l-red-300",
-                  )}
-                >
-                  <TableCell className="py-2">
-                    <Badge
-                      variant="outline"
-                      className={cn(
-                        "font-body text-xs",
-                        entry.type === "strength"
-                          ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                          : "bg-red-50 text-red-700 border-red-200",
-                      )}
-                    >
-                      {entry.type === "strength" ? "Strength" : "Weakness"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="py-2 font-mono text-xs text-muted-foreground">
-                    {practiceId}
-                  </TableCell>
-                  <TableCell className="py-2">
-                    <div className="text-xs font-body text-foreground leading-relaxed max-w-md">
-                      {renderRichText(entry.text)}
-                    </div>
-                  </TableCell>
-                  {!isCompleted && (
-                    <TableCell className="py-2">
-                      <div className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => openDialog(entry)}
-                          className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-                          title="Edit"
-                          data-ocid={`perform.sw_edit_button.${idx + 1}`}
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => onDelete(entry.id)}
-                          className="p-1 rounded hover:bg-destructive/10 transition-colors text-muted-foreground hover:text-destructive"
-                          title="Delete"
-                          data-ocid={`perform.sw_delete_button.${idx + 1}`}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                    </TableCell>
-                  )}
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ─── Sub-components ─────────────────────────────────────────────
-
-function StatusBadge({ status }: { status: string }) {
-  const styles: Record<string, string> = {
-    Active: "bg-blue-50 text-blue-700 border-blue-200",
-    Completed: "bg-emerald-50 text-emerald-700 border-emerald-200",
-    Draft: "bg-gray-50 text-gray-600 border-gray-200",
-  };
-  return (
-    <Badge
-      variant="outline"
-      className={`font-body text-xs ${styles[status] ?? "bg-gray-50 text-gray-600 border-gray-200"}`}
-    >
-      {status}
-    </Badge>
-  );
-}
 
 function RatingSelector({
   value,
@@ -854,46 +709,57 @@ function RatingSelector({
   disabled?: boolean;
 }) {
   return (
-    <div className="flex gap-1.5">
-      {RATING_OPTIONS.map((opt) => {
-        const isActive = value === opt.value;
-        const nplf = NPLF_COLORS[opt.value];
-        return (
-          <button
-            key={opt.value}
-            type="button"
-            disabled={disabled}
-            onClick={() => onChange(value === opt.value ? "" : opt.value)}
-            className={cn(
-              "w-10 h-10 rounded-lg text-sm font-bold font-heading border-2 transition-all",
-              !isActive &&
-                "bg-background border-border text-muted-foreground hover:bg-muted",
-              disabled && "opacity-60 cursor-not-allowed",
-            )}
-            style={
-              isActive
-                ? {
-                    backgroundColor: nplf.bg,
-                    color: nplf.color,
-                    borderColor: nplf.border,
+    <TooltipProvider delayDuration={400}>
+      <div className="flex gap-1.5">
+        {RATING_OPTIONS.map((opt) => {
+          const isActive = value === opt.value;
+          const nplf = NPLF_COLORS[opt.value];
+          return (
+            <Tooltip key={opt.value}>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => onChange(value === opt.value ? "" : opt.value)}
+                  className={cn(
+                    "w-10 h-10 rounded-lg text-sm font-bold font-heading border-2 transition-all",
+                    !isActive &&
+                      "bg-background border-border text-muted-foreground hover:bg-muted",
+                    disabled && "opacity-60 cursor-not-allowed",
+                  )}
+                  style={
+                    isActive
+                      ? {
+                          backgroundColor: nplf.bg,
+                          color: nplf.color,
+                          borderColor: nplf.border,
+                        }
+                      : undefined
                   }
-                : undefined
-            }
-            data-ocid={`perform.practice_rating_button.${index}`}
-          >
-            {opt.label}
-          </button>
-        );
-      })}
-    </div>
+                  data-ocid={`perform.practice_rating_button.${index}`}
+                >
+                  {opt.label}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent
+                side="top"
+                className="max-w-[260px] text-xs font-body leading-snug"
+              >
+                <p>{opt.tooltip}</p>
+              </TooltipContent>
+            </Tooltip>
+          );
+        })}
+      </div>
+    </TooltipProvider>
   );
 }
 
 // ─── BP Practice Panel (new design) ──────────────────────────────
 
 function BPPracticePanel({
-  practice,
-  processId,
+  practice: _practice,
+  processId: _processId,
   state,
   onChange,
   isCompleted,
@@ -911,6 +777,9 @@ function BPPracticePanel({
   const [editingEvidence, setEditingEvidence] = useState<
     (EvidenceItem & { index: number }) | undefined
   >(undefined);
+  const [swFilter, setSwFilter] = useState<"all" | "strengths" | "weaknesses">(
+    "all",
+  );
 
   function handleOpenAddEvidence() {
     setEditingEvidence(undefined);
@@ -924,13 +793,11 @@ function BPPracticePanel({
 
   function handleEvidenceSubmit(item: EvidenceItem, index: number | null) {
     if (index !== null) {
-      // Edit existing
       const updated = state.workProducts.map((wp, idx) =>
         idx === index ? item : wp,
       );
       onChange({ workProducts: updated });
     } else {
-      // Add new
       onChange({ workProducts: [...state.workProducts, item] });
     }
   }
@@ -947,106 +814,292 @@ function BPPracticePanel({
     });
   }
 
-  const practiceLabel = `${processId} ${practice.id}`;
+  const swEntries = state.swEntries ?? [];
+  const strengths = swEntries.filter((e) => e.type === "strength");
+  const weaknesses = swEntries.filter((e) => e.type === "weakness");
+
+  const filteredSw = swEntries.filter((e) => {
+    if (swFilter === "strengths") return e.type === "strength";
+    if (swFilter === "weaknesses") return e.type === "weakness";
+    return true;
+  });
 
   return (
-    <div className="space-y-5">
-      {/* Rating row */}
-      <div className="flex items-center justify-end gap-4 pb-3 border-b border-border/40">
-        <RatingSelector
-          value={state.rating}
-          onChange={(v) => onChange({ rating: v })}
-          index={1}
-          disabled={isCompleted}
-        />
-      </div>
-
-      {/* S&W Entries Table */}
-      <div className="space-y-2">
-        <SwEntriesTable
-          entries={state.swEntries ?? []}
-          practiceId={practiceLabel}
-          onDelete={deleteSwEntry}
-          isCompleted={isCompleted}
-          openDialog={openSwDialog}
-          onAddEvidence={!isCompleted ? handleOpenAddEvidence : undefined}
-        />
-      </div>
-
-      {/* Work Products Inspected */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <Label className="font-body text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-            Work Products Inspected
-          </Label>
-          {!isCompleted && state.workProducts.length > 0 && (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={handleOpenAddEvidence}
-              className="font-body text-xs gap-1 h-7 px-3"
-              data-ocid="perform.evidence_add_inline_button"
+    <div
+      style={{
+        display: "grid",
+        gridTemplateRows: "1fr 224px",
+        height: "100%",
+        gap: 0,
+      }}
+    >
+      {/* ── Row 1: Strengths & Weaknesses Section ── */}
+      <div
+        style={{
+          overflow: "hidden",
+          display: "flex",
+          flexDirection: "column",
+          borderBottom: "1px solid var(--border)",
+        }}
+      >
+        {/* Section header */}
+        <div
+          className="flex items-center justify-between gap-2 px-4 shrink-0 border-b border-border/40 bg-background"
+          style={{ paddingTop: 8, paddingBottom: 8 }}
+          data-ocid="perform.sw_section_header"
+        >
+          {/* Left: title + count + filter pills */}
+          <div className="flex items-center gap-2 flex-wrap min-w-0">
+            <span className="text-xs font-semibold font-heading text-foreground whitespace-nowrap">
+              Findings
+            </span>
+            <Badge
+              variant="secondary"
+              className="font-body text-xs h-5 px-1.5 rounded-full"
+              data-ocid="perform.sw_count_badge"
             >
-              <Plus className="h-3.5 w-3.5" /> Add
+              {swEntries.length}
+            </Badge>
+            {/* Filter pills */}
+            <div
+              className="flex items-center gap-1"
+              data-ocid="perform.sw_filter_pills"
+            >
+              {(
+                [
+                  {
+                    key: "all",
+                    label: `All (${swEntries.length})`,
+                    ocid: "perform.sw_filter_all_tab",
+                  },
+                  {
+                    key: "strengths",
+                    label: `Strengths (${strengths.length})`,
+                    ocid: "perform.sw_filter_strengths_tab",
+                  },
+                  {
+                    key: "weaknesses",
+                    label: `Weaknesses (${weaknesses.length})`,
+                    ocid: "perform.sw_filter_weaknesses_tab",
+                  },
+                ] as const
+              ).map(({ key, label, ocid }) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setSwFilter(key)}
+                  data-ocid={ocid}
+                  className={cn(
+                    "font-body text-[11px] h-6 px-2 rounded-full border transition-colors whitespace-nowrap",
+                    swFilter === key
+                      ? "bg-accent/15 border-accent text-accent font-medium"
+                      : "bg-background border-border/60 text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+          {!isCompleted && (
+            <Button
+              size="sm"
+              onClick={() => openSwDialog(undefined)}
+              className="spice-gradient text-white border-0 gap-1 font-body text-xs h-7 px-3 shrink-0"
+              data-ocid="perform.sw_add_button_header"
+            >
+              <Plus className="h-3.5 w-3.5" /> Add Entry
             </Button>
           )}
         </div>
 
-        {state.workProducts.length > 0 && (
-          <div className="rounded-md border border-border/60 overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-muted/30">
-                  <TableHead className="font-body text-xs">
+        {/* Section body — scrollable */}
+        <div style={{ flex: 1, overflow: "auto", minHeight: 0 }}>
+          {filteredSw.length === 0 ? (
+            <div className="flex items-center justify-center h-full py-8">
+              <p className="text-xs text-muted-foreground font-body italic">
+                {swEntries.length === 0
+                  ? "No entries yet."
+                  : "No entries match this filter."}
+              </p>
+            </div>
+          ) : (
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="bg-muted/30 border-b border-border/40">
+                  <th className="font-body font-medium text-muted-foreground text-left px-4 py-2 w-[110px]">
+                    Type
+                  </th>
+                  <th className="font-body font-medium text-muted-foreground text-left px-4 py-2">
                     Description
-                  </TableHead>
-                  <TableHead className="font-body text-xs w-[160px]">
-                    Link
-                  </TableHead>
-                  <TableHead className="font-body text-xs w-[90px]">
-                    Version
-                  </TableHead>
+                  </th>
                   {!isCompleted && (
-                    <TableHead className="font-body text-xs w-[80px]">
+                    <th className="font-body font-medium text-muted-foreground text-right px-4 py-2 w-[72px]">
                       Actions
-                    </TableHead>
+                    </th>
                   )}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredSw.map((entry, idx) => (
+                  <tr
+                    key={entry.id}
+                    data-ocid={`perform.sw_entry_row.${idx + 1}`}
+                    className={cn(
+                      "group border-b border-border/30 last:border-b-0 transition-colors",
+                      entry.type === "strength"
+                        ? "hover:bg-emerald-50/40"
+                        : "hover:bg-red-50/40",
+                    )}
+                  >
+                    <td className="px-4 py-2 align-top">
+                      <Badge
+                        variant="outline"
+                        className={cn(
+                          "font-body text-[11px] whitespace-nowrap",
+                          entry.type === "strength"
+                            ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                            : "bg-red-50 text-red-700 border-red-200",
+                        )}
+                      >
+                        {entry.type === "strength" ? "Strength" : "Weakness"}
+                      </Badge>
+                    </td>
+                    <td className="px-4 py-2 align-top text-foreground font-body leading-relaxed">
+                      {renderRichText(entry.text)}
+                    </td>
+                    {!isCompleted && (
+                      <td className="px-4 py-2 align-top text-right">
+                        <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            type="button"
+                            onClick={() => openSwDialog(entry)}
+                            className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                            title="Edit"
+                            data-ocid={`perform.sw_edit_button.${idx + 1}`}
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => deleteSwEntry(entry.id)}
+                            className="p-1 rounded hover:bg-destructive/10 transition-colors text-muted-foreground hover:text-destructive"
+                            title="Delete"
+                            data-ocid={`perform.sw_delete_button.${idx + 1}`}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+
+      {/* ── Row 2: Work Products Section (fixed 224px) ── */}
+      <div
+        style={{
+          overflow: "hidden",
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        {/* Section header */}
+        <div
+          className="flex items-center justify-between gap-2 px-4 shrink-0 border-b border-border/40 bg-muted/10"
+          style={{ paddingTop: 8, paddingBottom: 8 }}
+          data-ocid="perform.evidence_section_header"
+        >
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold font-heading text-foreground">
+              Evidence
+            </span>
+            <Badge
+              variant="secondary"
+              className="font-body text-xs h-5 px-1.5 rounded-full"
+              data-ocid="perform.evidence_count_badge"
+            >
+              {state.workProducts.length}
+            </Badge>
+          </div>
+          {!isCompleted && (
+            <Button
+              type="button"
+              size="sm"
+              onClick={handleOpenAddEvidence}
+              className="spice-gradient text-white border-0 gap-1 font-body text-xs h-7 px-3 shrink-0"
+              data-ocid="perform.evidence_add_button"
+            >
+              <Plus className="h-3.5 w-3.5" /> Add Evidence
+            </Button>
+          )}
+        </div>
+
+        {/* Section body — scrollable */}
+        <div style={{ flex: 1, overflow: "auto", minHeight: 0 }}>
+          {state.workProducts.length === 0 ? (
+            <div className="flex items-center justify-center h-full py-4">
+              <p className="text-xs text-muted-foreground font-body italic">
+                No work products added yet.
+              </p>
+            </div>
+          ) : (
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="bg-muted/30 border-b border-border/40">
+                  <th className="font-body font-medium text-muted-foreground text-left px-4 py-2">
+                    Description
+                  </th>
+                  <th className="font-body font-medium text-muted-foreground text-left px-4 py-2 w-[140px]">
+                    Link
+                  </th>
+                  <th className="font-body font-medium text-muted-foreground text-right px-4 py-2 w-[80px]">
+                    Version
+                  </th>
+                  {!isCompleted && (
+                    <th className="font-body font-medium text-muted-foreground text-right px-4 py-2 w-[72px]">
+                      Actions
+                    </th>
+                  )}
+                </tr>
+              </thead>
+              <tbody>
                 {state.workProducts.map((ev, i) => (
-                  <TableRow
+                  <tr
                     // biome-ignore lint/suspicious/noArrayIndexKey: evidence items have no stable IDs
                     key={`wp-row-${i}`}
                     data-ocid={`perform.evidence_row.${i + 1}`}
-                    className="border-b border-border/50 last:border-b-0"
+                    className="group border-b border-border/30 last:border-b-0 hover:bg-muted/40 transition-colors"
                   >
-                    <TableCell className="py-2 font-body text-xs text-foreground">
+                    <td className="px-4 py-2 font-body text-foreground align-top">
                       {ev.description}
-                    </TableCell>
-                    <TableCell className="py-2">
+                    </td>
+                    <td className="px-4 py-2 align-top">
                       {ev.link ? (
                         <a
                           href={ev.link}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-blue-600 hover:text-blue-800 font-body text-xs truncate block max-w-[150px]"
+                          className="text-blue-600 hover:text-blue-800 font-body truncate block max-w-[130px]"
                         >
                           {ev.link}
                         </a>
                       ) : (
-                        <span className="text-muted-foreground font-body text-xs">
+                        <span className="text-muted-foreground font-body">
                           —
                         </span>
                       )}
-                    </TableCell>
-                    <TableCell className="py-2 font-body text-xs text-muted-foreground">
+                    </td>
+                    <td className="px-4 py-2 font-body text-muted-foreground text-right align-top">
                       {ev.version || "—"}
-                    </TableCell>
+                    </td>
                     {!isCompleted && (
-                      <TableCell className="py-2">
-                        <div className="flex items-center gap-1">
+                      <td className="px-4 py-2 align-top text-right">
+                        <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                           <button
                             type="button"
                             onClick={() => handleOpenEditEvidence(i)}
@@ -1066,14 +1119,14 @@ function BPPracticePanel({
                             <Trash2 className="h-3.5 w-3.5" />
                           </button>
                         </div>
-                      </TableCell>
+                      </td>
                     )}
-                  </TableRow>
+                  </tr>
                 ))}
-              </TableBody>
-            </Table>
-          </div>
-        )}
+              </tbody>
+            </table>
+          )}
+        </div>
       </div>
 
       {/* Evidence Dialog */}
@@ -1101,6 +1154,19 @@ interface TreeNodeData {
   children?: TreeNodeData[];
 }
 
+function nodeMatchesSearch(node: TreeNodeData, query: string): boolean {
+  if (!query) return true;
+  const q = query.toLowerCase();
+  const labelMatch =
+    node.label.toLowerCase().includes(q) ||
+    (node.sublabel?.toLowerCase().includes(q) ?? false);
+  if (labelMatch) return true;
+  if (node.children) {
+    return node.children.some((c) => nodeMatchesSearch(c, query));
+  }
+  return false;
+}
+
 function TreeNode({
   node,
   depth,
@@ -1110,6 +1176,7 @@ function TreeNode({
   onToggle,
   index,
   ratings,
+  searchQuery,
 }: {
   node: TreeNodeData;
   depth: number;
@@ -1119,16 +1186,34 @@ function TreeNode({
   onToggle: (key: string) => void;
   index: number;
   ratings: RatingsMap;
+  searchQuery?: string;
 }) {
   const nodeKey = `${node.type}:${node.processId}:${node.id}`;
-  const isExpanded = expandedNodes.has(nodeKey);
+  const isSearching = !!(searchQuery && searchQuery.trim().length > 0);
+  // When searching, auto-expand nodes that have matching descendants
+  const hasMatchingChild = isSearching
+    ? (node.children?.some((c) => nodeMatchesSearch(c, searchQuery ?? "")) ??
+      false)
+    : false;
+  const isExpanded = isSearching
+    ? hasMatchingChild || expandedNodes.has(nodeKey)
+    : expandedNodes.has(nodeKey);
   const isLeaf = !node.children || node.children.length === 0;
   const isSelected =
     selected?.type === node.type &&
     selected?.id === node.id &&
     selected?.processId === node.processId;
 
-  const paddingLeft = 8 + depth * 14;
+  // Hide nodes that don't match search
+  if (
+    isSearching &&
+    node.type !== "root" &&
+    !nodeMatchesSearch(node, searchQuery ?? "")
+  ) {
+    return null;
+  }
+
+  const paddingLeft = Math.max(8, depth * 14 + 8);
 
   // Compute the rating letter to show on the right badge
   let nodeRating: Rating = "";
@@ -1205,10 +1290,11 @@ function TreeNode({
           type="button"
           onClick={handleLabelClick}
           data-ocid={ocidMap[node.type]}
+          style={{ lineHeight: 1.5 }}
           className={cn(
             "flex-1 min-w-0 flex items-center gap-1.5 py-1 pr-1 rounded-sm text-sm transition-colors text-left overflow-hidden",
             isSelected
-              ? "bg-accent/15 text-accent font-medium"
+              ? "bg-accent/10 text-accent font-medium border-l-2 border-accent -ml-px pl-px"
               : "text-foreground hover:bg-muted/70",
             node.type === "process" && "font-semibold",
           )}
@@ -1247,7 +1333,7 @@ function TreeNode({
 
       {/* Children */}
       {!isLeaf && isExpanded && node.children && (
-        <div>
+        <div className={depth === 0 ? "border-b border-border/20" : ""}>
           {node.children.map((child, i) => (
             <TreeNode
               key={`${child.type}:${child.processId}:${child.id}`}
@@ -1259,6 +1345,7 @@ function TreeNode({
               onToggle={onToggle}
               index={i + 1}
               ratings={ratings}
+              searchQuery={searchQuery}
             />
           ))}
         </div>
@@ -1419,7 +1506,7 @@ function PASummaryView({
             </h2>
           </div>
           <p className="text-xs text-muted-foreground font-body mt-1">
-            {processId} — Consolidated Strengths & Weaknesses
+            {processId} — Consolidated Findings
           </p>
         </div>
         {onRatingChange && (
@@ -1587,6 +1674,108 @@ function PASummaryView({
           onSubmit={handleEditSubmit}
         />
       )}
+
+      {/* Evidence section — aggregated from all practices in this PA */}
+      {(() => {
+        const allEvidence: Array<{ item: EvidenceItem; practiceId: string }> =
+          [];
+        const seen = new Set<string>();
+        for (const { practice, level: lvl } of practices) {
+          const k = `${processId}_${lvl}_${practice.id}`;
+          const st = ratings[k];
+          if (st?.workProducts) {
+            for (const wp of st.workProducts as EvidenceItem[]) {
+              const key = `${practice.id}::${wp.description}::${wp.link}`;
+              if (!seen.has(key)) {
+                seen.add(key);
+                allEvidence.push({ item: wp, practiceId: practice.id });
+              }
+            }
+          }
+        }
+        return (
+          <div className="space-y-2 border-t border-border/40 pt-4 mt-2">
+            <div className="flex items-center gap-2">
+              <h3 className="text-xs font-semibold font-heading text-foreground">
+                Evidence
+              </h3>
+              <span className="text-xs text-muted-foreground font-body">
+                ({allEvidence.length})
+              </span>
+            </div>
+            {allEvidence.length === 0 ? (
+              <div
+                className="rounded-md border border-dashed border-border/60 py-6 text-center"
+                data-ocid="perform.pa_evidence_empty_state"
+              >
+                <p className="text-xs text-muted-foreground font-body italic">
+                  No evidence recorded for practices in this PA yet.
+                </p>
+                <p className="text-xs text-muted-foreground font-body mt-1">
+                  Select individual practices from the tree to add evidence.
+                </p>
+              </div>
+            ) : (
+              <div
+                className="rounded-md border border-border/60 overflow-hidden"
+                data-ocid="perform.pa_evidence_table"
+              >
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/30">
+                      <TableHead className="font-body text-xs w-[90px]">
+                        Practice
+                      </TableHead>
+                      <TableHead className="font-body text-xs">
+                        Evidence Name
+                      </TableHead>
+                      <TableHead className="font-body text-xs w-[160px]">
+                        Link
+                      </TableHead>
+                      <TableHead className="font-body text-xs w-[80px]">
+                        Version
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {allEvidence.map(({ item, practiceId: pid }, idx) => (
+                      <TableRow
+                        key={`${pid}-${item.description}-${item.link}`}
+                        data-ocid={`perform.pa_evidence_row.${idx + 1}`}
+                        className="hover:bg-muted/20 transition-colors"
+                      >
+                        <TableCell className="py-2 font-body text-xs font-medium text-muted-foreground">
+                          {pid}
+                        </TableCell>
+                        <TableCell className="py-2 font-body text-xs">
+                          {item.description || "—"}
+                        </TableCell>
+                        <TableCell className="py-2 font-body text-xs">
+                          {item.link ? (
+                            <a
+                              href={item.link}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-blue-600 hover:underline truncate block max-w-[150px]"
+                            >
+                              {item.link}
+                            </a>
+                          ) : (
+                            "—"
+                          )}
+                        </TableCell>
+                        <TableCell className="py-2 font-body text-xs text-muted-foreground">
+                          {item.version || "—"}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -1995,6 +2184,128 @@ function ProcessOverviewView({
           onSubmit={handleEditSubmit}
         />
       )}
+
+      {/* Evidence section — aggregated from all practices in this process */}
+      {targetLevel !== 0 &&
+        (() => {
+          const allEvidence: Array<{ item: EvidenceItem; practiceId: string }> =
+            [];
+          const seen = new Set<string>();
+
+          const addFromKey = (key: string, pid: string) => {
+            const st = ratings[key];
+            if (st?.workProducts) {
+              for (const wp of st.workProducts as EvidenceItem[]) {
+                const uniq = `${pid}::${wp.description}::${wp.link}`;
+                if (!seen.has(uniq)) {
+                  seen.add(uniq);
+                  allEvidence.push({ item: wp, practiceId: pid });
+                }
+              }
+            }
+          };
+
+          if (targetLevel >= 1) {
+            for (const bp of BASE_PRACTICES[processId] ?? []) {
+              addFromKey(`${processId}_1_${bp.id}`, bp.id);
+            }
+          }
+          if (targetLevel >= 2) {
+            for (const attr of LEVEL2_ATTRIBUTES) {
+              for (const gp of attr.practices)
+                addFromKey(`${processId}_2_${gp.id}`, gp.id);
+            }
+          }
+          if (targetLevel >= 3) {
+            for (const attr of LEVEL3_ATTRIBUTES) {
+              for (const gp of attr.practices)
+                addFromKey(`${processId}_3_${gp.id}`, gp.id);
+            }
+          }
+
+          return (
+            <div className="space-y-2 border-t border-border/40 pt-4 mt-2">
+              <div className="flex items-center gap-2">
+                <h3 className="text-xs font-semibold font-heading text-foreground">
+                  Evidence
+                </h3>
+                <span className="text-xs text-muted-foreground font-body">
+                  ({allEvidence.length})
+                </span>
+              </div>
+              {allEvidence.length === 0 ? (
+                <div
+                  className="rounded-md border border-dashed border-border/60 py-6 text-center"
+                  data-ocid="perform.process_evidence_empty_state"
+                >
+                  <p className="text-xs text-muted-foreground font-body italic">
+                    No evidence recorded for this process yet.
+                  </p>
+                  <p className="text-xs text-muted-foreground font-body mt-1">
+                    Select individual practices from the tree to add evidence.
+                  </p>
+                </div>
+              ) : (
+                <div
+                  className="rounded-md border border-border/60 overflow-hidden"
+                  data-ocid="perform.process_evidence_table"
+                >
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/30">
+                        <TableHead className="font-body text-xs w-[90px]">
+                          Practice
+                        </TableHead>
+                        <TableHead className="font-body text-xs">
+                          Evidence Name
+                        </TableHead>
+                        <TableHead className="font-body text-xs w-[160px]">
+                          Link
+                        </TableHead>
+                        <TableHead className="font-body text-xs w-[80px]">
+                          Version
+                        </TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {allEvidence.map(({ item, practiceId: pid }, idx) => (
+                        <TableRow
+                          key={`${pid}-${item.description}-${item.link}`}
+                          data-ocid={`perform.process_evidence_row.${idx + 1}`}
+                          className="hover:bg-muted/20 transition-colors"
+                        >
+                          <TableCell className="py-2 font-body text-xs font-medium text-muted-foreground">
+                            {pid}
+                          </TableCell>
+                          <TableCell className="py-2 font-body text-xs">
+                            {item.description || "—"}
+                          </TableCell>
+                          <TableCell className="py-2 font-body text-xs">
+                            {item.link ? (
+                              <a
+                                href={item.link}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-blue-600 hover:underline truncate block max-w-[150px]"
+                              >
+                                {item.link}
+                              </a>
+                            ) : (
+                              "—"
+                            )}
+                          </TableCell>
+                          <TableCell className="py-2 font-body text-xs text-muted-foreground">
+                            {item.version || "—"}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </div>
+          );
+        })()}
     </div>
   );
 }
@@ -2155,40 +2466,84 @@ function BPGPRightPanel({
 
   if (!practice) return null;
 
-  return (
-    <div className="space-y-3">
-      {/* Breadcrumb */}
-      <nav className="flex items-center gap-1.5 text-xs font-body text-muted-foreground flex-wrap">
-        <button
-          type="button"
-          className="hover:text-foreground transition-colors"
-          onClick={() => onSelectProcess(processId)}
-        >
-          {processId}
-        </button>
-        <ChevronRight className="h-3 w-3" />
-        <button
-          type="button"
-          className="hover:text-foreground transition-colors"
-          onClick={() => onSelectPA(paId, processId)}
-        >
-          {paId}
-        </button>
-        <ChevronRight className="h-3 w-3" />
-        <span className="text-foreground font-medium">{practiceId}</span>
-      </nav>
+  const practiceState = getPracticeState(processId, level, practiceId);
 
-      <BPPracticePanel
-        practice={practice}
-        processId={processId}
-        level={level}
-        state={getPracticeState(processId, level, practiceId)}
-        onChange={(patch) =>
-          updatePracticeState(processId, level, practiceId, patch)
-        }
-        isCompleted={isCompleted}
-        openSwDialog={openSwDialog}
-      />
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        overflow: "hidden",
+      }}
+    >
+      {/* ── Merged sticky header: breadcrumb + actions + rating ── */}
+      <div
+        className="flex items-center gap-3 px-4 py-2 border-b border-border/50 bg-background shrink-0 sticky top-0 z-10 flex-wrap"
+        data-ocid="perform.bp_sticky_header"
+      >
+        {/* Breadcrumb + page title — flex-1 */}
+        <div className="flex flex-col min-w-0 flex-1 gap-0.5">
+          <nav className="flex items-center gap-1 text-xs font-body text-muted-foreground min-w-0">
+            <button
+              type="button"
+              className="hover:text-foreground transition-colors shrink-0"
+              onClick={() => onSelectProcess(processId)}
+            >
+              {processId}
+            </button>
+            <ChevronRight className="h-3 w-3 shrink-0" />
+            <button
+              type="button"
+              className="hover:text-foreground transition-colors shrink-0"
+              onClick={() => onSelectPA(paId, processId)}
+            >
+              {paId}
+            </button>
+            <ChevronRight className="h-3 w-3 shrink-0" />
+            <span className="text-foreground font-medium shrink-0">
+              {practiceId}
+            </span>
+            <span className="text-muted-foreground/50 mx-1 shrink-0">—</span>
+            <span className="text-foreground/70 truncate">
+              {practice.title}
+            </span>
+          </nav>
+        </div>
+
+        {/* Actions + Rating (right side) — shrink-0 */}
+        <div className="flex items-center gap-2 shrink-0 flex-wrap">
+          {/* Rating segmented control */}
+          <div className="flex items-center gap-1.5 shrink-0">
+            <span className="text-xs font-body text-muted-foreground">
+              Rating:
+            </span>
+            <RatingSelector
+              value={practiceState.rating}
+              onChange={(v) =>
+                updatePracticeState(processId, level, practiceId, { rating: v })
+              }
+              index={1}
+              disabled={isCompleted}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Two-row grid — fills remaining height */}
+      <div style={{ flex: "1 1 0", minHeight: 0, overflow: "hidden" }}>
+        <BPPracticePanel
+          practice={practice}
+          processId={processId}
+          level={level}
+          state={practiceState}
+          onChange={(patch) =>
+            updatePracticeState(processId, level, practiceId, patch)
+          }
+          isCompleted={isCompleted}
+          openSwDialog={openSwDialog}
+        />
+      </div>
     </div>
   );
 }
@@ -2212,7 +2567,8 @@ function buildPAList(tl: number): string[] {
 // ─── Main Component ──────────────────────────────────────────────
 
 export function PerformAssessment() {
-  const { currentAssessmentId, navigateTo } = useAppContext();
+  const { currentAssessmentId, navigateTo, setAutosaveStatus } =
+    useAppContext();
   const { data: assessments } = useGetAllAssessments();
   const { data: processConfig, isLoading: loadingConfig } =
     useGetProcessGroupConfig(currentAssessmentId);
@@ -2222,7 +2578,8 @@ export function PerformAssessment() {
 
   const [selectedNode, setSelectedNode] = useState<SelectedNode | null>(null);
   const [ratings, setRatings] = useState<RatingsMap>({});
-  const [isSaving, setIsSaving] = useState(false);
+
+  const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
   const [descNotesOpen, setDescNotesOpen] = useState(false);
 
@@ -2370,10 +2727,14 @@ export function PerformAssessment() {
     patch: Partial<PracticeState>,
   ) {
     const key = getRatingKey(processId, level, practiceId);
-    setRatings((prev) => ({
-      ...prev,
-      [key]: { ...(prev[key] ?? defaultPracticeState()), ...patch },
-    }));
+    setRatings((prev) => {
+      const next = {
+        ...prev,
+        [key]: { ...(prev[key] ?? defaultPracticeState()), ...patch },
+      };
+      scheduleAutosave(next);
+      return next;
+    });
   }
 
   // Edit a single SwEntry within a practice (used from PA summary view)
@@ -2585,19 +2946,38 @@ export function PerformAssessment() {
     [currentAssessmentId, enabledProcesses, savePracticeRating],
   );
 
-  async function handleSaveAll() {
-    setIsSaving(true);
-    try {
-      await Promise.all(
-        enabledProcesses.map((p) => saveProcessRatings(p.id, ratings)),
-      );
-      toast.success("All ratings saved");
-    } catch {
-      toast.error("Failed to save some ratings");
-    } finally {
-      setIsSaving(false);
-    }
-  }
+  // ─── Autosave: debounced 2s after last change ────────────────────────────
+  const scheduleAutosave = useCallback(
+    (currentRatings: RatingsMap) => {
+      // Clear any pending debounce
+      if (autosaveTimerRef.current) {
+        clearTimeout(autosaveTimerRef.current);
+      }
+      autosaveTimerRef.current = setTimeout(async () => {
+        if (!currentAssessmentId) return;
+        setAutosaveStatus("saving");
+        try {
+          await Promise.all(
+            enabledProcesses.map((p) =>
+              saveProcessRatings(p.id, currentRatings),
+            ),
+          );
+          setAutosaveStatus("saved");
+          // Auto-clear "saved" indicator after 3s
+          setTimeout(() => setAutosaveStatus("idle"), 3000);
+        } catch {
+          setAutosaveStatus("idle");
+          toast.error("Autosave failed — please save manually");
+        }
+      }, 2000);
+    },
+    [
+      currentAssessmentId,
+      enabledProcesses,
+      saveProcessRatings,
+      setAutosaveStatus,
+    ],
+  );
 
   // ─── Tree building ───────────────────────────────────────────
   // buildPAList is defined at module level above the component.
@@ -2847,34 +3227,6 @@ export function PerformAssessment() {
       className="page-enter flex flex-col"
       style={{ flex: "1 1 0", minHeight: 0, overflow: "hidden" }}
     >
-      {/* Page Header */}
-      <div className="flex items-center justify-between gap-4 pb-3 shrink-0">
-        <h1 className="text-xl font-bold font-heading text-foreground leading-tight">
-          Perform Assessment
-        </h1>
-        <div className="flex items-center gap-2 shrink-0">
-          {currentAssessment && (
-            <StatusBadge status={currentAssessment.status} />
-          )}
-          {!isCompleted && (
-            <Button
-              size="sm"
-              onClick={handleSaveAll}
-              disabled={isSaving}
-              className="spice-gradient text-white border-0 gap-1.5"
-              data-ocid="perform.save_button"
-            >
-              {isSaving ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Save className="h-3.5 w-3.5" />
-              )}
-              Save
-            </Button>
-          )}
-        </div>
-      </div>
-
       {isCompleted && (
         <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 mb-3 shrink-0">
           <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
@@ -3000,6 +3352,8 @@ function DraggableThreePanelLayout({
   // Bug Fix 3: Draggable panel width state
   const [leftPanelWidth, setLeftPanelWidth] = useState(280);
   const [isDragging, setIsDragging] = useState(false);
+  // Tree search
+  const [treeSearch, setTreeSearch] = useState("");
 
   function handleDragStart(e: React.MouseEvent) {
     e.preventDefault();
@@ -3053,29 +3407,44 @@ function DraggableThreePanelLayout({
         }}
       >
         {/* Tree header */}
-        <div className="flex items-center justify-between px-3 py-2 border-b border-border/60 shrink-0 bg-muted/20">
-          <span className="text-xs font-semibold font-heading uppercase tracking-wide text-muted-foreground">
-            Processes
-          </span>
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={collapseAll}
-              title="Collapse all"
-              className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-              data-ocid="perform.tree_collapse_all_button"
-            >
-              <ChevronsDownUp className="h-3.5 w-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={expandAll}
-              title="Expand all"
-              className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-              data-ocid="perform.tree_expand_all_button"
-            >
-              <ChevronsUpDown className="h-3.5 w-3.5" />
-            </button>
+        <div className="px-3 pt-2 pb-2 border-b border-border/60 shrink-0 bg-muted/20 space-y-2">
+          {/* Search */}
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+            <input
+              type="text"
+              placeholder="Search process…"
+              value={treeSearch}
+              onChange={(e) => setTreeSearch(e.target.value)}
+              className="w-full pl-8 pr-3 py-1.5 text-xs font-body rounded-md border border-border/60 bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-accent/50"
+              data-ocid="perform.tree_search_input"
+            />
+          </div>
+          {/* Expand/Collapse controls */}
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold font-heading uppercase tracking-wide text-muted-foreground">
+              Processes
+            </span>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={collapseAll}
+                title="Collapse all"
+                className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                data-ocid="perform.tree_collapse_all_button"
+              >
+                <ChevronsDownUp className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={expandAll}
+                title="Expand all"
+                className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                data-ocid="perform.tree_expand_all_button"
+              >
+                <ChevronsUpDown className="h-3.5 w-3.5" />
+              </button>
+            </div>
           </div>
         </div>
 
@@ -3094,6 +3463,7 @@ function DraggableThreePanelLayout({
               onToggle={toggleNode}
               index={0}
               ratings={ratings}
+              searchQuery={treeSearch}
             />
           </div>
         </div>
@@ -3191,96 +3561,109 @@ function DraggableThreePanelLayout({
       />
 
       {/* ── Right Panel (flex: 1) ── */}
-      <div style={{ flex: 1, minWidth: 0, overflow: "auto" }}>
-        <div className="p-4 space-y-4">
-          {(!selectedNode || selectedNode.type === "root") && (
-            <RootOverviewView
-              enabledProcesses={enabledProcesses}
-              ratings={ratings}
-            />
-          )}
-          {selectedNode?.type === "process" &&
-            (() => {
-              const procInfo = enabledProcesses.find(
-                (p) => p.id === selectedNode.processId,
-              );
-              return procInfo ? (
-                <ProcessOverviewView
-                  processId={selectedNode.processId}
-                  processInfo={procInfo}
-                  ratings={ratings}
-                  isCompleted={isCompleted}
-                  onEdit={(practiceId, level, updated) =>
-                    editSwEntryForPractice(
-                      selectedNode.processId,
-                      level,
-                      practiceId,
-                      updated,
-                    )
-                  }
-                  onRatingChange={(r) =>
-                    updatePracticeState(
-                      selectedNode.processId,
-                      0,
-                      selectedNode.processId,
-                      { rating: r },
-                    )
-                  }
-                />
-              ) : null;
-            })()}
-          {selectedNode?.type === "pa" && (
-            <PASummaryView
-              paId={selectedNode.paId ?? selectedNode.id}
-              processId={selectedNode.processId}
-              ratings={ratings}
-              onEdit={(practiceId, level, updated) => {
-                editSwEntryForPractice(
-                  selectedNode.processId,
-                  level,
-                  practiceId,
-                  updated,
-                );
-              }}
-              isCompleted={!!isCompleted}
-              onRatingChange={(r) =>
-                updatePracticeState(
-                  selectedNode.processId,
-                  5,
-                  selectedNode.paId ?? selectedNode.id,
-                  { rating: r },
-                )
-              }
-            />
-          )}
-          {(selectedNode?.type === "bp" || selectedNode?.type === "gp") && (
-            <BPGPRightPanel
-              selectedNode={selectedNode}
-              enabledProcesses={enabledProcesses}
-              ratings={ratings}
-              isCompleted={!!isCompleted}
-              getPracticeState={getPracticeState}
-              updatePracticeState={updatePracticeState}
-              onSelectProcess={(pid) =>
-                setSelectedNode({
-                  type: "process",
-                  id: pid,
-                  processId: pid,
-                })
-              }
-              onSelectPA={(paId, pid) =>
-                setSelectedNode({
-                  type: "pa",
-                  id: paId,
-                  processId: pid,
-                  paId,
-                })
-              }
-              openSwDialog={currentBpGpOpenDialog}
-            />
-          )}
+      {selectedNode?.type === "bp" || selectedNode?.type === "gp" ? (
+        /* BP/GP view: fill height, no padding, flex column */
+        <div
+          style={{
+            flex: 1,
+            minWidth: 0,
+            display: "flex",
+            flexDirection: "column",
+            overflow: "hidden",
+          }}
+        >
+          <BPGPRightPanel
+            selectedNode={selectedNode}
+            enabledProcesses={enabledProcesses}
+            ratings={ratings}
+            isCompleted={!!isCompleted}
+            getPracticeState={getPracticeState}
+            updatePracticeState={updatePracticeState}
+            onSelectProcess={(pid) =>
+              setSelectedNode({
+                type: "process",
+                id: pid,
+                processId: pid,
+              })
+            }
+            onSelectPA={(paId, pid) =>
+              setSelectedNode({
+                type: "pa",
+                id: paId,
+                processId: pid,
+                paId,
+              })
+            }
+            openSwDialog={currentBpGpOpenDialog}
+          />
         </div>
-      </div>
+      ) : (
+        /* Process / PA / Root views: normal scrollable layout with padding */
+        <div style={{ flex: 1, minWidth: 0, overflow: "auto" }}>
+          <div className="p-4 space-y-4">
+            {(!selectedNode || selectedNode.type === "root") && (
+              <RootOverviewView
+                enabledProcesses={enabledProcesses}
+                ratings={ratings}
+              />
+            )}
+            {selectedNode?.type === "process" &&
+              (() => {
+                const procInfo = enabledProcesses.find(
+                  (p) => p.id === selectedNode.processId,
+                );
+                return procInfo ? (
+                  <ProcessOverviewView
+                    processId={selectedNode.processId}
+                    processInfo={procInfo}
+                    ratings={ratings}
+                    isCompleted={isCompleted}
+                    onEdit={(practiceId, level, updated) =>
+                      editSwEntryForPractice(
+                        selectedNode.processId,
+                        level,
+                        practiceId,
+                        updated,
+                      )
+                    }
+                    onRatingChange={(r) =>
+                      updatePracticeState(
+                        selectedNode.processId,
+                        0,
+                        selectedNode.processId,
+                        { rating: r },
+                      )
+                    }
+                  />
+                ) : null;
+              })()}
+            {selectedNode?.type === "pa" && (
+              <PASummaryView
+                paId={selectedNode.paId ?? selectedNode.id}
+                processId={selectedNode.processId}
+                ratings={ratings}
+                onEdit={(practiceId, level, updated) => {
+                  editSwEntryForPractice(
+                    selectedNode.processId,
+                    level,
+                    practiceId,
+                    updated,
+                  );
+                }}
+                isCompleted={!!isCompleted}
+                onRatingChange={(r) =>
+                  updatePracticeState(
+                    selectedNode.processId,
+                    5,
+                    selectedNode.paId ?? selectedNode.id,
+                    { rating: r },
+                  )
+                }
+              />
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

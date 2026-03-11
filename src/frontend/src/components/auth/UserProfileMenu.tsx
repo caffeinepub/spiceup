@@ -20,11 +20,23 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAppContext } from "@/context/AppContext";
 import { useAuth } from "@/context/AuthContext";
-import { Activity, KeyRound, Loader2, LogOut, User, Users } from "lucide-react";
+import {
+  Activity,
+  ChevronUp,
+  KeyRound,
+  Loader2,
+  LogOut,
+  User,
+  Users,
+} from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
-export function UserProfileMenu() {
+interface UserProfileMenuProps {
+  variant?: "topbar" | "sidebar";
+}
+
+export function UserProfileMenu({ variant = "topbar" }: UserProfileMenuProps) {
   const { currentUser, logout, changePassword, isAdmin } = useAuth();
   const { navigateTo } = useAppContext();
   const [pwDialogOpen, setPwDialogOpen] = useState(false);
@@ -73,98 +85,138 @@ export function UserProfileMenu() {
     }
   }
 
+  const dropdownContent = (
+    <DropdownMenuContent
+      align={variant === "sidebar" ? "start" : "end"}
+      side={variant === "sidebar" ? "top" : "bottom"}
+      className="w-52"
+      data-ocid="profile.dropdown_menu"
+    >
+      {/* User info header */}
+      <div className="px-3 py-2">
+        <div className="flex items-center gap-2">
+          <Avatar className="h-7 w-7">
+            <AvatarFallback className="text-xs bg-accent/20 text-accent font-heading">
+              {initials}
+            </AvatarFallback>
+          </Avatar>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold font-heading text-foreground truncate">
+              {currentUser.username}
+            </p>
+            <Badge
+              variant="outline"
+              className={`text-[10px] px-1.5 py-0 mt-0.5 ${
+                currentUser.role === "admin"
+                  ? "border-amber-300 text-amber-700 bg-amber-50"
+                  : "border-blue-200 text-blue-700 bg-blue-50"
+              }`}
+            >
+              <User className="h-2.5 w-2.5 mr-1" />
+              {currentUser.role === "admin" ? "Admin" : "User"}
+            </Badge>
+          </div>
+        </div>
+      </div>
+      <DropdownMenuSeparator />
+      {isAdmin && (
+        <>
+          <DropdownMenuItem
+            onClick={() => navigateTo("admin-users")}
+            className="gap-2 cursor-pointer font-body text-sm"
+            data-ocid="profile.manage_users_button"
+          >
+            <Users className="h-4 w-4 text-muted-foreground" />
+            Manage Users
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            onClick={() => navigateTo("admin-audit")}
+            className="gap-2 cursor-pointer font-body text-sm"
+            data-ocid="profile.activity_log_button"
+          >
+            <Activity className="h-4 w-4 text-muted-foreground" />
+            Activity Log
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+        </>
+      )}
+      <DropdownMenuItem
+        onClick={handleOpenPwDialog}
+        className="gap-2 cursor-pointer font-body text-sm"
+        data-ocid="profile.change_password_button"
+      >
+        <KeyRound className="h-4 w-4 text-muted-foreground" />
+        Change Password
+      </DropdownMenuItem>
+      <DropdownMenuSeparator />
+      <DropdownMenuItem
+        onClick={logout}
+        className="gap-2 cursor-pointer font-body text-sm text-destructive focus:text-destructive"
+        data-ocid="profile.logout_button"
+      >
+        <LogOut className="h-4 w-4" />
+        Log Out
+      </DropdownMenuItem>
+    </DropdownMenuContent>
+  );
+
   return (
     <>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="gap-2 h-8 px-2 font-body text-sm"
-            data-ocid="profile.menu_button"
-          >
-            <Avatar className="h-6 w-6">
-              <AvatarFallback className="text-xs bg-accent/20 text-accent font-heading">
-                {initials}
-              </AvatarFallback>
-            </Avatar>
-            <span className="hidden sm:inline text-foreground/80">
-              {currentUser.username}
-            </span>
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent
-          align="end"
-          className="w-52"
-          data-ocid="profile.dropdown_menu"
-        >
-          {/* User info header */}
-          <div className="px-3 py-2">
-            <div className="flex items-center gap-2">
-              <Avatar className="h-7 w-7">
+      {variant === "sidebar" ? (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg hover:bg-sidebar-accent/10 transition-colors text-left group"
+              data-ocid="profile.menu_button"
+              aria-label="Open profile menu"
+            >
+              <Avatar className="h-7 w-7 shrink-0">
                 <AvatarFallback className="text-xs bg-accent/20 text-accent font-heading">
                   {initials}
                 </AvatarFallback>
               </Avatar>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold font-heading text-foreground truncate">
+                <p className="text-xs font-semibold font-heading text-sidebar-foreground truncate leading-tight">
                   {currentUser.username}
                 </p>
-                <Badge
-                  variant="outline"
-                  className={`text-[10px] px-1.5 py-0 mt-0.5 ${
+                <p
+                  className={`text-[10px] leading-tight mt-0.5 font-body ${
                     currentUser.role === "admin"
-                      ? "border-amber-300 text-amber-700 bg-amber-50"
-                      : "border-blue-200 text-blue-700 bg-blue-50"
+                      ? "text-amber-400"
+                      : "text-sidebar-foreground/40"
                   }`}
                 >
-                  <User className="h-2.5 w-2.5 mr-1" />
                   {currentUser.role === "admin" ? "Admin" : "User"}
-                </Badge>
+                </p>
               </div>
-            </div>
-          </div>
-          <DropdownMenuSeparator />
-          {isAdmin && (
-            <>
-              <DropdownMenuItem
-                onClick={() => navigateTo("admin-users")}
-                className="gap-2 cursor-pointer font-body text-sm"
-                data-ocid="profile.manage_users_button"
-              >
-                <Users className="h-4 w-4 text-muted-foreground" />
-                Manage Users
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() => navigateTo("admin-audit")}
-                className="gap-2 cursor-pointer font-body text-sm"
-                data-ocid="profile.activity_log_button"
-              >
-                <Activity className="h-4 w-4 text-muted-foreground" />
-                Activity Log
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-            </>
-          )}
-          <DropdownMenuItem
-            onClick={handleOpenPwDialog}
-            className="gap-2 cursor-pointer font-body text-sm"
-            data-ocid="profile.change_password_button"
-          >
-            <KeyRound className="h-4 w-4 text-muted-foreground" />
-            Change Password
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            onClick={logout}
-            className="gap-2 cursor-pointer font-body text-sm text-destructive focus:text-destructive"
-            data-ocid="profile.logout_button"
-          >
-            <LogOut className="h-4 w-4" />
-            Log Out
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+              <ChevronUp className="h-3.5 w-3.5 shrink-0 text-sidebar-foreground/30 group-hover:text-sidebar-foreground/60 transition-colors" />
+            </button>
+          </DropdownMenuTrigger>
+          {dropdownContent}
+        </DropdownMenu>
+      ) : (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-2 h-8 px-2 font-body text-sm"
+              data-ocid="profile.menu_button"
+            >
+              <Avatar className="h-6 w-6">
+                <AvatarFallback className="text-xs bg-accent/20 text-accent font-heading">
+                  {initials}
+                </AvatarFallback>
+              </Avatar>
+              <span className="hidden sm:inline text-foreground/80">
+                {currentUser.username}
+              </span>
+            </Button>
+          </DropdownMenuTrigger>
+          {dropdownContent}
+        </DropdownMenu>
+      )}
 
       {/* Change Password Dialog */}
       <Dialog open={pwDialogOpen} onOpenChange={setPwDialogOpen}>

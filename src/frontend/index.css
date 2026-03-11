@@ -14,8 +14,8 @@
     --spice-light: 0.85 0.12 38;
     --spice-dark: 0.48 0.20 38;
 
-    /* Main surface */
-    --background: 0.98 0.005 85;
+    /* Main surface — very light neutral */
+    --background: 0.977 0.004 256;
     --foreground: 0.14 0.02 250;
 
     /* Cards */
@@ -118,6 +118,8 @@
   body {
     @apply bg-background text-foreground;
     font-family: 'DM Sans', sans-serif;
+    /* Use very light neutral (#F7F9FC ≈ oklch(0.977 0.004 256)) */
+    background-color: #f7f9fc;
   }
 
   h1, h2, h3, h4, h5, h6 {
@@ -161,5 +163,16 @@
 
   .stat-card-hover {
     @apply transition-all duration-200 hover:shadow-md hover:-translate-y-0.5;
+  }
+
+  /* Autosave indicator animations */
+  .autosave-visible {
+    opacity: 1;
+    transition: opacity 300ms ease;
+  }
+
+  .autosave-hidden {
+    opacity: 0;
+    transition: opacity 300ms ease;
   }
 }

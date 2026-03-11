@@ -95,7 +95,7 @@ function KpiCard({
 }) {
   return (
     <Card className="stat-card-hover border-border/60">
-      <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+      <CardHeader className="flex flex-row items-center justify-between pt-4 pb-2 px-4 space-y-0">
         <CardTitle className="text-xs font-medium text-muted-foreground font-body uppercase tracking-wide">
           {title}
         </CardTitle>
@@ -103,7 +103,7 @@ function KpiCard({
           <Icon className="h-3.5 w-3.5 text-white" />
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="px-4 pb-4">
         {isLoading ? (
           <Skeleton className="h-8 w-16" />
         ) : (
@@ -176,7 +176,7 @@ export function Dashboard() {
   }
 
   return (
-    <div className="page-enter space-y-8">
+    <div className="page-enter space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -239,7 +239,7 @@ export function Dashboard() {
       )}
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
         <KpiCard
           title="Total Assessments"
           value={totalAssessments}

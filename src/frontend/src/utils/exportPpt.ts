@@ -1,10 +1,14 @@
 /**
  * exportPpt.ts
  * PowerPoint (.pptx) export for Q-Insight assessment reports using pptxgenjs.
+ * Uses window.PptxGenJS (CDN-loaded) to avoid bundler dependency issues.
  */
 
-import PptxGenJS from "pptxgenjs";
 import type { ReportData } from "./reportData";
+
+// CDN-loaded PptxGenJS global
+const getPptx = (): any =>
+  (window as any).PptxGenJS ?? (window as any).pptxgenjs;
 
 // ─── Theme constants ─────────────────────────────────────────────
 
@@ -38,7 +42,7 @@ function ratingColor(rating: string | null | undefined): {
 
 // ─── Slide 1: Cover ───────────────────────────────────────────────
 
-function addCoverSlide(pptx: PptxGenJS, data: ReportData) {
+function addCoverSlide(pptx: any, data: ReportData) {
   const slide = pptx.addSlide();
   const info = data.info;
 
@@ -185,7 +189,7 @@ function addCoverSlide(pptx: PptxGenJS, data: ReportData) {
 
 // ─── Slide 2: Results Matrix ──────────────────────────────────────
 
-function addResultsSlide(pptx: PptxGenJS, data: ReportData) {
+function addResultsSlide(pptx: any, data: ReportData) {
   const slide = pptx.addSlide();
 
   // Header bar
@@ -254,10 +258,10 @@ function addResultsSlide(pptx: PptxGenJS, data: ReportData) {
   });
 
   // Table
-  const tableData: PptxGenJS.TableRow[] = [];
+  const tableData: any[] = [];
 
   // Header row
-  const headerRow: PptxGenJS.TableCell[] = [
+  const headerRow: any[] = [
     {
       text: "Process",
       options: {
@@ -337,7 +341,7 @@ function addResultsSlide(pptx: PptxGenJS, data: ReportData) {
     proc: ReportData["processes"][0],
     paId: string,
     minLevel: number,
-  ): PptxGenJS.TableCell => {
+  ): any => {
     if (proc.targetLevel < minLevel) {
       return {
         text: "—",
@@ -363,7 +367,7 @@ function addResultsSlide(pptx: PptxGenJS, data: ReportData) {
     };
   };
 
-  const getCL = (proc: ReportData["processes"][0]): PptxGenJS.TableCell => {
+  const getCL = (proc: ReportData["processes"][0]): any => {
     const cl = proc.capabilityLevel;
     if (cl === null)
       return {
@@ -389,7 +393,7 @@ function addResultsSlide(pptx: PptxGenJS, data: ReportData) {
 
   for (const proc of data.processes) {
     const rowBg = tableData.length % 2 === 0 ? "F8F9FC" : THEME.white;
-    const row: PptxGenJS.TableCell[] = [
+    const row: any[] = [
       {
         text: `${proc.id}\n${proc.label}`,
         options: {
@@ -432,7 +436,7 @@ function addResultsSlide(pptx: PptxGenJS, data: ReportData) {
 
 // ─── Slides 3+: Per-Process ───────────────────────────────────────
 
-function addProcessSlide(pptx: PptxGenJS, proc: ReportData["processes"][0]) {
+function addProcessSlide(pptx: any, proc: ReportData["processes"][0]) {
   const slide = pptx.addSlide();
 
   // Header
@@ -539,7 +543,7 @@ function addProcessSlide(pptx: PptxGenJS, proc: ReportData["processes"][0]) {
     color: THEME.navy,
   });
 
-  const ratingTableData: PptxGenJS.TableRow[] = [];
+  const ratingTableData: any[] = [];
   ratingTableData.push([
     {
       text: "Practice",
@@ -748,7 +752,13 @@ function addProcessSlide(pptx: PptxGenJS, proc: ReportData["processes"][0]) {
 // ─── Main Export Function ────────────────────────────────────────
 
 export function exportToPpt(data: ReportData): void {
-  const pptx = new PptxGenJS();
+  const PptxGenJSCtor = getPptx();
+  if (!PptxGenJSCtor) {
+    alert("PowerPoint export library not loaded. Please try again.");
+    return;
+  }
+
+  const pptx = new PptxGenJSCtor();
 
   pptx.layout = "LAYOUT_WIDE";
   pptx.author = "Q-Insight";

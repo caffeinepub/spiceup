@@ -721,7 +721,7 @@ export function AssessmentInfo() {
 
           {/* Action Buttons */}
           {!isCompleted && (
-            <div className="flex items-center gap-3 pt-2 pb-6">
+            <div className="flex items-center gap-3 pt-2 pb-4">
               <Button
                 onClick={handleSaveAndContinue}
                 disabled={isSaving}
