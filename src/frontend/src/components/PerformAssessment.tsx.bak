@@ -82,7 +82,7 @@ interface EvidenceItem {
 
 interface SwEntry {
   id: string;
-  type: "strength" | "weakness" | "observation";
+  type: "strength" | "weakness";
   text: string;
 }
 
@@ -502,13 +502,13 @@ function EvidenceDialog({
               htmlFor="ev-description"
               className="font-body text-xs font-medium text-muted-foreground uppercase tracking-wide"
             >
-              Evidence Name <span className="text-destructive">*</span>
+              Description <span className="text-destructive">*</span>
             </Label>
             <Textarea
               id="ev-description"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Evidence name..."
+              placeholder="Work product description..."
               rows={3}
               className="font-body text-sm resize-none"
               data-ocid="perform.evidence_description_input"
@@ -585,9 +585,9 @@ function AddEntryDialog({
   practiceId: string;
   onSubmit: (entry: SwEntry) => void;
 }) {
-  const [entryType, setEntryType] = useState<
-    "strength" | "weakness" | "observation"
-  >(initialEntry?.type ?? "strength");
+  const [entryType, setEntryType] = useState<"strength" | "weakness">(
+    initialEntry?.type ?? "strength",
+  );
   const [text, setText] = useState(initialEntry?.text ?? "");
 
   // Reset when dialog opens or initialEntry changes
@@ -613,7 +613,7 @@ function AddEntryDialog({
       <DialogContent className="max-w-lg" data-ocid="perform.entry_dialog">
         <DialogHeader>
           <DialogTitle className="font-heading text-base">
-            {initialEntry ? "Edit Entry" : "Add Finding"}
+            {initialEntry ? "Edit Entry" : "Add Strength / Weakness"}
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-4 py-2">
@@ -632,9 +632,7 @@ function AddEntryDialog({
             </Label>
             <Select
               value={entryType}
-              onValueChange={(v) =>
-                setEntryType(v as "strength" | "weakness" | "observation")
-              }
+              onValueChange={(v) => setEntryType(v as "strength" | "weakness")}
             >
               <SelectTrigger
                 id="entry-type"
@@ -656,12 +654,6 @@ function AddEntryDialog({
                     Weakness
                   </span>
                 </SelectItem>
-                <SelectItem value="observation">
-                  <span className="flex items-center gap-2">
-                    <span className="h-2 w-2 rounded-full bg-blue-500 inline-block" />
-                    Suggestion
-                  </span>
-                </SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -675,9 +667,7 @@ function AddEntryDialog({
               placeholder={
                 entryType === "strength"
                   ? "Describe the strength observed..."
-                  : entryType === "weakness"
-                    ? "Describe the weakness observed..."
-                    : "Describe the suggestion..."
+                  : "Describe the weakness observed..."
               }
             />
           </div>
@@ -787,9 +777,9 @@ function BPPracticePanel({
   const [editingEvidence, setEditingEvidence] = useState<
     (EvidenceItem & { index: number }) | undefined
   >(undefined);
-  const [swFilter, setSwFilter] = useState<
-    "all" | "strengths" | "weaknesses" | "observations"
-  >("all");
+  const [swFilter, setSwFilter] = useState<"all" | "strengths" | "weaknesses">(
+    "all",
+  );
 
   function handleOpenAddEvidence() {
     setEditingEvidence(undefined);
@@ -827,12 +817,10 @@ function BPPracticePanel({
   const swEntries = state.swEntries ?? [];
   const strengths = swEntries.filter((e) => e.type === "strength");
   const weaknesses = swEntries.filter((e) => e.type === "weakness");
-  const observations = swEntries.filter((e) => e.type === "observation");
 
   const filteredSw = swEntries.filter((e) => {
     if (swFilter === "strengths") return e.type === "strength";
     if (swFilter === "weaknesses") return e.type === "weakness";
-    if (swFilter === "observations") return e.type === "observation";
     return true;
   });
 
@@ -893,11 +881,6 @@ function BPPracticePanel({
                     key: "weaknesses",
                     label: `Weaknesses (${weaknesses.length})`,
                     ocid: "perform.sw_filter_weaknesses_tab",
-                  },
-                  {
-                    key: "observations",
-                    label: `Suggestions (${observations.length})`,
-                    ocid: "perform.sw_filter_observations_tab",
                   },
                 ] as const
               ).map(({ key, label, ocid }) => (
@@ -966,9 +949,7 @@ function BPPracticePanel({
                       "group border-b border-border/30 last:border-b-0 transition-colors",
                       entry.type === "strength"
                         ? "hover:bg-emerald-50/40"
-                        : entry.type === "weakness"
-                          ? "hover:bg-red-50/40"
-                          : "hover:bg-blue-50/40",
+                        : "hover:bg-red-50/40",
                     )}
                   >
                     <td className="px-4 py-2 align-top">
@@ -978,16 +959,10 @@ function BPPracticePanel({
                           "font-body text-[11px] whitespace-nowrap",
                           entry.type === "strength"
                             ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                            : entry.type === "weakness"
-                              ? "bg-red-50 text-red-700 border-red-200"
-                              : "bg-blue-50 text-blue-700 border-blue-200",
+                            : "bg-red-50 text-red-700 border-red-200",
                         )}
                       >
-                        {entry.type === "strength"
-                          ? "Strength"
-                          : entry.type === "weakness"
-                            ? "Weakness"
-                            : "Suggestion"}
+                        {entry.type === "strength" ? "Strength" : "Weakness"}
                       </Badge>
                     </td>
                     <td className="px-4 py-2 align-top text-foreground font-body leading-relaxed">
@@ -1396,9 +1371,9 @@ function PASummaryView({
   isCompleted?: boolean;
   onRatingChange?: (rating: Rating) => void;
 }) {
-  const [filter, setFilter] = useState<
-    "all" | "strengths" | "weaknesses" | "observations"
-  >("all");
+  const [filter, setFilter] = useState<"all" | "strengths" | "weaknesses">(
+    "all",
+  );
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingMeta, setEditingMeta] = useState<{
     entry: SwEntry;
@@ -1499,14 +1474,10 @@ function PASummaryView({
   const weaknessesCount = allEntries.filter(
     (e) => e.entry.type === "weakness",
   ).length;
-  const observationsCount = allEntries.filter(
-    (e) => e.entry.type === "observation",
-  ).length;
 
   const filtered = allEntries.filter((e) => {
     if (filter === "strengths") return e.entry.type === "strength";
     if (filter === "weaknesses") return e.entry.type === "weakness";
-    if (filter === "observations") return e.entry.type === "observation";
     return true;
   });
 
@@ -1577,13 +1548,6 @@ function PASummaryView({
           >
             Weaknesses ({weaknessesCount})
           </TabsTrigger>
-          <TabsTrigger
-            value="observations"
-            className="font-body text-xs h-6 px-3"
-            data-ocid="perform.pa_sw_filter_observations_tab"
-          >
-            Suggestions ({observationsCount})
-          </TabsTrigger>
         </TabsList>
 
         <TabsContent value={filter} className="mt-3">
@@ -1638,9 +1602,7 @@ function PASummaryView({
                         "transition-colors",
                         entry.type === "strength"
                           ? "bg-emerald-50/50 hover:bg-emerald-50 border-l-2 border-l-emerald-300"
-                          : entry.type === "weakness"
-                            ? "bg-red-50/50 hover:bg-red-50 border-l-2 border-l-red-300"
-                            : "bg-blue-50/50 hover:bg-blue-50 border-l-2 border-l-blue-300",
+                          : "bg-red-50/50 hover:bg-red-50 border-l-2 border-l-red-300",
                       )}
                     >
                       <TableCell className="font-mono text-xs py-2 text-muted-foreground">
@@ -1668,16 +1630,10 @@ function PASummaryView({
                             "font-body text-xs",
                             entry.type === "strength"
                               ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                              : entry.type === "weakness"
-                                ? "bg-red-50 text-red-700 border-red-200"
-                                : "bg-blue-50 text-blue-700 border-blue-200",
+                              : "bg-red-50 text-red-700 border-red-200",
                           )}
                         >
-                          {entry.type === "strength"
-                            ? "Strength"
-                            : entry.type === "weakness"
-                              ? "Weakness"
-                              : "Suggestion"}
+                          {entry.type === "strength" ? "Strength" : "Weakness"}
                         </Badge>
                       </TableCell>
                       <TableCell className="py-2 max-w-xs">
@@ -1841,9 +1797,9 @@ function ProcessOverviewView({
   onEdit: (practiceId: string, level: number, entry: SwEntry) => void;
   onRatingChange: (rating: Rating) => void;
 }) {
-  const [filter, setFilter] = useState<
-    "all" | "strengths" | "weaknesses" | "observations"
-  >("all");
+  const [filter, setFilter] = useState<"all" | "strengths" | "weaknesses">(
+    "all",
+  );
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingMeta, setEditingMeta] = useState<{
     entry: SwEntry;
@@ -2011,14 +1967,10 @@ function ProcessOverviewView({
   const weaknessesCount = allEntries.filter(
     (e) => e.entry.type === "weakness",
   ).length;
-  const observationsCount = allEntries.filter(
-    (e) => e.entry.type === "observation",
-  ).length;
 
   const filtered = allEntries.filter((e) => {
     if (filter === "strengths") return e.entry.type === "strength";
     if (filter === "weaknesses") return e.entry.type === "weakness";
-    if (filter === "observations") return e.entry.type === "observation";
     return true;
   });
 
@@ -2100,13 +2052,6 @@ function ProcessOverviewView({
               >
                 Weaknesses ({weaknessesCount})
               </TabsTrigger>
-              <TabsTrigger
-                value="observations"
-                className="font-body text-xs h-6 px-3"
-                data-ocid="perform.process_sw_filter_observations_tab"
-              >
-                Suggestions ({observationsCount})
-              </TabsTrigger>
             </TabsList>
 
             <TabsContent value={filter} className="mt-3">
@@ -2162,9 +2107,7 @@ function ProcessOverviewView({
                               "transition-colors",
                               entry.type === "strength"
                                 ? "bg-emerald-50/50 hover:bg-emerald-50 border-l-2 border-l-emerald-300"
-                                : entry.type === "weakness"
-                                  ? "bg-red-50/50 hover:bg-red-50 border-l-2 border-l-red-300"
-                                  : "bg-blue-50/50 hover:bg-blue-50 border-l-2 border-l-blue-300",
+                                : "bg-red-50/50 hover:bg-red-50 border-l-2 border-l-red-300",
                             )}
                           >
                             <TableCell className="font-mono text-xs py-2 text-muted-foreground">
@@ -2192,16 +2135,12 @@ function ProcessOverviewView({
                                   "font-body text-xs",
                                   entry.type === "strength"
                                     ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                                    : entry.type === "weakness"
-                                      ? "bg-red-50 text-red-700 border-red-200"
-                                      : "bg-blue-50 text-blue-700 border-blue-200",
+                                    : "bg-red-50 text-red-700 border-red-200",
                                 )}
                               >
                                 {entry.type === "strength"
                                   ? "Strength"
-                                  : entry.type === "weakness"
-                                    ? "Weakness"
-                                    : "Suggestion"}
+                                  : "Weakness"}
                               </Badge>
                             </TableCell>
                             <TableCell className="py-2 max-w-xs">
@@ -3552,7 +3491,7 @@ function DraggableThreePanelLayout({
             {descContent ? (
               <>
                 <p className="text-xs font-heading text-foreground leading-snug">
-                  <span className="font-mono font-bold text-foreground text-[11px] uppercase tracking-wider mr-1.5">
+                  <span className="font-mono text-muted-foreground/70 text-[11px] uppercase tracking-wider mr-1.5">
                     {descContent.id}
                   </span>
                   <span className="font-semibold">{descContent.title}</span>
