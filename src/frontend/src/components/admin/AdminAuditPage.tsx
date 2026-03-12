@@ -254,22 +254,22 @@ export function AdminAuditPage() {
                 {/* Column Headers */}
                 <div className="flex items-center gap-4 px-4 py-2 bg-muted/20 border-b border-border/40">
                   <div className="shrink-0 w-36">
-                    <span className="text-[10px] font-heading uppercase tracking-wider text-muted-foreground">
+                    <span className="text-[10px] font-medium text-muted-foreground">
                       Timestamp
                     </span>
                   </div>
                   <div className="shrink-0 w-28">
-                    <span className="text-[10px] font-heading uppercase tracking-wider text-muted-foreground">
+                    <span className="text-[10px] font-medium text-muted-foreground">
                       Actor
                     </span>
                   </div>
                   <div className="shrink-0 w-28">
-                    <span className="text-[10px] font-heading uppercase tracking-wider text-muted-foreground">
+                    <span className="text-[10px] font-medium text-muted-foreground">
                       Event Type
                     </span>
                   </div>
                   <div className="flex-1">
-                    <span className="text-[10px] font-heading uppercase tracking-wider text-muted-foreground">
+                    <span className="text-[10px] font-medium text-muted-foreground">
                       Description
                     </span>
                   </div>

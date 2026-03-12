@@ -127,17 +127,17 @@ function UserAssessmentsModal({
           ) : (
             <Table>
               <TableHeader>
-                <TableRow className="hover:bg-transparent">
-                  <TableHead className="font-heading text-xs uppercase tracking-wide text-muted-foreground">
+                <TableRow className="hover:bg-transparent bg-gray-50">
+                  <TableHead className="text-xs font-semibold text-gray-700">
                     Assessment Title
                   </TableHead>
-                  <TableHead className="font-heading text-xs uppercase tracking-wide text-muted-foreground">
+                  <TableHead className="text-xs font-semibold text-gray-700">
                     Status
                   </TableHead>
-                  <TableHead className="font-heading text-xs uppercase tracking-wide text-muted-foreground">
+                  <TableHead className="text-xs font-semibold text-gray-700">
                     Created
                   </TableHead>
-                  <TableHead className="font-heading text-xs uppercase tracking-wide text-muted-foreground">
+                  <TableHead className="text-xs font-semibold text-gray-700">
                     Last Updated
                   </TableHead>
                 </TableRow>
@@ -301,26 +301,26 @@ export function AdminUsersPage() {
       <div className="rounded-lg border border-border/60 overflow-hidden bg-card">
         <Table data-ocid="admin_users.table">
           <TableHeader>
-            <TableRow className="hover:bg-transparent bg-muted/20">
-              <TableHead className="font-heading text-xs uppercase tracking-wide text-muted-foreground">
+            <TableRow className="hover:bg-transparent bg-gray-50">
+              <TableHead className="text-xs font-semibold text-gray-700">
                 Username
               </TableHead>
-              <TableHead className="font-heading text-xs uppercase tracking-wide text-muted-foreground">
+              <TableHead className="text-xs font-semibold text-gray-700">
                 Role
               </TableHead>
-              <TableHead className="font-heading text-xs uppercase tracking-wide text-muted-foreground">
+              <TableHead className="text-xs font-semibold text-gray-700">
                 Status
               </TableHead>
-              <TableHead className="font-heading text-xs uppercase tracking-wide text-muted-foreground">
+              <TableHead className="text-xs font-semibold text-gray-700">
                 Registered
               </TableHead>
-              <TableHead className="font-heading text-xs uppercase tracking-wide text-muted-foreground">
+              <TableHead className="text-xs font-semibold text-gray-700">
                 # Assessments
               </TableHead>
-              <TableHead className="font-heading text-xs uppercase tracking-wide text-muted-foreground">
+              <TableHead className="text-xs font-semibold text-gray-700">
                 Last Active
               </TableHead>
-              <TableHead className="font-heading text-xs uppercase tracking-wide text-muted-foreground text-right">
+              <TableHead className="text-xs font-semibold text-gray-700 text-right">
                 Actions
               </TableHead>
             </TableRow>
@@ -346,7 +346,11 @@ export function AdminUsersPage() {
                 return (
                   <TableRow
                     key={user.id}
-                    className="hover:bg-muted/20"
+                    className={
+                      idx % 2 === 1
+                        ? "bg-gray-50/40 hover:bg-gray-50/70"
+                        : "hover:bg-gray-50/70"
+                    }
                     data-ocid={`admin_users.row.${idx + 1}`}
                   >
                     <TableCell>
@@ -373,8 +377,8 @@ export function AdminUsersPage() {
                         variant="outline"
                         className={`text-xs font-body ${
                           user.role === "admin"
-                            ? "bg-amber-50 text-amber-700 border-amber-200"
-                            : "bg-blue-50 text-blue-700 border-blue-200"
+                            ? "bg-orange-50 text-orange-700 border-orange-200"
+                            : "bg-gray-100 text-gray-600 border-gray-200"
                         }`}
                       >
                         {user.role === "admin" ? (

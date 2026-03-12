@@ -21,6 +21,7 @@ import {
 import { AlertCircle, LayoutDashboard, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { StickyFooterBar } from "./StickyFooterBar";
 
 type Level = "1" | "2" | "3" | "NA";
 
@@ -145,159 +146,174 @@ export function DefineTargetProfile() {
   }
 
   return (
-    <div className="page-enter space-y-6">
-      {/* Page Header */}
-      <div>
-        <h1 className="text-2xl font-bold font-heading text-foreground">
-          Scope
-        </h1>
-        <p className="text-muted-foreground text-sm mt-1 font-body">
-          Enable process groups and set target capability levels
-        </p>
-      </div>
-
-      {isCompleted && (
-        <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
-          <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
-          <p className="text-sm font-body text-amber-800">
-            This assessment is marked as Completed. No further edits are
-            allowed.
+    <div className="page-enter flex flex-col min-h-full">
+      <div className="flex-1 space-y-6 pb-2">
+        {/* Page Header */}
+        <div>
+          <h1 className="text-2xl font-bold font-heading text-foreground">
+            Scope
+          </h1>
+          <p className="text-muted-foreground text-sm mt-1 font-body">
+            Enable process groups and set target capability levels
           </p>
         </div>
-      )}
 
-      {isLoading ? (
-        <div className="space-y-4">
-          {[1, 2, 3].map((i) => (
-            <Skeleton key={i} className="h-32 w-full rounded-xl" />
-          ))}
-        </div>
-      ) : (
-        <div className="space-y-6">
-          {/* Combined Process Groups & Target Level Section */}
-          <Card className="border-border/60">
-            <CardHeader className="pb-4">
-              <CardTitle className="text-sm font-heading font-semibold text-foreground uppercase tracking-wide">
-                Process Groups &amp; Target Level
-              </CardTitle>
-              <p className="text-xs text-muted-foreground font-body">
-                Enable or disable each process group and set the target
-                capability level for its processes
-              </p>
-              <Separator />
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {PROCESS_GROUPS.map((group, groupIndex) => {
-                  const isEnabled = enabledGroups.has(group.id);
-                  return (
-                    <div
-                      key={group.id}
-                      className={`rounded-lg border ${isEnabled ? "border-border/60 bg-card" : "border-border/30 bg-muted/20"} overflow-hidden`}
-                    >
-                      {/* Group header row */}
-                      <div className="flex items-center justify-between px-3 py-2.5 border-b border-border/30">
-                        <div className="flex items-center gap-2">
-                          <div className="h-1 w-3 rounded-full spice-gradient shrink-0" />
-                          <h3
-                            className={`font-semibold font-heading text-sm ${isEnabled ? "text-foreground" : "text-muted-foreground"}`}
-                          >
-                            {group.name}
-                          </h3>
-                        </div>
-                        <Switch
-                          checked={isEnabled}
-                          onCheckedChange={() =>
-                            !isCompleted && toggleGroup(group.id)
-                          }
-                          disabled={isCompleted}
-                          data-ocid={`target_profile.group_toggle.${groupIndex + 1}`}
-                        />
-                      </div>
+        {isCompleted && (
+          <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+            <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+            <p className="text-sm font-body text-amber-800">
+              This assessment is marked as Completed. No further edits are
+              allowed.
+            </p>
+          </div>
+        )}
 
-                      {/* Process rows — only shown when group is enabled */}
-                      {isEnabled && (
-                        <div className="divide-y divide-border/20">
-                          {group.processes.map((process, processIndex) => (
-                            <div
-                              key={process.id}
-                              className="flex items-center justify-between py-2 px-3 hover:bg-muted/20 transition-colors"
+        {isLoading ? (
+          <div className="space-y-4">
+            {[1, 2, 3].map((i) => (
+              <Skeleton key={i} className="h-32 w-full rounded-xl" />
+            ))}
+          </div>
+        ) : (
+          <div className="space-y-6">
+            {/* Combined Process Groups & Target Level Section */}
+            <Card className="border-border/60">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-sm font-semibold text-foreground">
+                  Process Groups &amp; Target Level
+                </CardTitle>
+                <p className="text-xs text-muted-foreground font-body">
+                  Enable or disable each process group and set the target
+                  capability level for its processes
+                </p>
+                <Separator />
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {PROCESS_GROUPS.map((group, groupIndex) => {
+                    const isEnabled = enabledGroups.has(group.id);
+                    return (
+                      <div
+                        key={group.id}
+                        className={`rounded-xl border ${
+                          isEnabled
+                            ? "border-border/60 bg-card"
+                            : "border-border/30 bg-muted/20"
+                        } overflow-hidden`}
+                      >
+                        {/* Group header row */}
+                        <div className="flex items-center justify-between px-3 py-2.5 border-b border-border/30">
+                          <div className="flex items-center gap-2">
+                            <div className="h-1 w-3 rounded-full spice-gradient shrink-0" />
+                            <h3
+                              className={`font-semibold font-heading text-sm ${
+                                isEnabled
+                                  ? "text-foreground"
+                                  : "text-muted-foreground"
+                              }`}
                             >
-                              <div className="flex-1 min-w-0 mr-2">
-                                <span className="font-medium font-body text-xs text-foreground">
-                                  {process.id}
-                                </span>
-                                <span className="text-muted-foreground font-body text-xs ml-1 truncate block">
-                                  {process.name}
-                                </span>
-                              </div>
-                              <Select
-                                value={processLevels[process.id] ?? "2"}
-                                onValueChange={(v) =>
-                                  !isCompleted &&
-                                  setLevel(process.id, v as Level)
-                                }
-                                disabled={isCompleted}
-                              >
-                                <SelectTrigger
-                                  className="w-28 h-7 text-xs font-body shrink-0"
-                                  data-ocid={`target_profile.${process.id.toLowerCase().replace(".", "_")}.level_select.${processIndex + 1}`}
-                                >
-                                  <SelectValue placeholder="Level" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem
-                                    value="1"
-                                    className="text-xs font-body"
-                                  >
-                                    Level 1
-                                  </SelectItem>
-                                  <SelectItem
-                                    value="2"
-                                    className="text-xs font-body"
-                                  >
-                                    Level 2
-                                  </SelectItem>
-                                  <SelectItem
-                                    value="3"
-                                    className="text-xs font-body"
-                                  >
-                                    Level 3
-                                  </SelectItem>
-                                  <SelectItem
-                                    value="NA"
-                                    className="text-xs font-body"
-                                  >
-                                    NA
-                                  </SelectItem>
-                                </SelectContent>
-                              </Select>
-                            </div>
-                          ))}
+                              {group.name}
+                            </h3>
+                          </div>
+                          <Switch
+                            checked={isEnabled}
+                            onCheckedChange={() =>
+                              !isCompleted && toggleGroup(group.id)
+                            }
+                            disabled={isCompleted}
+                            data-ocid={`target_profile.group_toggle.${groupIndex + 1}`}
+                          />
                         </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </CardContent>
-          </Card>
 
-          {/* Action Buttons */}
-          {!isCompleted && (
-            <div className="flex items-center gap-3 pt-2 pb-4">
-              <Button
-                onClick={handleSave}
-                disabled={isSaving}
-                className="spice-gradient text-white border-0"
-                data-ocid="target_profile.save_button"
-              >
-                {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Save
-              </Button>
-            </div>
-          )}
-        </div>
+                        {/* Process rows */}
+                        {isEnabled && (
+                          <div className="divide-y divide-border/20">
+                            {group.processes.map((process, processIndex) => (
+                              <div
+                                key={process.id}
+                                className="flex items-center justify-between py-2 px-3 hover:bg-muted/20 transition-colors"
+                              >
+                                <div className="flex-1 min-w-0 mr-2">
+                                  <span className="font-medium font-body text-xs text-foreground">
+                                    {process.id}
+                                  </span>
+                                  <span className="text-muted-foreground font-body text-xs ml-1 truncate block">
+                                    {process.name}
+                                  </span>
+                                </div>
+                                <Select
+                                  value={processLevels[process.id] ?? "2"}
+                                  onValueChange={(v) =>
+                                    !isCompleted &&
+                                    setLevel(process.id, v as Level)
+                                  }
+                                  disabled={isCompleted}
+                                >
+                                  <SelectTrigger
+                                    className="w-28 h-7 text-xs font-body shrink-0"
+                                    data-ocid={`target_profile.${process.id
+                                      .toLowerCase()
+                                      .replace(
+                                        ".",
+                                        "_",
+                                      )}.level_select.${processIndex + 1}`}
+                                  >
+                                    <SelectValue placeholder="Level" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem
+                                      value="1"
+                                      className="text-xs font-body"
+                                    >
+                                      Level 1
+                                    </SelectItem>
+                                    <SelectItem
+                                      value="2"
+                                      className="text-xs font-body"
+                                    >
+                                      Level 2
+                                    </SelectItem>
+                                    <SelectItem
+                                      value="3"
+                                      className="text-xs font-body"
+                                    >
+                                      Level 3
+                                    </SelectItem>
+                                    <SelectItem
+                                      value="NA"
+                                      className="text-xs font-body"
+                                    >
+                                      NA
+                                    </SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+      </div>
+
+      {/* Sticky Footer Save */}
+      {!isCompleted && !isLoading && (
+        <StickyFooterBar>
+          <Button
+            onClick={handleSave}
+            disabled={isSaving}
+            className="spice-gradient text-white border-0 h-9"
+            data-ocid="target_profile.save_button"
+          >
+            {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Save
+          </Button>
+        </StickyFooterBar>
       )}
     </div>
   );

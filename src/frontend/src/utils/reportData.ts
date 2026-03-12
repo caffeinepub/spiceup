@@ -1,7 +1,6 @@
 /**
  * reportData.ts
- * Shared data assembly for all report export formats (PDF, Excel, PPT).
- * Logic mirrors ViewResults.tsx exactly — do not modify ViewResults.tsx.
+ * Shared data assembly for all report export formats.
  */
 
 import {
@@ -31,8 +30,9 @@ export interface PracticeDetail {
   id: string;
   title: string;
   rating: Rating | null;
-  strengths: string; // plain text (HTML stripped)
-  weaknesses: string; // plain text (HTML stripped)
+  strengths: string; // newline-separated plain text
+  weaknesses: string; // newline-separated plain text
+  suggestions: string; // newline-separated plain text (from swEntries type=observation)
   evidence: EvidenceEntry[];
 }
 
@@ -47,11 +47,8 @@ export interface ReportProcess {
   label: string;
   targetLevel: number;
   capabilityLevel: number | null;
-  // PA-level overall ratings keyed by paId ("PA1.1", "PA2.1", etc.)
   paRatings: Record<string, Rating | null>;
-  // Level 1 BPs
   bpDetails: PracticeDetail[];
-  // Level 2 & 3 GPs grouped by PA
   gpGroups: PAGroup[];
 }
 
@@ -75,6 +72,8 @@ export interface ReportData {
   processes: ReportProcess[];
   schedule: ScheduleDay[];
   generatedAt: string;
+  globalStrengths: string[];
+  globalWeaknesses: string[];
 }
 
 // ─── HTML Stripper ───────────────────────────────────────────────
@@ -101,15 +100,14 @@ function parseEvidence(raw: string): EvidenceEntry[] {
   if (!raw) return [];
   try {
     const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed)) {
-      return parsed.map((item) => ({
-        description: String(item.description ?? ""),
-        link: String(item.link ?? ""),
-        version: String(item.version ?? ""),
-      }));
-    }
+    // New format: { workProducts: [...], swEntries: [...] }
+    const items = parsed.workProducts ?? (Array.isArray(parsed) ? parsed : []);
+    return items.map((item: Record<string, unknown>) => ({
+      description: String(item.description ?? item.name ?? ""),
+      link: String(item.link ?? ""),
+      version: String(item.version ?? ""),
+    }));
   } catch {
-    // fallback: treat as single text entry
     if (raw.trim()) {
       return [{ description: raw.trim(), link: "", version: "" }];
     }
@@ -117,7 +115,30 @@ function parseEvidence(raw: string): EvidenceEntry[] {
   return [];
 }
 
-// ─── Capability Level Calculator (mirrors ViewResults.tsx) ───────
+// ─── Suggestions Parser ──────────────────────────────────────────
+
+function parseSuggestions(rawWPI: string): string {
+  if (!rawWPI) return "";
+  try {
+    const parsed = JSON.parse(rawWPI);
+    const swEntries = parsed.swEntries;
+    if (Array.isArray(swEntries)) {
+      return swEntries
+        .filter(
+          (e: { type?: string }) =>
+            e.type === "observation" || e.type === "suggestion",
+        )
+        .map((e: { text?: string }) => stripHtml(String(e.text ?? "")).trim())
+        .filter((t: string) => t.length > 0)
+        .join("\n");
+    }
+  } catch {
+    // ignore
+  }
+  return "";
+}
+
+// ─── Capability Level Calculator ────────────────────────────────
 
 function computeCapabilityLevel(
   targetLevel: number,
@@ -182,6 +203,8 @@ export function buildReportData(
   config: ProcessGroupConfig | null,
   ratings: PracticeRating[],
   days: AssessmentDay[],
+  globalStrengths: string[] = [],
+  globalWeaknesses: string[] = [],
 ): ReportData {
   const generatedAt = new Date().toLocaleString("en-US", {
     year: "numeric",
@@ -191,7 +214,6 @@ export function buildReportData(
     minute: "2-digit",
   });
 
-  // Parse config
   let enabledGroups: string[] = [];
   let processLevels: Record<string, string> = {};
 
@@ -211,14 +233,12 @@ export function buildReportData(
     }
   }
 
-  // Build rating map: processId -> practiceId -> PracticeRating
   const ratingMap: Record<string, Record<string, PracticeRating>> = {};
   for (const r of ratings) {
     if (!ratingMap[r.processId]) ratingMap[r.processId] = {};
     ratingMap[r.processId][r.practiceId] = r;
   }
 
-  // Processes in scope
   const processesInScope: Array<{
     id: string;
     name: string;
@@ -234,14 +254,12 @@ export function buildReportData(
     }
   }
 
-  // Build per-process detail
   const processes: ReportProcess[] = [];
 
   for (const { id: procId, name: procLabel, targetLevel } of processesInScope) {
     const procRatings = ratingMap[procId] ?? {};
     const allProcRatings = ratings.filter((r) => r.processId === procId);
 
-    // Helper to get rating
     const getRating = (practiceId: string): Rating | null => {
       const r = procRatings[practiceId];
       if (r?.rating && ["N", "P", "L", "F"].includes(r.rating)) {
@@ -261,17 +279,16 @@ export function buildReportData(
         rating: getRating(practiceId),
         strengths: stripHtml(r?.strengths ?? ""),
         weaknesses: stripHtml(r?.weaknesses ?? ""),
+        suggestions: parseSuggestions(r?.workProductsInspected ?? ""),
         evidence: parseEvidence(r?.workProductsInspected ?? ""),
       };
     };
 
-    // BPs
     const bps = BASE_PRACTICES[procId] ?? [];
     const bpDetails: PracticeDetail[] = bps.map((bp) =>
       getPracticeDetail(bp.id, bp.title),
     );
 
-    // GPs grouped by PA
     const gpGroups: PAGroup[] = [];
 
     if (targetLevel >= 2) {
@@ -298,7 +315,6 @@ export function buildReportData(
       }
     }
 
-    // PA-level overall ratings (stored at level 5)
     const paIds = ["PA1.1"];
     if (targetLevel >= 2) paIds.push("PA2.1", "PA2.2");
     if (targetLevel >= 3) paIds.push("PA3.1", "PA3.2");
@@ -328,7 +344,6 @@ export function buildReportData(
     });
   }
 
-  // Build schedule
   const schedule: ScheduleDay[] = days.map((day) => {
     let sessions: ScheduleSession[] = [];
     try {
@@ -351,7 +366,6 @@ export function buildReportData(
     };
   });
 
-  // Sort schedule by day number
   schedule.sort((a, b) => a.dayNumber - b.dayNumber);
 
   return {
@@ -361,5 +375,7 @@ export function buildReportData(
     processes,
     schedule,
     generatedAt,
+    globalStrengths,
+    globalWeaknesses,
   };
 }

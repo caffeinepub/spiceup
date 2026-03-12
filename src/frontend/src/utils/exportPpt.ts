@@ -1,404 +1,488 @@
 /**
  * exportPpt.ts
- * PowerPoint (.pptx) export for Q-Insight assessment reports using pptxgenjs.
- * Uses window.PptxGenJS (CDN-loaded) to avoid bundler dependency issues.
+ * PowerPoint (.pptx) export for Q-Insight assessment reports.
+ * Slide order:
+ *  1. Cover (assessment/project name + all assessors)
+ *  2. Assessment Information (all info fields)
+ *  3. Condensed Results Summary (process + CL + PA overall ratings)
+ *  4. Full Results Matrix (all processes with PA ratings, autoPage)
+ *  5. Global Strengths
+ *  6. Global Weaknesses
+ *  7+. Per-Process slides (findings by type, paginated — no summary box)
  */
 
+import PptxGenJS from "pptxgenjs";
 import type { ReportData } from "./reportData";
 
-// CDN-loaded PptxGenJS global
-const getPptx = (): any =>
-  (window as any).PptxGenJS ?? (window as any).pptxgenjs;
+// ─── Theme ─────────────────────────────────────────────────────
 
-// ─── Theme constants ─────────────────────────────────────────────
-
-const THEME = {
+const T = {
   navy: "0F1F3D",
-  navyLight: "1E3A71",
-  white: "FFFFFF",
+  navyMid: "1E3A71",
   amber: "F59E0B",
+  white: "FFFFFF",
   lightBg: "F5F7FA",
   darkText: "1E232D",
   midGray: "6B7280",
   lightGray: "E5E7EB",
+  green: "166534",
+  greenBg: "DCFCE7",
+  red: "991B1B",
+  redBg: "FEE2E2",
+  blueBg: "DBEAFE",
+  blueText: "1E40AF",
 };
 
-const RATING_COLORS: Record<string, { fill: string; color: string }> = {
-  F: { fill: "00B04F", color: "000000" },
-  L: { fill: "92D050", color: "000000" },
-  P: { fill: "FFFF00", color: "000000" },
-  N: { fill: "990000", color: "FFFFFF" },
-  NA: { fill: "9CA3AF", color: "FFFFFF" },
+const RATING_COLORS: Record<string, { fill: string; text: string }> = {
+  F: { fill: "00B04F", text: "000000" },
+  L: { fill: "92D050", text: "000000" },
+  P: { fill: "FFFF00", text: "000000" },
+  N: { fill: "990000", text: "FFFFFF" },
 };
 
-function ratingColor(rating: string | null | undefined): {
-  fill: string;
-  color: string;
-} {
+function rc(rating: string | null | undefined): { fill: string; text: string } {
   if (!rating || !RATING_COLORS[rating])
-    return { fill: "E5E7EB", color: "9CA3AF" };
+    return { fill: "E5E7EB", text: "9CA3AF" };
   return RATING_COLORS[rating];
 }
 
-// ─── Slide 1: Cover ───────────────────────────────────────────────
+function slideHeader(
+  pptx: PptxGenJS,
+  slide: PptxGenJS.Slide,
+  title: string,
+  subtitle?: string,
+) {
+  slide.addShape(pptx.ShapeType.rect, {
+    x: 0,
+    y: 0,
+    w: "100%",
+    h: 0.82,
+    fill: { color: T.navy },
+  });
+  slide.addText(title, {
+    x: 0.25,
+    y: 0.07,
+    w: 8.5,
+    h: 0.45,
+    fontSize: 15,
+    bold: true,
+    color: T.white,
+  });
+  if (subtitle) {
+    slide.addText(subtitle, {
+      x: 0.25,
+      y: 0.54,
+      w: 9.0,
+      h: 0.22,
+      fontSize: 8,
+      color: "B4C8DC",
+    });
+  }
+  slide.addShape(pptx.ShapeType.rect, {
+    x: 0,
+    y: 0.82,
+    w: "100%",
+    h: 0.04,
+    fill: { color: T.amber },
+  });
+}
 
-function addCoverSlide(pptx: any, data: ReportData) {
+// ─── Slide 1: Cover ─────────────────────────────────────────────
+
+function addCoverSlide(pptx: PptxGenJS, data: ReportData) {
   const slide = pptx.addSlide();
   const info = data.info;
 
-  // Full navy background
   slide.addShape(pptx.ShapeType.rect, {
     x: 0,
     y: 0,
     w: "100%",
     h: "100%",
-    fill: { color: THEME.navy },
+    fill: { color: T.navy },
   });
-
-  // Amber accent bar (left side)
   slide.addShape(pptx.ShapeType.rect, {
     x: 0,
     y: 0,
-    w: 0.15,
+    w: 0.18,
     h: "100%",
-    fill: { color: THEME.amber },
+    fill: { color: T.amber },
   });
 
-  // Q-Insight brand top right
   slide.addText("Q-INSIGHT", {
-    x: 7.5,
-    y: 0.25,
-    w: 2.5,
+    x: 7.2,
+    y: 0.22,
+    w: 2.8,
     h: 0.35,
     fontSize: 11,
     bold: true,
-    color: THEME.amber,
+    color: T.amber,
     align: "right",
   });
   slide.addText("For Smarter Assessments", {
-    x: 7.5,
-    y: 0.6,
-    w: 2.5,
-    h: 0.25,
+    x: 7.2,
+    y: 0.58,
+    w: 2.8,
+    h: 0.22,
     fontSize: 7.5,
     color: "B4C8DC",
     align: "right",
   });
 
-  // Main title
-  slide.addText(data.assessmentName, {
+  const mainTitle = info?.projectName?.trim() || data.assessmentName;
+  slide.addText(mainTitle, {
     x: 0.4,
-    y: 1.4,
-    w: 9.0,
+    y: 1.3,
+    w: 9.3,
     h: 1.4,
-    fontSize: 32,
+    fontSize: 30,
     bold: true,
-    color: THEME.white,
+    color: T.white,
     wrap: true,
   });
 
-  // Subtitle
   slide.addText("Assessment Report", {
     x: 0.4,
-    y: 2.9,
+    y: 2.8,
     w: 6,
     h: 0.4,
-    fontSize: 13,
+    fontSize: 12,
     color: "B4C8DC",
   });
 
-  // Amber divider
+  const assessorParts: string[] = [];
+  if (info?.leadAssessor?.trim())
+    assessorParts.push(`Lead: ${info.leadAssessor}`);
+  if (info?.coAssessor?.trim())
+    assessorParts.push(`Co-Assessor: ${info.coAssessor}`);
+  if (info?.sponsor?.trim()) assessorParts.push(`Sponsor: ${info.sponsor}`);
+  if (assessorParts.length > 0) {
+    slide.addText(assessorParts.join("   |   "), {
+      x: 0.4,
+      y: 3.25,
+      w: 9.3,
+      h: 0.3,
+      fontSize: 9,
+      color: "92C5E8",
+    });
+  }
+
   slide.addShape(pptx.ShapeType.line, {
     x: 0.4,
-    y: 3.4,
-    w: 9.2,
+    y: 3.65,
+    w: 9.3,
     h: 0,
-    line: { color: THEME.amber, width: 1.5 },
+    line: { color: T.amber, width: 1.5 },
   });
 
-  // Info fields left column
-  const leftItems: Array<[string, string]> = [
+  const leftItems: [string, string][] = [
     ["Project", info?.projectName ?? "—"],
+    ["Assessment", data.assessmentName],
     ["Start Date", info?.startDate ?? "—"],
     ["End Date", info?.endDate ?? "—"],
     ["Lead Assessor", info?.leadAssessor ?? "—"],
-    ["Co-Assessor", info?.coAssessor ?? "—"],
   ];
-
-  const rightItems: Array<[string, string]> = [
+  const rightItems: [string, string][] = [
     ["Assessed Party", info?.assessedParty ?? "—"],
     ["Site", info?.assessedSite ?? "—"],
     ["Assessor Body", info?.assessorBody ?? "—"],
-    ["Sponsor", info?.sponsor ?? "—"],
+    ["Co-Assessor", info?.coAssessor ?? "—"],
     ["Processes in Scope", String(data.processesInScope.length)],
   ];
 
   leftItems.forEach(([label, value], i) => {
-    const y = 3.6 + i * 0.42;
+    const y = 3.8 + i * 0.4;
     slide.addText(label, {
       x: 0.4,
       y,
-      w: 1.4,
-      h: 0.35,
-      fontSize: 8,
+      w: 1.5,
+      h: 0.32,
+      fontSize: 7.5,
       color: "B4C8DC",
       bold: true,
     });
-    slide.addText(value, {
-      x: 1.85,
+    slide.addText(value || "—", {
+      x: 1.95,
       y,
-      w: 3.5,
-      h: 0.35,
-      fontSize: 8.5,
-      color: THEME.white,
+      w: 3.4,
+      h: 0.32,
+      fontSize: 8,
+      color: T.white,
     });
   });
-
   rightItems.forEach(([label, value], i) => {
-    const y = 3.6 + i * 0.42;
+    const y = 3.8 + i * 0.4;
     slide.addText(label, {
-      x: 5.2,
+      x: 5.5,
       y,
       w: 1.5,
-      h: 0.35,
-      fontSize: 8,
+      h: 0.32,
+      fontSize: 7.5,
       color: "B4C8DC",
       bold: true,
     });
-    slide.addText(value, {
-      x: 6.75,
+    slide.addText(value || "—", {
+      x: 7.05,
       y,
       w: 3.0,
-      h: 0.35,
-      fontSize: 8.5,
-      color: THEME.white,
+      h: 0.32,
+      fontSize: 8,
+      color: T.white,
     });
   });
 
-  // Generated date bottom
   slide.addText(`Generated: ${data.generatedAt}`, {
     x: 0.4,
-    y: 6.9,
-    w: 9.2,
-    h: 0.3,
+    y: 7.1,
+    w: 9.3,
+    h: 0.28,
     fontSize: 7,
-    color: "6B8AAA",
+    color: "5A7A9A",
     align: "center",
   });
 }
 
-// ─── Slide 2: Results Matrix ──────────────────────────────────────
+// ─── Slide 2: Assessment Information ───────────────────────────
 
-function addResultsSlide(pptx: any, data: ReportData) {
+function addAssessmentInfoSlide(pptx: PptxGenJS, data: ReportData) {
   const slide = pptx.addSlide();
+  const info = data.info;
+  slideHeader(pptx, slide, "Assessment Information", data.assessmentName);
 
-  // Header bar
-  slide.addShape(pptx.ShapeType.rect, {
-    x: 0,
-    y: 0,
-    w: "100%",
-    h: 0.85,
-    fill: { color: THEME.navy },
+  if (!info) {
+    slide.addText("No assessment information available.", {
+      x: 0.25,
+      y: 1.0,
+      w: 9.5,
+      h: 0.5,
+      fontSize: 10,
+      color: T.midGray,
+    });
+    return;
+  }
+
+  const leftFields: [string, string][] = [
+    ["Project Name", info.projectName],
+    ["Assessed Party", info.assessedParty],
+    ["Assessed Site", info.assessedSite],
+    ["Unit / Department", info.unitDepartment],
+    ["Start Date", info.startDate],
+    ["End Date", info.endDate],
+    ["Lead Assessor", info.leadAssessor],
+    ["Co-Assessor", info.coAssessor],
+    ["Sponsor", info.sponsor],
+    ["Assessor Body", info.assessorBody],
+  ];
+  const rightFields: [string, string][] = [
+    ["INTACS ID", info.intacsId],
+    ["PAM Version", info.pamVersion],
+    ["VDA Version", info.vdaVersion],
+    ["Assessment Class", info.assessmentClass],
+    ["Target CL", info.targetCapabilityLevel],
+    ["Functional Safety", info.functionalSafetyLevel],
+    ["Cybersecurity Level", info.cybersecurityLevel],
+    ["Model-Based Dev", info.modelBasedDev ? "Yes" : "No"],
+    ["Agile Environments", info.agileEnvironments ? "Yes" : "No"],
+    ["Dev External", info.developmentExternal ? "Yes" : "No"],
+  ];
+
+  const startY = 0.95;
+  const rowH = 0.38;
+
+  leftFields.forEach(([label, value], i) => {
+    const y = startY + i * rowH;
+    const rowBg = i % 2 === 0 ? "F8F9FC" : T.white;
+    slide.addShape(pptx.ShapeType.rect, {
+      x: 0.2,
+      y,
+      w: 4.6,
+      h: rowH - 0.03,
+      fill: { color: rowBg },
+    });
+    slide.addText(label, {
+      x: 0.25,
+      y: y + 0.04,
+      w: 1.5,
+      h: rowH - 0.1,
+      fontSize: 8,
+      color: T.midGray,
+      bold: true,
+    });
+    slide.addText(value || "—", {
+      x: 1.8,
+      y: y + 0.04,
+      w: 2.9,
+      h: rowH - 0.1,
+      fontSize: 8.5,
+      color: T.darkText,
+    });
   });
 
-  slide.addText("Executive Summary — Assessment Results", {
-    x: 0.2,
-    y: 0.08,
-    w: 7,
-    h: 0.45,
-    fontSize: 15,
-    bold: true,
-    color: THEME.white,
+  rightFields.forEach(([label, value], i) => {
+    const y = startY + i * rowH;
+    const rowBg = i % 2 === 0 ? "F8F9FC" : T.white;
+    slide.addShape(pptx.ShapeType.rect, {
+      x: 5.1,
+      y,
+      w: 4.7,
+      h: rowH - 0.03,
+      fill: { color: rowBg },
+    });
+    slide.addText(label, {
+      x: 5.15,
+      y: y + 0.04,
+      w: 1.6,
+      h: rowH - 0.1,
+      fontSize: 8,
+      color: T.midGray,
+      bold: true,
+    });
+    slide.addText(value || "—", {
+      x: 6.8,
+      y: y + 0.04,
+      w: 2.9,
+      h: rowH - 0.1,
+      fontSize: 8.5,
+      color: T.darkText,
+    });
   });
 
-  slide.addText(data.assessmentName, {
-    x: 7,
-    y: 0.08,
-    w: 2.8,
-    h: 0.45,
-    fontSize: 8,
-    color: "B4C8DC",
-    align: "right",
-  });
+  if (info.projectScope) {
+    const y = startY + leftFields.length * rowH;
+    slide.addText("Project Scope:", {
+      x: 0.25,
+      y,
+      w: 1.5,
+      h: 0.28,
+      fontSize: 8,
+      color: T.midGray,
+      bold: true,
+    });
+    slide.addText(info.projectScope, {
+      x: 0.25,
+      y: y + 0.28,
+      w: 9.5,
+      h: 0.55,
+      fontSize: 8,
+      color: T.darkText,
+      wrap: true,
+    });
+  }
 
-  // Amber accent
-  slide.addShape(pptx.ShapeType.rect, {
-    x: 0,
-    y: 0.85,
-    w: "100%",
-    h: 0.05,
-    fill: { color: THEME.amber },
-  });
+  if (info.additionalRemarks) {
+    const y = startY + leftFields.length * rowH + (info.projectScope ? 0.9 : 0);
+    slide.addText("Remarks:", {
+      x: 0.25,
+      y,
+      w: 1.5,
+      h: 0.28,
+      fontSize: 8,
+      color: T.midGray,
+      bold: true,
+    });
+    slide.addText(info.additionalRemarks, {
+      x: 0.25,
+      y: y + 0.28,
+      w: 9.5,
+      h: 0.45,
+      fontSize: 8,
+      color: T.darkText,
+      wrap: true,
+    });
+  }
+}
 
-  // Legend
-  const legendItems: Array<[string, string, string]> = [
+// ─── Slide 3: Condensed Results Summary ────────────────────────
+
+function addCondensedResultsSlide(pptx: PptxGenJS, data: ReportData) {
+  const slide = pptx.addSlide();
+  slideHeader(
+    pptx,
+    slide,
+    "Assessment Results Summary",
+    `${data.processesInScope.length} processes in scope`,
+  );
+
+  const legendItems: [string, string, string][] = [
     ["F", "Fully (86–100%)", "00B04F"],
     ["L", "Largely (51–85%)", "92D050"],
     ["P", "Partially (16–50%)", "FFFF00"],
-    ["N", "Not Achieved", "990000"],
+    ["N", "Not Achieved (0–15%)", "990000"],
   ];
-
   legendItems.forEach(([code, label, color], i) => {
-    const x = 0.2 + i * 2.4;
+    const x = 0.25 + i * 2.38;
     slide.addShape(pptx.ShapeType.rect, {
       x,
-      y: 0.95,
-      w: 0.25,
-      h: 0.2,
+      y: 0.92,
+      w: 0.22,
+      h: 0.18,
       fill: { color },
     });
     slide.addText(`${code} = ${label}`, {
-      x: x + 0.3,
-      y: 0.95,
+      x: x + 0.27,
+      y: 0.92,
       w: 2.0,
-      h: 0.2,
+      h: 0.18,
       fontSize: 7,
-      color: THEME.darkText,
+      color: T.darkText,
     });
   });
 
-  // Table
   const tableData: any[] = [];
+  const hdOpts = (text: string, bg = T.navyMid) => ({
+    text,
+    options: {
+      bold: true,
+      fill: { color: bg },
+      color: T.white,
+      fontSize: 8,
+      align: "center" as const,
+    },
+  });
 
-  // Header row
-  const headerRow: any[] = [
-    {
-      text: "Process",
-      options: {
-        bold: true,
-        fill: { color: THEME.navyLight },
-        color: THEME.white,
-        fontSize: 8,
-      },
-    },
-    {
-      text: "Target",
-      options: {
-        bold: true,
-        fill: { color: THEME.navyLight },
-        color: THEME.white,
-        fontSize: 8,
-      },
-    },
-    {
-      text: "PA1.1",
-      options: {
-        bold: true,
-        fill: { color: THEME.navyLight },
-        color: THEME.white,
-        fontSize: 8,
-      },
-    },
-    {
-      text: "PA2.1",
-      options: {
-        bold: true,
-        fill: { color: THEME.navyLight },
-        color: THEME.white,
-        fontSize: 8,
-      },
-    },
-    {
-      text: "PA2.2",
-      options: {
-        bold: true,
-        fill: { color: THEME.navyLight },
-        color: THEME.white,
-        fontSize: 8,
-      },
-    },
-    {
-      text: "PA3.1",
-      options: {
-        bold: true,
-        fill: { color: THEME.navyLight },
-        color: THEME.white,
-        fontSize: 8,
-      },
-    },
-    {
-      text: "PA3.2",
-      options: {
-        bold: true,
-        fill: { color: THEME.navyLight },
-        color: THEME.white,
-        fontSize: 8,
-      },
-    },
-    {
-      text: "CL",
-      options: {
-        bold: true,
-        fill: { color: "F59E0B" },
-        color: THEME.white,
-        fontSize: 8,
-      },
-    },
-  ];
-  tableData.push(headerRow);
-
-  const getPA = (
-    proc: ReportData["processes"][0],
-    paId: string,
-    minLevel: number,
-  ): any => {
-    if (proc.targetLevel < minLevel) {
-      return {
-        text: "—",
-        options: {
-          fill: { color: "E5E7EB" },
-          color: "9CA3AF",
-          fontSize: 8,
-          align: "center",
-        },
-      };
-    }
-    const rating = proc.paRatings[paId] ?? null;
-    const c = ratingColor(rating);
-    return {
-      text: rating ?? "—",
-      options: {
-        fill: { color: c.fill },
-        color: c.color,
-        bold: !!rating,
-        fontSize: 8,
-        align: "center",
-      },
-    };
-  };
-
-  const getCL = (proc: ReportData["processes"][0]): any => {
-    const cl = proc.capabilityLevel;
-    if (cl === null)
-      return {
-        text: "—",
-        options: {
-          fill: { color: "FEF3C7" },
-          color: "9CA3AF",
-          fontSize: 8,
-          align: "center",
-        },
-      };
-    return {
-      text: String(cl),
-      options: {
-        fill: { color: "F59E0B" },
-        color: THEME.white,
-        bold: true,
-        fontSize: 9,
-        align: "center",
-      },
-    };
-  };
+  tableData.push([
+    hdOpts("Process", T.navy),
+    hdOpts("Target"),
+    hdOpts("PA 1.1"),
+    hdOpts("PA 2.1"),
+    hdOpts("PA 2.2"),
+    hdOpts("PA 3.1"),
+    hdOpts("PA 3.2"),
+    hdOpts("CL", "D97706"),
+  ]);
 
   for (const proc of data.processes) {
-    const rowBg = tableData.length % 2 === 0 ? "F8F9FC" : THEME.white;
-    const row: any[] = [
+    const rowBg = tableData.length % 2 === 0 ? "F8F9FC" : T.white;
+    const mkPA = (paId: string, minLvl: number) => {
+      if (proc.targetLevel < minLvl)
+        return {
+          text: "—",
+          options: {
+            fill: { color: "E5E7EB" },
+            color: "9CA3AF",
+            fontSize: 8,
+            align: "center" as const,
+          },
+        };
+      const r = proc.paRatings[paId] ?? null;
+      const c = rc(r);
+      return {
+        text: r ?? "—",
+        options: {
+          fill: { color: c.fill },
+          color: c.text,
+          bold: !!r,
+          fontSize: 8,
+          align: "center" as const,
+        },
+      };
+    };
+    const cl = proc.capabilityLevel;
+    tableData.push([
       {
         text: `${proc.id}\n${proc.label}`,
         options: {
           fill: { color: rowBg },
-          color: THEME.darkText,
+          color: T.darkText,
           bold: true,
           fontSize: 7.5,
         },
@@ -407,376 +491,495 @@ function addResultsSlide(pptx: any, data: ReportData) {
         text: `L${proc.targetLevel}`,
         options: {
           fill: { color: rowBg },
-          color: THEME.midGray,
+          color: T.midGray,
           fontSize: 8,
-          align: "center",
+          align: "center" as const,
         },
       },
-      getPA(proc, "PA1.1", 1),
-      getPA(proc, "PA2.1", 2),
-      getPA(proc, "PA2.2", 2),
-      getPA(proc, "PA3.1", 3),
-      getPA(proc, "PA3.2", 3),
-      getCL(proc),
-    ];
-    tableData.push(row);
+      mkPA("PA1.1", 1),
+      mkPA("PA2.1", 2),
+      mkPA("PA2.2", 2),
+      mkPA("PA3.1", 3),
+      mkPA("PA3.2", 3),
+      cl === null
+        ? {
+            text: "—",
+            options: {
+              fill: { color: "FEF3C7" },
+              color: "9CA3AF",
+              fontSize: 8,
+              align: "center" as const,
+            },
+          }
+        : {
+            text: String(cl),
+            options: {
+              fill: { color: "F59E0B" },
+              color: T.white,
+              bold: true,
+              fontSize: 9,
+              align: "center" as const,
+            },
+          },
+    ]);
   }
 
   slide.addTable(tableData, {
     x: 0.2,
-    y: 1.22,
+    y: 1.18,
     w: 9.6,
-    h: 5.3,
-    colW: [2.8, 0.6, 0.8, 0.8, 0.8, 0.8, 0.8, 0.6],
+    h: 5.7,
+    colW: [3.0, 0.55, 0.75, 0.75, 0.75, 0.75, 0.75, 0.6],
     border: { type: "solid", color: "D1D5DB", pt: 0.5 },
     autoPage: true,
     fontSize: 8,
   });
 }
 
-// ─── Slides 3+: Per-Process ───────────────────────────────────────
+// ─── Slide 4: Full Results Matrix ───────────────────────────────
 
-function addProcessSlide(pptx: any, proc: ReportData["processes"][0]) {
+function addFullMatrixSlide(pptx: PptxGenJS, data: ReportData) {
+  if (data.processes.length === 0) return;
   const slide = pptx.addSlide();
+  slideHeader(
+    pptx,
+    slide,
+    "Full Results Matrix",
+    "All practices with individual ratings",
+  );
 
-  // Header
-  slide.addShape(pptx.ShapeType.rect, {
-    x: 0,
-    y: 0,
-    w: "100%",
-    h: 1.0,
-    fill: { color: THEME.navy },
-  });
-
-  slide.addText(`${proc.id} – ${proc.label}`, {
-    x: 0.2,
-    y: 0.08,
-    w: 8,
-    h: 0.5,
-    fontSize: 14,
-    bold: true,
-    color: THEME.white,
-  });
-
-  const clText =
-    proc.capabilityLevel !== null ? `CL: ${proc.capabilityLevel}` : "CL: —";
-  slide.addText(`Target: L${proc.targetLevel}   |   ${clText}`, {
-    x: 0.2,
-    y: 0.62,
-    w: 6,
-    h: 0.3,
-    fontSize: 8.5,
-    color: "B4C8DC",
-  });
-
-  // Amber accent
-  slide.addShape(pptx.ShapeType.rect, {
-    x: 0,
-    y: 1.0,
-    w: "100%",
-    h: 0.05,
-    fill: { color: THEME.amber },
-  });
-
-  // PA ratings row
-  const paIds = ["PA1.1"];
-  if (proc.targetLevel >= 2) paIds.push("PA2.1", "PA2.2");
-  if (proc.targetLevel >= 3) paIds.push("PA3.1", "PA3.2");
-
-  let paX = 0.2;
-  const paBoxW = 1.4;
-  for (const paId of paIds) {
-    const rating = proc.paRatings[paId] ?? null;
-    const c = ratingColor(rating);
-
-    slide.addShape(pptx.ShapeType.rect, {
-      x: paX,
-      y: 1.1,
-      w: paBoxW,
-      h: 0.5,
-      fill: { color: rating ? c.fill : "E5E7EB" },
-      line: { color: "D1D5DB", width: 0.5 },
-    });
-    slide.addText(`${paId}\n${rating ?? "—"}`, {
-      x: paX,
-      y: 1.1,
-      w: paBoxW,
-      h: 0.5,
-      fontSize: 8.5,
+  const tableData: any[] = [];
+  const hdr = (text: string, bg = T.navyMid, color = T.white, fs = 7) => ({
+    text,
+    options: {
       bold: true,
-      color: rating ? c.color : "9CA3AF",
-      align: "center",
-      valign: "middle",
-    });
-    paX += paBoxW + 0.1;
-  }
-
-  // Collect all strengths and weaknesses
-  const allPractices = [
-    ...proc.bpDetails,
-    ...proc.gpGroups.flatMap((g) => g.practices),
-  ];
-
-  const allStrengths = allPractices
-    .filter((p) => p.strengths)
-    .map((p) => `[${p.id}] ${p.strengths}`)
-    .join("\n");
-
-  const allWeaknesses = allPractices
-    .filter((p) => p.weaknesses)
-    .map((p) => `[${p.id}] ${p.weaknesses}`)
-    .join("\n");
-
-  // Two-column layout: Ratings table | Key Findings
-  const leftW = 5.6;
-  const rightW = 3.8;
-  const contentY = 1.7;
-
-  // Left: Ratings table (BPs)
-  slide.addText("Ratings Summary", {
-    x: 0.2,
-    y: contentY,
-    w: leftW,
-    h: 0.28,
-    fontSize: 8.5,
-    bold: true,
-    color: THEME.navy,
+      fill: { color: bg },
+      color,
+      fontSize: fs,
+      align: "center" as const,
+    },
   });
 
-  const ratingTableData: any[] = [];
-  ratingTableData.push([
-    {
-      text: "Practice",
-      options: {
-        bold: true,
-        fill: { color: THEME.navyLight },
-        color: THEME.white,
-        fontSize: 7,
-      },
-    },
-    {
-      text: "Title (abbreviated)",
-      options: {
-        bold: true,
-        fill: { color: THEME.navyLight },
-        color: THEME.white,
-        fontSize: 7,
-      },
-    },
-    {
-      text: "Rating",
-      options: {
-        bold: true,
-        fill: { color: THEME.navyLight },
-        color: THEME.white,
-        fontSize: 7,
-        align: "center",
-      },
-    },
+  tableData.push([
+    hdr("Process", T.navy, T.white, 8),
+    hdr("Level", T.navy),
+    hdr("Practice ID", T.navy),
+    hdr("Practice Title", T.navy),
+    hdr("Rating", T.navy),
   ]);
 
-  // Show BPs
-  for (const bp of proc.bpDetails) {
-    const c = ratingColor(bp.rating);
-    const rowBg = ratingTableData.length % 2 === 0 ? "F8F9FC" : THEME.white;
-    ratingTableData.push([
+  for (const proc of data.processes) {
+    tableData.push([
       {
-        text: bp.id,
+        text: `${proc.id} – ${proc.label}`,
         options: {
-          fill: { color: rowBg },
-          color: THEME.darkText,
           bold: true,
-          fontSize: 6.5,
+          fill: { color: T.navyMid },
+          color: T.white,
+          fontSize: 8,
+          colspan: 5,
         },
       },
-      {
-        text: bp.title.length > 45 ? `${bp.title.slice(0, 42)}...` : bp.title,
-        options: {
-          fill: { color: rowBg },
-          color: THEME.darkText,
-          fontSize: 6.5,
-        },
-      },
-      {
-        text: bp.rating ?? "—",
-        options: {
-          fill: { color: bp.rating ? c.fill : "E5E7EB" },
-          color: bp.rating ? c.color : "9CA3AF",
-          bold: !!bp.rating,
-          fontSize: 7,
-          align: "center",
-        },
-      },
+      { text: "", options: {} },
+      { text: "", options: {} },
+      { text: "", options: {} },
+      { text: "", options: {} },
     ]);
-  }
 
-  // Show first GP group if any
-  if (proc.gpGroups.length > 0) {
-    const firstGroup = proc.gpGroups[0];
-    ratingTableData.push([
+    const pa11 = proc.paRatings["PA1.1"];
+    const cPA11 = rc(pa11);
+    tableData.push([
       {
-        text: firstGroup.paName,
+        text: "PA 1.1",
         options: {
-          fill: { color: THEME.navy },
-          color: THEME.white,
           bold: true,
-          fontSize: 6.5,
+          fill: { color: "E0E7FF" },
+          color: "3730A3",
+          fontSize: 7,
           colspan: 3,
         },
       },
       { text: "", options: {} },
       { text: "", options: {} },
+      {
+        text: "Overall",
+        options: {
+          fill: { color: "E0E7FF" },
+          color: "3730A3",
+          fontSize: 7,
+          align: "right" as const,
+        },
+      },
+      {
+        text: pa11 ?? "—",
+        options: {
+          fill: { color: cPA11.fill },
+          color: cPA11.text,
+          bold: !!pa11,
+          fontSize: 8,
+          align: "center" as const,
+        },
+      },
     ]);
-    for (const gp of firstGroup.practices.slice(0, 4)) {
-      const c = ratingColor(gp.rating);
-      const rowBg = ratingTableData.length % 2 === 0 ? "F8F9FC" : THEME.white;
-      ratingTableData.push([
+
+    for (const bp of proc.bpDetails) {
+      const c = rc(bp.rating);
+      const rowBg = tableData.length % 2 === 0 ? "F8F9FC" : T.white;
+      tableData.push([
+        { text: "", options: { fill: { color: rowBg } } },
         {
-          text: gp.id,
+          text: "BP",
           options: {
             fill: { color: rowBg },
-            color: THEME.darkText,
-            bold: true,
-            fontSize: 6.5,
-          },
-        },
-        {
-          text: gp.title.length > 45 ? `${gp.title.slice(0, 42)}...` : gp.title,
-          options: {
-            fill: { color: rowBg },
-            color: THEME.darkText,
-            fontSize: 6.5,
-          },
-        },
-        {
-          text: gp.rating ?? "—",
-          options: {
-            fill: { color: gp.rating ? c.fill : "E5E7EB" },
-            color: gp.rating ? c.color : "9CA3AF",
-            bold: !!gp.rating,
+            color: T.midGray,
             fontSize: 7,
-            align: "center",
+            align: "center" as const,
+          },
+        },
+        {
+          text: bp.id,
+          options: {
+            fill: { color: rowBg },
+            color: T.darkText,
+            bold: true,
+            fontSize: 7,
+          },
+        },
+        {
+          text: bp.title.length > 60 ? `${bp.title.slice(0, 57)}...` : bp.title,
+          options: { fill: { color: rowBg }, color: T.darkText, fontSize: 7 },
+        },
+        {
+          text: bp.rating ?? "—",
+          options: {
+            fill: { color: bp.rating ? c.fill : "E5E7EB" },
+            color: bp.rating ? c.text : "9CA3AF",
+            bold: !!bp.rating,
+            fontSize: 8,
+            align: "center" as const,
           },
         },
       ]);
     }
+
+    for (const gpGroup of proc.gpGroups) {
+      const paId = gpGroup.paId;
+      const paRating = proc.paRatings[paId];
+      const cPA = rc(paRating);
+      tableData.push([
+        {
+          text: `${paId} – ${gpGroup.paName}`,
+          options: {
+            bold: true,
+            fill: { color: "E0E7FF" },
+            color: "3730A3",
+            fontSize: 7,
+            colspan: 3,
+          },
+        },
+        { text: "", options: {} },
+        { text: "", options: {} },
+        {
+          text: "Overall",
+          options: {
+            fill: { color: "E0E7FF" },
+            color: "3730A3",
+            fontSize: 7,
+            align: "right" as const,
+          },
+        },
+        {
+          text: paRating ?? "—",
+          options: {
+            fill: { color: cPA.fill },
+            color: cPA.text,
+            bold: !!paRating,
+            fontSize: 8,
+            align: "center" as const,
+          },
+        },
+      ]);
+      for (const gp of gpGroup.practices) {
+        const c = rc(gp.rating);
+        const rowBg = tableData.length % 2 === 0 ? "F8F9FC" : T.white;
+        tableData.push([
+          { text: "", options: { fill: { color: rowBg } } },
+          {
+            text: "GP",
+            options: {
+              fill: { color: rowBg },
+              color: T.midGray,
+              fontSize: 7,
+              align: "center" as const,
+            },
+          },
+          {
+            text: gp.id,
+            options: {
+              fill: { color: rowBg },
+              color: T.darkText,
+              bold: true,
+              fontSize: 7,
+            },
+          },
+          {
+            text:
+              gp.title.length > 60 ? `${gp.title.slice(0, 57)}...` : gp.title,
+            options: { fill: { color: rowBg }, color: T.darkText, fontSize: 7 },
+          },
+          {
+            text: gp.rating ?? "—",
+            options: {
+              fill: { color: gp.rating ? c.fill : "E5E7EB" },
+              color: gp.rating ? c.text : "9CA3AF",
+              bold: !!gp.rating,
+              fontSize: 8,
+              align: "center" as const,
+            },
+          },
+        ]);
+      }
+    }
   }
 
-  slide.addTable(ratingTableData, {
+  slide.addTable(tableData, {
     x: 0.2,
-    y: contentY + 0.32,
-    w: leftW,
-    h: 4.5,
-    colW: [1.3, 3.5, 0.8],
+    y: 0.95,
+    w: 9.6,
+    h: 6.5,
+    colW: [2.0, 0.5, 1.4, 4.7, 0.7],
     border: { type: "solid", color: "D1D5DB", pt: 0.5 },
+    autoPage: true,
     fontSize: 7,
-    autoPage: false,
-  });
-
-  // Right: Key Findings
-  const findingsX = 0.2 + leftW + 0.15;
-
-  slide.addText("Key Findings", {
-    x: findingsX,
-    y: contentY,
-    w: rightW,
-    h: 0.28,
-    fontSize: 8.5,
-    bold: true,
-    color: THEME.navy,
-  });
-
-  // Strengths section
-  slide.addShape(pptx.ShapeType.rect, {
-    x: findingsX,
-    y: contentY + 0.3,
-    w: rightW,
-    h: 0.25,
-    fill: { color: "DCFCE7" },
-  });
-  slide.addText("✓  Strengths", {
-    x: findingsX,
-    y: contentY + 0.3,
-    w: rightW,
-    h: 0.25,
-    fontSize: 7.5,
-    bold: true,
-    color: "166534",
-  });
-
-  const strengthsText = allStrengths || "No strengths recorded.";
-  slide.addText(strengthsText.slice(0, 600), {
-    x: findingsX,
-    y: contentY + 0.58,
-    w: rightW,
-    h: 2.1,
-    fontSize: 6.5,
-    color: THEME.darkText,
-    wrap: true,
-    valign: "top",
-    line: { color: "BBF7D0", width: 1 },
-  });
-
-  // Weaknesses section
-  slide.addShape(pptx.ShapeType.rect, {
-    x: findingsX,
-    y: contentY + 2.78,
-    w: rightW,
-    h: 0.25,
-    fill: { color: "FEE2E2" },
-  });
-  slide.addText("✗  Weaknesses", {
-    x: findingsX,
-    y: contentY + 2.78,
-    w: rightW,
-    h: 0.25,
-    fontSize: 7.5,
-    bold: true,
-    color: "991B1B",
-  });
-
-  const weaknessesText = allWeaknesses || "No weaknesses recorded.";
-  slide.addText(weaknessesText.slice(0, 600), {
-    x: findingsX,
-    y: contentY + 3.06,
-    w: rightW,
-    h: 2.0,
-    fontSize: 6.5,
-    color: THEME.darkText,
-    wrap: true,
-    valign: "top",
-    line: { color: "FECACA", width: 1 },
   });
 }
 
-// ─── Main Export Function ────────────────────────────────────────
+// ─── Slide 5: Global Strengths ──────────────────────────────────
 
-export function exportToPpt(data: ReportData): void {
-  const PptxGenJSCtor = getPptx();
-  if (!PptxGenJSCtor) {
-    alert("PowerPoint export library not loaded. Please try again.");
+function addGlobalStrengthsSlide(pptx: PptxGenJS, data: ReportData) {
+  const slide = pptx.addSlide();
+  slideHeader(pptx, slide, "Global Strengths", data.assessmentName);
+
+  const items = data.globalStrengths.filter((s) => s.trim());
+  if (items.length === 0) {
+    slide.addText("No global strengths recorded.", {
+      x: 0.25,
+      y: 1.1,
+      w: 9.5,
+      h: 0.4,
+      fontSize: 10,
+      color: T.midGray,
+      italic: true,
+    });
     return;
   }
 
-  const pptx = new PptxGenJSCtor();
+  items.forEach((item, i) => {
+    const y = 1.05 + i * 0.46;
+    slide.addText(`${i + 1}.  ${item}`, {
+      x: 0.3,
+      y,
+      w: 9.4,
+      h: 0.38,
+      fontSize: 9.5,
+      color: T.darkText,
+      wrap: true,
+      valign: "middle",
+    });
+  });
+}
 
+// ─── Slide 6: Global Weaknesses ────────────────────────────────
+
+function addGlobalWeaknessesSlide(pptx: PptxGenJS, data: ReportData) {
+  const slide = pptx.addSlide();
+  slideHeader(pptx, slide, "Global Weaknesses", data.assessmentName);
+
+  const items = data.globalWeaknesses.filter((s) => s.trim());
+  if (items.length === 0) {
+    slide.addText("No global weaknesses recorded.", {
+      x: 0.25,
+      y: 1.1,
+      w: 9.5,
+      h: 0.4,
+      fontSize: 10,
+      color: T.midGray,
+      italic: true,
+    });
+    return;
+  }
+
+  items.forEach((item, i) => {
+    const y = 1.05 + i * 0.46;
+    slide.addText(`${i + 1}.  ${item}`, {
+      x: 0.3,
+      y,
+      w: 9.4,
+      h: 0.38,
+      fontSize: 9.5,
+      color: T.darkText,
+      wrap: true,
+      valign: "middle",
+    });
+  });
+}
+
+// ─── Slides 7+: Per-Process ─────────────────────────────────────
+
+interface FindingItem {
+  text: string;
+  ref: string;
+  type: "strength" | "weakness" | "suggestion";
+}
+
+function collectFindings(proc: ReportData["processes"][0]): FindingItem[] {
+  const items: FindingItem[] = [];
+  const allPractices = [
+    ...proc.bpDetails,
+    ...proc.gpGroups.flatMap((g) => g.practices),
+  ];
+  for (const p of allPractices) {
+    if (p.strengths) {
+      for (const raw of p.strengths.split("\n")) {
+        const text = raw.trim();
+        if (text) items.push({ text, ref: p.id, type: "strength" });
+      }
+    }
+    if (p.weaknesses) {
+      for (const raw of p.weaknesses.split("\n")) {
+        const text = raw.trim();
+        if (text) items.push({ text, ref: p.id, type: "weakness" });
+      }
+    }
+    if (p.suggestions) {
+      for (const raw of p.suggestions.split("\n")) {
+        const text = raw.trim();
+        if (text) items.push({ text, ref: p.id, type: "suggestion" });
+      }
+    }
+  }
+  return items;
+}
+
+function addProcessSlides(pptx: PptxGenJS, proc: ReportData["processes"][0]) {
+  const allFindings = collectFindings(proc);
+
+  const ITEMS_PER_PAGE = 16;
+  const totalPages = Math.max(
+    1,
+    Math.ceil(allFindings.length / ITEMS_PER_PAGE),
+  );
+
+  for (let page = 0; page < totalPages; page++) {
+    const slide = pptx.addSlide();
+    const pageFindings = allFindings.slice(
+      page * ITEMS_PER_PAGE,
+      (page + 1) * ITEMS_PER_PAGE,
+    );
+    const pageTitle =
+      totalPages > 1
+        ? `${proc.id} \u2013 ${proc.label} (${page + 1}/${totalPages})`
+        : `${proc.id} \u2013 ${proc.label}`;
+    const subtitle = `Target: L${proc.targetLevel}   |   CL: ${
+      proc.capabilityLevel !== null ? proc.capabilityLevel : "—"
+    }`;
+
+    slideHeader(pptx, slide, pageTitle, subtitle);
+
+    const findX = 0.2;
+    const findW = 9.6;
+    let findY = 0.92;
+
+    const pageStrengths = pageFindings.filter((f) => f.type === "strength");
+    const pageWeaknesses = pageFindings.filter((f) => f.type === "weakness");
+    const pageSuggestions = pageFindings.filter((f) => f.type === "suggestion");
+
+    if (allFindings.length === 0) {
+      slide.addText("No findings recorded for this process.", {
+        x: findX,
+        y: findY + 0.3,
+        w: findW,
+        h: 0.4,
+        fontSize: 9,
+        color: T.midGray,
+        italic: true,
+      });
+      continue;
+    }
+
+    function renderSection(sectionTitle: string, items: FindingItem[]) {
+      if (items.length === 0) return;
+
+      // Section heading — plain, bold, dark text
+      slide.addText(sectionTitle, {
+        x: findX,
+        y: findY,
+        w: findW,
+        h: 0.28,
+        fontSize: 10,
+        bold: true,
+        color: T.darkText,
+      });
+      findY += 0.32;
+
+      for (const item of items) {
+        const maxTextLen = 130;
+        const displayText =
+          item.text.length > maxTextLen
+            ? `${item.text.slice(0, maxTextLen)}...`
+            : item.text;
+        const refText = `[${item.ref}]`;
+
+        slide.addText(
+          [
+            {
+              text: `\u2022  ${displayText}  `,
+              options: { color: T.darkText },
+            },
+            { text: refText, options: { color: T.midGray, bold: true } },
+          ],
+          {
+            x: findX + 0.15,
+            y: findY,
+            w: findW - 0.15,
+            h: 0.32,
+            fontSize: 9,
+            wrap: true,
+            valign: "middle",
+          },
+        );
+        findY += 0.34;
+      }
+      findY += 0.12;
+    }
+
+    renderSection("Strengths", pageStrengths);
+    renderSection("Weaknesses", pageWeaknesses);
+    renderSection("Suggestions", pageSuggestions);
+  }
+}
+
+// ─── Main Export ─────────────────────────────────────────────────
+
+export async function exportToPpt(data: ReportData): Promise<void> {
+  const pptx = new PptxGenJS();
   pptx.layout = "LAYOUT_WIDE";
   pptx.author = "Q-Insight";
   pptx.company = "Q-Insight";
   pptx.subject = `Assessment Report: ${data.assessmentName}`;
   pptx.title = `Q-Insight — ${data.assessmentName}`;
 
-  // Slide 1: Cover
   addCoverSlide(pptx, data);
+  addAssessmentInfoSlide(pptx, data);
+  addCondensedResultsSlide(pptx, data);
+  addFullMatrixSlide(pptx, data);
+  addGlobalStrengthsSlide(pptx, data);
+  addGlobalWeaknessesSlide(pptx, data);
 
-  // Slide 2: Results Matrix
-  addResultsSlide(pptx, data);
-
-  // Slide 3+: Per-process
   for (const proc of data.processes) {
-    addProcessSlide(pptx, proc);
+    addProcessSlides(pptx, proc);
   }
 
   const fileName = `QInsight-${data.assessmentName.replace(/[^a-z0-9]/gi, "_")}-Report.pptx`;
-  pptx.writeFile({ fileName });
+  await pptx.writeFile({ fileName });
 }

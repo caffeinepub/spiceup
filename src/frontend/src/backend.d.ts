@@ -68,6 +68,11 @@ export interface PracticeRating {
     processId: string;
     practiceId: string;
 }
+export interface ReportGlobalInputs {
+    assessmentId: bigint;
+    globalStrengths: string;
+    globalWeaknesses: string;
+}
 export interface backendInterface {
     createAssessment(name: string): Promise<bigint>;
     deleteAssessment(id: bigint): Promise<void>;
@@ -86,4 +91,6 @@ export interface backendInterface {
     saveProcessGroupConfig(assessmentId: bigint, enabledGroups: string, processLevels: string): Promise<void>;
     updateAssessmentStatus(id: bigint, status: string): Promise<void>;
     updateAssessmentStep(id: bigint, step: string): Promise<void>;
+    saveReportGlobalInputs(assessmentId: bigint, globalStrengths: string, globalWeaknesses: string): Promise<void>;
+    getReportGlobalInputs(assessmentId: bigint): Promise<ReportGlobalInputs>;
 }

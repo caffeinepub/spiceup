@@ -28,6 +28,7 @@ import {
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import type { AssessmentDay } from "../backend.d";
+import { StickyFooterBar } from "./StickyFooterBar";
 
 interface RowData {
   rid: string;
@@ -162,7 +163,6 @@ export function AssessmentPlanning() {
       prev.map((r, i) => {
         if (i !== index) return r;
         const updated = { ...r, ...patch };
-        // auto-calc duration when time changes
         if ("timeStart" in patch || "timeEnd" in patch) {
           updated.duration = calcDuration(updated.timeStart, updated.timeEnd);
         }
@@ -186,7 +186,6 @@ export function AssessmentPlanning() {
     if (!currentAssessmentId) return;
     setSavePending(true);
     try {
-      // Delete all existing backend records first
       const existingIds = new Set<bigint>();
       for (const row of rows) {
         if (row.backendId) existingIds.add(row.backendId);
@@ -200,7 +199,6 @@ export function AssessmentPlanning() {
         ),
       );
 
-      // Save each row as its own day record
       const savedIds = new Map<number, bigint>();
       await Promise.all(
         rows.map(async (row, i) => {
@@ -223,7 +221,6 @@ export function AssessmentPlanning() {
         }),
       );
 
-      // Update rows with new backend IDs
       setRows((prev) =>
         prev.map((r, i) => ({
           ...r,
@@ -270,225 +267,236 @@ export function AssessmentPlanning() {
   const isLoading = loadingDays || loadingConfig;
 
   return (
-    <div className="page-enter space-y-6">
-      {/* Page Header */}
-      <div>
-        <h1 className="text-2xl font-bold font-heading text-foreground">
-          Schedule
-        </h1>
-        <p className="text-muted-foreground text-sm mt-1 font-body">
-          Plan your assessment sessions
-        </p>
-      </div>
-
-      {isCompleted && (
-        <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
-          <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
-          <p className="text-sm font-body text-amber-800">
-            This assessment is marked as Completed. No further edits are
-            allowed.
+    <div className="page-enter flex flex-col min-h-full">
+      <div className="flex-1 space-y-6 pb-2">
+        {/* Page Header */}
+        <div>
+          <h1 className="text-2xl font-bold font-heading text-foreground">
+            Schedule
+          </h1>
+          <p className="text-muted-foreground text-sm mt-1 font-body">
+            Plan your assessment sessions
           </p>
         </div>
-      )}
 
-      {isLoading ? (
-        <div className="space-y-4">
-          {[1, 2].map((i) => (
-            <Skeleton key={i} className="h-12 w-full rounded-xl" />
-          ))}
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {/* Table */}
-          <div className="rounded-lg border border-border/60 overflow-x-auto">
-            <table className="w-full text-sm font-body border-collapse">
-              <thead>
-                <tr className="border-b border-border/60 bg-muted/30">
-                  <th className="text-left px-3 py-2.5 text-xs font-semibold font-heading text-muted-foreground uppercase tracking-wide whitespace-nowrap">
-                    Date
-                  </th>
-                  <th className="text-left px-3 py-2.5 text-xs font-semibold font-heading text-muted-foreground uppercase tracking-wide whitespace-nowrap">
-                    Process
-                  </th>
-                  <th className="text-left px-3 py-2.5 text-xs font-semibold font-heading text-muted-foreground uppercase tracking-wide whitespace-nowrap">
-                    Time Start
-                  </th>
-                  <th className="text-left px-3 py-2.5 text-xs font-semibold font-heading text-muted-foreground uppercase tracking-wide whitespace-nowrap">
-                    End
-                  </th>
-                  <th className="text-left px-3 py-2.5 text-xs font-semibold font-heading text-muted-foreground uppercase tracking-wide whitespace-nowrap">
-                    Duration
-                  </th>
-                  <th className="text-left px-3 py-2.5 text-xs font-semibold font-heading text-muted-foreground uppercase tracking-wide">
-                    Attendees
-                  </th>
-                  {!isCompleted && <th className="px-3 py-2.5 w-10" />}
-                </tr>
-              </thead>
-              <tbody>
-                {rows.length === 0 && (
-                  <tr>
-                    <td
-                      colSpan={isCompleted ? 6 : 7}
-                      className="text-center py-8 text-muted-foreground text-sm font-body italic"
-                      data-ocid="planning.table.empty_state"
-                    >
-                      No sessions added yet. Click "Add Row" to begin.
-                    </td>
+        {isCompleted && (
+          <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+            <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+            <p className="text-sm font-body text-amber-800">
+              This assessment is marked as Completed. No further edits are
+              allowed.
+            </p>
+          </div>
+        )}
+
+        {isLoading ? (
+          <div className="space-y-4">
+            {[1, 2].map((i) => (
+              <Skeleton key={i} className="h-12 w-full rounded-xl" />
+            ))}
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {/* Table */}
+            <div className="rounded-xl border border-border/60 overflow-x-auto bg-card">
+              <table className="w-full text-sm font-body border-collapse">
+                <thead>
+                  <tr className="border-b border-gray-200 bg-gray-50">
+                    <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-700 whitespace-nowrap">
+                      Date <span className="text-destructive">*</span>
+                    </th>
+                    <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-700 whitespace-nowrap">
+                      Process <span className="text-destructive">*</span>
+                    </th>
+                    <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-700 whitespace-nowrap">
+                      Time Start
+                    </th>
+                    <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-700 whitespace-nowrap">
+                      End
+                    </th>
+                    <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-700 whitespace-nowrap">
+                      Duration
+                    </th>
+                    <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-700">
+                      Attendees
+                    </th>
+                    {!isCompleted && <th className="px-3 py-2.5 w-10" />}
                   </tr>
-                )}
-                {rows.map((row, index) => (
-                  <tr
-                    key={row.rid}
-                    className="border-b border-border/30 hover:bg-muted/20 transition-colors"
-                    data-ocid={`planning.row.${index + 1}`}
-                  >
-                    {/* Date */}
-                    <td className="px-3 py-2 whitespace-nowrap">
-                      <Input
-                        type="date"
-                        value={row.date}
-                        onChange={(e) =>
-                          updateRow(index, { date: e.target.value })
-                        }
-                        className="h-8 text-xs font-body w-36"
-                        disabled={isCompleted}
-                        data-ocid={`planning.date_input.${index + 1}`}
-                      />
-                    </td>
-                    {/* Process */}
-                    <td className="px-3 py-2 whitespace-nowrap">
-                      {enabledProcesses.length > 0 ? (
-                        <Select
-                          value={row.processId}
-                          onValueChange={(v) =>
-                            updateRow(index, { processId: v })
-                          }
-                          disabled={isCompleted}
-                        >
-                          <SelectTrigger
-                            className="h-8 text-xs font-body w-28"
-                            data-ocid={`planning.process_select.${index + 1}`}
-                          >
-                            <SelectValue placeholder="Process" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {enabledProcesses.map((pid) => (
-                              <SelectItem
-                                key={pid}
-                                value={pid}
-                                className="text-xs"
-                              >
-                                {pid}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      ) : (
+                </thead>
+                <tbody>
+                  {rows.length === 0 && (
+                    <tr>
+                      <td
+                        colSpan={isCompleted ? 6 : 7}
+                        className="text-center py-8 text-muted-foreground text-sm font-body italic"
+                        data-ocid="planning.table.empty_state"
+                      >
+                        No sessions added yet. Click "Add Row" to begin.
+                      </td>
+                    </tr>
+                  )}
+                  {rows.map((row, index) => (
+                    <tr
+                      key={row.rid}
+                      className={
+                        index % 2 === 1
+                          ? "border-b border-gray-100 hover:bg-gray-50/70 bg-gray-50/40 transition-colors"
+                          : "border-b border-gray-100 hover:bg-gray-50/70 transition-colors"
+                      }
+                      data-ocid={`planning.row.${index + 1}`}
+                    >
+                      {/* Date */}
+                      <td className="px-3 py-2 whitespace-nowrap">
                         <Input
-                          value={row.processId}
+                          type="date"
+                          value={row.date}
                           onChange={(e) =>
-                            updateRow(index, { processId: e.target.value })
+                            updateRow(index, { date: e.target.value })
                           }
-                          placeholder="Process ID"
+                          className="h-8 text-xs font-body w-36"
+                          disabled={isCompleted}
+                          data-ocid={`planning.date_input.${index + 1}`}
+                        />
+                      </td>
+                      {/* Process */}
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        {enabledProcesses.length > 0 ? (
+                          <Select
+                            value={row.processId}
+                            onValueChange={(v) =>
+                              updateRow(index, { processId: v })
+                            }
+                            disabled={isCompleted}
+                          >
+                            <SelectTrigger
+                              className="h-8 text-xs font-body w-28"
+                              data-ocid={`planning.process_select.${index + 1}`}
+                            >
+                              <SelectValue placeholder="Process" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {enabledProcesses.map((pid) => (
+                                <SelectItem
+                                  key={pid}
+                                  value={pid}
+                                  className="text-xs"
+                                >
+                                  {pid}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <Input
+                            value={row.processId}
+                            onChange={(e) =>
+                              updateRow(index, { processId: e.target.value })
+                            }
+                            placeholder="Process ID"
+                            className="h-8 text-xs font-body w-28"
+                            disabled={isCompleted}
+                            data-ocid={`planning.process_input.${index + 1}`}
+                          />
+                        )}
+                      </td>
+                      {/* Time Start */}
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        <Input
+                          type="time"
+                          value={row.timeStart}
+                          onChange={(e) =>
+                            updateRow(index, { timeStart: e.target.value })
+                          }
                           className="h-8 text-xs font-body w-28"
                           disabled={isCompleted}
-                          data-ocid={`planning.process_input.${index + 1}`}
+                          data-ocid={`planning.time_start_input.${index + 1}`}
                         />
-                      )}
-                    </td>
-                    {/* Time Start */}
-                    <td className="px-3 py-2 whitespace-nowrap">
-                      <Input
-                        type="time"
-                        value={row.timeStart}
-                        onChange={(e) =>
-                          updateRow(index, { timeStart: e.target.value })
-                        }
-                        className="h-8 text-xs font-body w-28"
-                        disabled={isCompleted}
-                        data-ocid={`planning.time_start_input.${index + 1}`}
-                      />
-                    </td>
-                    {/* Time End */}
-                    <td className="px-3 py-2 whitespace-nowrap">
-                      <Input
-                        type="time"
-                        value={row.timeEnd}
-                        onChange={(e) =>
-                          updateRow(index, { timeEnd: e.target.value })
-                        }
-                        className="h-8 text-xs font-body w-28"
-                        disabled={isCompleted}
-                        data-ocid={`planning.time_end_input.${index + 1}`}
-                      />
-                    </td>
-                    {/* Duration (auto-calculated) */}
-                    <td className="px-3 py-2 whitespace-nowrap">
-                      <span className="text-xs font-body text-foreground px-2 py-1 rounded bg-muted/40 inline-block min-w-[48px] text-center">
-                        {row.duration || "—"}
-                      </span>
-                    </td>
-                    {/* Attendees */}
-                    <td className="px-3 py-2">
-                      <Input
-                        value={row.attendees}
-                        onChange={(e) =>
-                          updateRow(index, { attendees: e.target.value })
-                        }
-                        placeholder="Names"
-                        className="h-8 text-xs font-body min-w-[160px]"
-                        disabled={isCompleted}
-                        data-ocid={`planning.attendees_input.${index + 1}`}
-                      />
-                    </td>
-                    {/* Delete */}
-                    {!isCompleted && (
-                      <td className="px-3 py-2 text-center">
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                          onClick={() => removeRow(index)}
-                          data-ocid={`planning.delete_button.${index + 1}`}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
                       </td>
-                    )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Actions */}
-          {!isCompleted && (
-            <div className="flex items-center gap-3 pt-1 pb-4">
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-1.5 text-xs h-8"
-                onClick={addRow}
-                data-ocid="planning.add_row_button"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                Add Row
-              </Button>
-              <Button
-                onClick={handleSave}
-                disabled={savePending}
-                className="spice-gradient text-white border-0"
-                data-ocid="planning.save_button"
-              >
-                {savePending && (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                )}
-                Save
-              </Button>
+                      {/* Time End */}
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        <Input
+                          type="time"
+                          value={row.timeEnd}
+                          onChange={(e) =>
+                            updateRow(index, { timeEnd: e.target.value })
+                          }
+                          className="h-8 text-xs font-body w-28"
+                          disabled={isCompleted}
+                          data-ocid={`planning.time_end_input.${index + 1}`}
+                        />
+                      </td>
+                      {/* Duration (auto-calculated) */}
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        <span className="text-xs font-body text-foreground px-2 py-1 rounded bg-muted/40 inline-block min-w-[48px] text-center">
+                          {row.duration || "—"}
+                        </span>
+                      </td>
+                      {/* Attendees */}
+                      <td className="px-3 py-2">
+                        <Input
+                          value={row.attendees}
+                          onChange={(e) =>
+                            updateRow(index, { attendees: e.target.value })
+                          }
+                          placeholder="Names"
+                          className="h-8 text-xs font-body min-w-[160px]"
+                          disabled={isCompleted}
+                          data-ocid={`planning.attendees_input.${index + 1}`}
+                        />
+                      </td>
+                      {/* Delete */}
+                      {!isCompleted && (
+                        <td className="px-3 py-2 text-center">
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-9 w-9 min-w-[44px] min-h-[44px] text-muted-foreground hover:text-destructive"
+                            onClick={() => removeRow(index)}
+                            title="Delete row"
+                            data-ocid={`planning.delete_button.${index + 1}`}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          )}
-        </div>
+
+            {/* Add Row action */}
+            {!isCompleted && (
+              <div className="flex items-center">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 text-xs h-9"
+                  onClick={addRow}
+                  data-ocid="planning.add_row_button"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Add Row
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Sticky Footer Save */}
+      {!isCompleted && !isLoading && (
+        <StickyFooterBar>
+          <Button
+            onClick={handleSave}
+            disabled={savePending}
+            className="spice-gradient text-white border-0 h-9"
+            data-ocid="planning.save_button"
+          >
+            {savePending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Save
+          </Button>
+        </StickyFooterBar>
       )}
     </div>
   );

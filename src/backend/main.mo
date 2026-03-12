@@ -73,6 +73,12 @@ actor {
     workProductsInspected : Text;
   };
 
+  public type ReportGlobalInputs = {
+    assessmentId : Nat;
+    globalStrengths : Text; // JSON array of strings
+    globalWeaknesses : Text; // JSON array of strings
+  };
+
   stable var nextId = 1;
 
   stable var assessmentEntries : [(Nat, Assessment)] = [];
@@ -80,12 +86,14 @@ actor {
   stable var processGroupEntries : [(Nat, ProcessGroupConfig)] = [];
   stable var dayEntries : [(Nat, AssessmentDay)] = [];
   stable var practiceRatingEntries : [(Nat, PracticeRating)] = [];
+  stable var reportGlobalInputsEntries : [(Nat, ReportGlobalInputs)] = [];
 
   let assessments = Map.fromIter<Nat, Assessment>(assessmentEntries.values());
   let assessmentInfoData = Map.fromIter<Nat, AssessmentInfoData>(assessmentInfoEntries.values());
   let processGroupConfigs = Map.fromIter<Nat, ProcessGroupConfig>(processGroupEntries.values());
   let assessmentDays = Map.fromIter<Nat, AssessmentDay>(dayEntries.values());
   let practiceRatings = Map.fromIter<Nat, PracticeRating>(practiceRatingEntries.values());
+  let reportGlobalInputs = Map.fromIter<Nat, ReportGlobalInputs>(reportGlobalInputsEntries.values());
 
   // Delete operation: Remove ALL related data for an assessment
   public shared ({ caller }) func deleteAssessment(id : Nat) : async () {
@@ -96,6 +104,7 @@ actor {
     assessments.remove(id);
     assessmentInfoData.remove(id);
     processGroupConfigs.remove(id);
+    reportGlobalInputs.remove(id);
 
     let filteredDayEntries = dayEntries.filter(
       func((_, day)) { day.assessmentId != id }
@@ -267,12 +276,32 @@ actor {
     filteredRatings.toArray();
   };
 
+  // Report Global Inputs
+  public shared ({ caller }) func saveReportGlobalInputs(assessmentId : Nat, globalStrengths : Text, globalWeaknesses : Text) : async () {
+    let data : ReportGlobalInputs = {
+      assessmentId;
+      globalStrengths;
+      globalWeaknesses;
+    };
+    reportGlobalInputs.add(assessmentId, data);
+  };
+
+  public query ({ caller }) func getReportGlobalInputs(assessmentId : Nat) : async ReportGlobalInputs {
+    switch (reportGlobalInputs.get(assessmentId)) {
+      case (null) {
+        { assessmentId; globalStrengths = "[]"; globalWeaknesses = "[]" };
+      };
+      case (?data) { data };
+    };
+  };
+
   system func preupgrade() {
     assessmentEntries := assessments.entries().toArray();
     assessmentInfoEntries := assessmentInfoData.entries().toArray();
     processGroupEntries := processGroupConfigs.entries().toArray();
     dayEntries := assessmentDays.entries().toArray();
     practiceRatingEntries := practiceRatings.entries().toArray();
+    reportGlobalInputsEntries := reportGlobalInputs.entries().toArray();
   };
 
   system func postupgrade() {
@@ -281,6 +310,7 @@ actor {
     processGroupConfigs.clear();
     assessmentDays.clear();
     practiceRatings.clear();
+    reportGlobalInputs.clear();
 
     for ((k, v) in assessmentEntries.values()) { assessments.add(k, v) };
     for ((k, v) in assessmentInfoEntries.values()) {
@@ -293,12 +323,15 @@ actor {
     for ((k, v) in practiceRatingEntries.values()) {
       practiceRatings.add(k, v);
     };
+    for ((k, v) in reportGlobalInputsEntries.values()) {
+      reportGlobalInputs.add(k, v);
+    };
 
     assessmentEntries := [];
     assessmentInfoEntries := [];
     processGroupEntries := [];
     dayEntries := [];
     practiceRatingEntries := [];
+    reportGlobalInputsEntries := [];
   };
 };
-

@@ -66,7 +66,7 @@ function formatDate(time: bigint): string {
 
 function StatusBadge({ status }: { status: string }) {
   const styles: Record<string, string> = {
-    Active: "bg-blue-50 text-blue-700 border-blue-200",
+    Active: "bg-green-50 text-green-700 border-green-200",
     Completed: "bg-emerald-50 text-emerald-700 border-emerald-200",
     Draft: "bg-gray-50 text-gray-600 border-gray-200",
   };
@@ -96,7 +96,7 @@ function KpiCard({
   return (
     <Card className="stat-card-hover border-border/60">
       <CardHeader className="flex flex-row items-center justify-between pt-4 pb-2 px-4 space-y-0">
-        <CardTitle className="text-xs font-medium text-muted-foreground font-body uppercase tracking-wide">
+        <CardTitle className="text-xs font-medium text-muted-foreground font-body">
           {title}
         </CardTitle>
         <div className={`p-2 rounded-lg ${iconColor}`}>
@@ -107,9 +107,7 @@ function KpiCard({
         {isLoading ? (
           <Skeleton className="h-8 w-16" />
         ) : (
-          <div className="text-3xl font-bold font-heading text-foreground">
-            {value}
-          </div>
+          <div className="text-3xl font-bold text-foreground">{value}</div>
         )}
       </CardContent>
     </Card>
@@ -244,7 +242,7 @@ export function Dashboard() {
           title="Total Assessments"
           value={totalAssessments}
           icon={ClipboardList}
-          iconColor="spice-gradient"
+          iconColor="bg-slate-400"
           isLoading={loadingAssessments}
         />
         <KpiCard
@@ -255,24 +253,24 @@ export function Dashboard() {
           isLoading={loadingAssessments}
         />
         <KpiCard
-          title="Active Assessments"
+          title="In Progress"
           value={activeCount}
           icon={Clock}
-          iconColor="bg-blue-500"
+          iconColor="bg-amber-500"
           isLoading={loadingAssessments}
         />
         <KpiCard
           title="Assessment Results"
           value={resultsCount}
           icon={TrendingUp}
-          iconColor="bg-amber-500"
+          iconColor="bg-slate-400"
           isLoading={loadingResults}
         />
         <KpiCard
           title="Reports Generated"
           value={reportsCount}
           icon={FileText}
-          iconColor="bg-rose-500"
+          iconColor="bg-slate-400"
           isLoading={loadingReports}
         />
       </div>
@@ -308,23 +306,23 @@ export function Dashboard() {
             ) : assessments && assessments.length > 0 ? (
               <Table>
                 <TableHeader>
-                  <TableRow className="hover:bg-transparent">
-                    <TableHead className="font-heading text-xs uppercase tracking-wide text-muted-foreground">
+                  <TableRow className="hover:bg-transparent bg-gray-50">
+                    <TableHead className="font-semibold text-xs text-gray-700">
                       Assessment Title
                     </TableHead>
-                    <TableHead className="font-heading text-xs uppercase tracking-wide text-muted-foreground">
+                    <TableHead className="font-semibold text-xs text-gray-700">
                       Status
                     </TableHead>
-                    <TableHead className="font-heading text-xs uppercase tracking-wide text-muted-foreground">
+                    <TableHead className="font-semibold text-xs text-gray-700">
                       Created By
                     </TableHead>
-                    <TableHead className="font-heading text-xs uppercase tracking-wide text-muted-foreground">
+                    <TableHead className="font-semibold text-xs text-gray-700">
                       Created
                     </TableHead>
-                    <TableHead className="font-heading text-xs uppercase tracking-wide text-muted-foreground">
+                    <TableHead className="font-semibold text-xs text-gray-700">
                       Last Updated
                     </TableHead>
-                    <TableHead className="font-heading text-xs uppercase tracking-wide text-muted-foreground text-right">
+                    <TableHead className="font-semibold text-xs text-gray-700 text-right">
                       Actions
                     </TableHead>
                   </TableRow>
@@ -340,7 +338,11 @@ export function Dashboard() {
                     return (
                       <TableRow
                         key={String(assessment.id)}
-                        className="hover:bg-muted/30"
+                        className={
+                          index % 2 === 1
+                            ? "even-row hover:bg-gray-50/70 bg-gray-50/40"
+                            : "hover:bg-gray-50/70"
+                        }
                         data-ocid={`dashboard.assessments_table.row.${index + 1}`}
                       >
                         <TableCell>

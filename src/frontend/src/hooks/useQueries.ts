@@ -12,6 +12,7 @@ import type {
   AssessmentInfoData,
   PracticeRating,
   ProcessGroupConfig,
+  ReportGlobalInputs,
 } from "../backend.d";
 import { useActor } from "./useActor";
 
@@ -498,6 +499,52 @@ export function useGenerateReport() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["reports"] });
+    },
+  });
+}
+
+// ─── Report Global Inputs ─────────────────────────────────────
+
+export function useGetReportGlobalInputs(assessmentId: bigint | null) {
+  const { actor, isFetching } = useActor();
+  return useQuery<ReportGlobalInputs | null>({
+    queryKey: ["reportGlobalInputs", assessmentId?.toString()],
+    queryFn: async () => {
+      if (!actor || assessmentId == null) return null;
+      try {
+        return await (actor as any).getReportGlobalInputs(assessmentId);
+      } catch {
+        return null;
+      }
+    },
+    enabled: !!actor && !isFetching && assessmentId != null,
+  });
+}
+
+export function useSaveReportGlobalInputs() {
+  const { actor } = useActor();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      assessmentId,
+      globalStrengths,
+      globalWeaknesses,
+    }: {
+      assessmentId: bigint;
+      globalStrengths: string;
+      globalWeaknesses: string;
+    }) => {
+      if (!actor) throw new Error("Actor not available");
+      return (actor as any).saveReportGlobalInputs(
+        assessmentId,
+        globalStrengths,
+        globalWeaknesses,
+      );
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ["reportGlobalInputs", variables.assessmentId.toString()],
+      });
     },
   });
 }
