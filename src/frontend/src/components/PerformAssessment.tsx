@@ -846,6 +846,8 @@ function BPPracticePanel({
   onChange,
   isCompleted,
   openSwDialog,
+  findingsPanelWidth,
+  setFindingsPanelWidth,
 }: {
   practice: BasePractice | GenericPractice;
   processId: string;
@@ -854,6 +856,8 @@ function BPPracticePanel({
   onChange: (patch: Partial<PracticeState>) => void;
   isCompleted?: boolean;
   openSwDialog: (entry?: SwEntry) => void;
+  findingsPanelWidth: number;
+  setFindingsPanelWidth: (w: number) => void;
 }) {
   const [evidenceDialogOpen, setEvidenceDialogOpen] = useState(false);
   const [editingEvidence, setEditingEvidence] = useState<
@@ -911,19 +915,22 @@ function BPPracticePanel({
   return (
     <div
       style={{
-        display: "grid",
-        gridTemplateRows: "1fr 224px",
+        display: "flex",
+        flexDirection: "row",
         height: "100%",
-        gap: 0,
       }}
     >
-      {/* ── Row 1: Strengths & Weaknesses Section ── */}
+      {/* ── Col 1: Findings ── */}
       <div
         style={{
+          width: findingsPanelWidth,
+          minWidth: 220,
+          flexShrink: 0,
           overflow: "hidden",
           display: "flex",
           flexDirection: "column",
-          borderBottom: "1px solid var(--border)",
+          borderRight: "2px solid #d1d5db",
+          position: "relative",
         }}
       >
         {/* Section header */}
@@ -1115,148 +1122,173 @@ function BPPracticePanel({
             </table>
           )}
         </div>
-      </div>
-
-      {/* ── Row 2: Evidence ── */}
-      <div
-        style={{
-          overflow: "hidden",
-          display: "flex",
-          flexDirection: "row",
-        }}
-      >
-        {/* Evidence section */}
+        {/* ── Invisible resize handle on findings/evidence border ── */}
         <div
           style={{
-            flex: 1,
-            overflow: "hidden",
-            display: "flex",
-            flexDirection: "column",
+            position: "absolute",
+            top: 0,
+            right: -3,
+            width: 6,
+            height: "100%",
+            cursor: "col-resize",
+            zIndex: 10,
           }}
-        >
-          {/* Section header */}
-          <div
-            className="flex items-center justify-between gap-2 px-4 shrink-0 border-b border-border/40 bg-muted/10"
-            style={{ paddingTop: 8, paddingBottom: 8 }}
-            data-ocid="perform.evidence_section_header"
-          >
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold font-heading text-foreground">
-                Evidence
-              </span>
-              <Badge
-                variant="secondary"
-                className="font-body text-xs h-5 px-1.5 rounded-full"
-                data-ocid="perform.evidence_count_badge"
-              >
-                {state.workProducts.length}
-              </Badge>
-            </div>
-            {!isCompleted && (
-              <Button
-                type="button"
-                size="sm"
-                onClick={handleOpenAddEvidence}
-                className="spice-gradient text-white border-0 gap-1 font-body text-xs h-7 px-3 shrink-0"
-                data-ocid="perform.evidence_add_button"
-              >
-                <Plus className="h-3.5 w-3.5" /> Add Evidence
-              </Button>
-            )}
-          </div>
+          onMouseDown={(e) => {
+            e.preventDefault();
+            const startX = e.clientX;
+            const startWidth = findingsPanelWidth;
+            const onMove = (me: MouseEvent) => {
+              const newWidth = Math.max(
+                220,
+                Math.min(800, startWidth + (me.clientX - startX)),
+              );
+              setFindingsPanelWidth(newWidth);
+            };
+            const onUp = () => {
+              window.removeEventListener("mousemove", onMove);
+              window.removeEventListener("mouseup", onUp);
+            };
+            window.addEventListener("mousemove", onMove);
+            window.addEventListener("mouseup", onUp);
+          }}
+        />
+      </div>
 
-          {/* Section body — scrollable */}
-          <div style={{ flex: 1, overflow: "auto", minHeight: 0 }}>
-            {state.workProducts.length === 0 ? (
-              <div className="flex items-center justify-center h-full py-4">
-                <p className="text-xs text-muted-foreground font-body italic">
-                  No work products added yet.
-                </p>
-              </div>
-            ) : (
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="bg-muted/30 border-b border-border/40">
-                    <th className="font-body font-semibold text-gray-700 text-left px-4 py-2.5">
-                      Description
+      {/* ── Col 2: Evidence ── */}
+      <div
+        style={{
+          flex: 1,
+          minWidth: 180,
+          overflow: "hidden",
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        {/* Section header */}
+        <div
+          className="flex items-center justify-between gap-2 px-4 shrink-0 border-b border-border/40 bg-muted/10"
+          style={{ paddingTop: 8, paddingBottom: 8 }}
+          data-ocid="perform.evidence_section_header"
+        >
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold font-heading text-foreground">
+              Evidence
+            </span>
+            <Badge
+              variant="secondary"
+              className="font-body text-xs h-5 px-1.5 rounded-full"
+              data-ocid="perform.evidence_count_badge"
+            >
+              {state.workProducts.length}
+            </Badge>
+          </div>
+          {!isCompleted && (
+            <Button
+              type="button"
+              size="sm"
+              onClick={handleOpenAddEvidence}
+              className="spice-gradient text-white border-0 gap-1 font-body text-xs h-7 px-3 shrink-0"
+              data-ocid="perform.evidence_add_button"
+            >
+              <Plus className="h-3.5 w-3.5" /> Add Evidence
+            </Button>
+          )}
+        </div>
+
+        {/* Section body — scrollable */}
+        <div style={{ flex: 1, overflow: "auto", minHeight: 0 }}>
+          {state.workProducts.length === 0 ? (
+            <div className="flex items-center justify-center h-full py-4">
+              <p className="text-xs text-muted-foreground font-body italic">
+                No work products added yet.
+              </p>
+            </div>
+          ) : (
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-200">
+                  <th className="font-body font-medium text-gray-700 text-left px-3 py-2 text-xs font-semibold">
+                    Evidence
+                  </th>
+                  <th className="font-body font-medium text-gray-700 text-left px-3 py-2 text-xs font-semibold w-[120px]">
+                    Link
+                  </th>
+                  <th className="font-body font-medium text-gray-700 text-right px-3 py-2 text-xs font-semibold w-[70px]">
+                    Version
+                  </th>
+                  {!isCompleted && (
+                    <th className="font-body font-medium text-gray-700 text-right px-3 py-2 text-xs font-semibold w-[72px]">
+                      Actions
                     </th>
-                    <th className="font-body font-semibold text-gray-700 text-left px-4 py-2.5 w-[140px]">
-                      Link
-                    </th>
-                    <th className="font-body font-semibold text-gray-700 text-right px-4 py-2.5 w-[80px]">
-                      Version
-                    </th>
+                  )}
+                </tr>
+              </thead>
+              <tbody>
+                {state.workProducts.map((ev, i) => (
+                  <tr
+                    // biome-ignore lint/suspicious/noArrayIndexKey: evidence items have no stable IDs
+                    key={`wp-row-${i}`}
+                    data-ocid={`perform.evidence_row.${i + 1}`}
+                    className={cn(
+                      "border-b border-gray-100 last:border-b-0 hover:bg-muted/30 transition-colors",
+                      i % 2 === 1 ? "bg-gray-50/50" : "",
+                    )}
+                  >
+                    <td className="px-3 py-2 font-body text-foreground align-top">
+                      {ev.description}
+                    </td>
+                    <td className="px-3 py-2 align-top">
+                      {ev.link ? (
+                        <a
+                          href={ev.link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-600 hover:text-blue-800 hover:underline font-body truncate flex items-center gap-0.5 max-w-[110px]"
+                        >
+                          <span className="truncate">{ev.link}</span>
+                          <ExternalLink
+                            size={11}
+                            className="shrink-0 opacity-60"
+                          />
+                        </a>
+                      ) : (
+                        <span className="text-muted-foreground font-body">
+                          —
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2 font-body text-muted-foreground text-right align-top">
+                      {ev.version || "—"}
+                    </td>
                     {!isCompleted && (
-                      <th className="font-body font-semibold text-gray-700 text-right px-4 py-2.5 w-[72px]">
-                        Actions
-                      </th>
+                      <td className="px-3 py-2 align-top text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEditEvidence(i)}
+                            className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                            title="Edit"
+                            data-ocid={`perform.evidence_edit_button.${i + 1}`}
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => removeEvidence(i)}
+                            className="p-1 rounded hover:bg-destructive/10 transition-colors text-muted-foreground hover:text-destructive"
+                            title="Delete"
+                            data-ocid={`perform.evidence_remove_button.${i + 1}`}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </td>
                     )}
                   </tr>
-                </thead>
-                <tbody>
-                  {state.workProducts.map((ev, i) => (
-                    <tr
-                      // biome-ignore lint/suspicious/noArrayIndexKey: evidence items have no stable IDs
-                      key={`wp-row-${i}`}
-                      data-ocid={`perform.evidence_row.${i + 1}`}
-                      className="border-b border-border/30 last:border-b-0 hover:bg-muted/40 transition-colors"
-                    >
-                      <td className="px-4 py-2 font-body text-foreground align-top">
-                        {ev.description}
-                      </td>
-                      <td className="px-4 py-2 align-top">
-                        {ev.link ? (
-                          <a
-                            href={ev.link}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-blue-600 hover:text-blue-800 hover:underline font-body truncate flex items-center gap-0.5 max-w-[130px]"
-                          >
-                            <span className="truncate">{ev.link}</span>
-                            <ExternalLink
-                              size={11}
-                              className="shrink-0 opacity-60"
-                            />
-                          </a>
-                        ) : (
-                          <span className="text-muted-foreground font-body">
-                            —
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-2 font-body text-muted-foreground text-right align-top">
-                        {ev.version || "—"}
-                      </td>
-                      {!isCompleted && (
-                        <td className="px-4 py-2 align-top text-right">
-                          <div className="flex items-center justify-end gap-1">
-                            <button
-                              type="button"
-                              onClick={() => handleOpenEditEvidence(i)}
-                              className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-                              title="Edit"
-                              data-ocid={`perform.evidence_edit_button.${i + 1}`}
-                            >
-                              <Pencil className="h-3.5 w-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => removeEvidence(i)}
-                              className="p-1 rounded hover:bg-destructive/10 transition-colors text-muted-foreground hover:text-destructive"
-                              title="Delete"
-                              data-ocid={`perform.evidence_remove_button.${i + 1}`}
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        </td>
-                      )}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
 
@@ -1658,266 +1690,290 @@ function PASummaryView({
         )}
       </div>
 
-      {/* Filter tabs */}
-      <Tabs value={filter} onValueChange={(v) => setFilter(v as typeof filter)}>
-        <TabsList className="h-8">
-          <TabsTrigger
-            value="all"
-            className="font-body text-xs h-6 px-3"
-            data-ocid="perform.pa_sw_filter_all_tab"
+      {/* Filter tabs + Evidence side-by-side */}
+      <div
+        style={{ display: "flex", flexDirection: "row", gap: 0, minHeight: 0 }}
+      >
+        <div
+          style={{
+            flex: 1,
+            minWidth: 0,
+            overflow: "hidden",
+            borderRight: "2px solid #d1d5db",
+            paddingRight: 16,
+          }}
+        >
+          <Tabs
+            value={filter}
+            onValueChange={(v) => setFilter(v as typeof filter)}
           >
-            All ({allEntries.length})
-          </TabsTrigger>
-          <TabsTrigger
-            value="strengths"
-            className="font-body text-xs h-6 px-3"
-            data-ocid="perform.pa_sw_filter_strengths_tab"
-          >
-            Strengths ({strengthsCount})
-          </TabsTrigger>
-          <TabsTrigger
-            value="weaknesses"
-            className="font-body text-xs h-6 px-3"
-            data-ocid="perform.pa_sw_filter_weaknesses_tab"
-          >
-            Weaknesses ({weaknessesCount})
-          </TabsTrigger>
-          <TabsTrigger
-            value="observations"
-            className="font-body text-xs h-6 px-3"
-            data-ocid="perform.pa_sw_filter_observations_tab"
-          >
-            Suggestions ({observationsCount})
-          </TabsTrigger>
-        </TabsList>
+            <TabsList className="h-8">
+              <TabsTrigger
+                value="all"
+                className="font-body text-xs h-6 px-3"
+                data-ocid="perform.pa_sw_filter_all_tab"
+              >
+                All ({allEntries.length})
+              </TabsTrigger>
+              <TabsTrigger
+                value="strengths"
+                className="font-body text-xs h-6 px-3"
+                data-ocid="perform.pa_sw_filter_strengths_tab"
+              >
+                Strengths ({strengthsCount})
+              </TabsTrigger>
+              <TabsTrigger
+                value="weaknesses"
+                className="font-body text-xs h-6 px-3"
+                data-ocid="perform.pa_sw_filter_weaknesses_tab"
+              >
+                Weaknesses ({weaknessesCount})
+              </TabsTrigger>
+              <TabsTrigger
+                value="observations"
+                className="font-body text-xs h-6 px-3"
+                data-ocid="perform.pa_sw_filter_observations_tab"
+              >
+                Suggestions ({observationsCount})
+              </TabsTrigger>
+            </TabsList>
 
-        <TabsContent value={filter} className="mt-3">
-          {filtered.length === 0 ? (
-            <div
-              className="rounded-md border border-dashed border-border/60 py-10 text-center"
-              data-ocid="perform.pa_sw_empty_state"
-            >
-              <p className="text-sm text-muted-foreground font-body italic">
-                {allEntries.length === 0
-                  ? "No strengths or weaknesses recorded for this PA level yet."
-                  : "No entries match this filter."}
-              </p>
-              <p className="text-xs text-muted-foreground font-body mt-1">
-                Select individual Base Practices or Generic Practices from the
-                tree to add entries.
-              </p>
-            </div>
-          ) : (
-            <div
-              className="rounded-md border border-border/60 overflow-hidden"
-              data-ocid="perform.pa_sw_table"
-            >
-              <Table>
-                <TableHeader>
-                  <TableRow className="bg-muted/30">
-                    <TableHead className="font-body text-xs w-[90px]">
-                      Practice
-                    </TableHead>
-                    <TableHead className="font-body text-xs w-[70px]">
-                      Rating
-                    </TableHead>
-                    <TableHead className="font-body text-xs w-[90px]">
-                      Type
-                    </TableHead>
-                    <TableHead className="font-body text-xs">
-                      Description
-                    </TableHead>
-                    {!isCompleted && (
-                      <TableHead className="font-body text-xs w-[80px]">
-                        Actions
-                      </TableHead>
-                    )}
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filtered.map(({ entry, practiceId, rating, level }, idx) => (
-                    <TableRow
-                      key={`${practiceId}-${entry.id}`}
-                      data-ocid={`perform.pa_sw_row.${idx + 1}`}
-                      className="transition-colors hover:bg-muted/30"
-                    >
-                      <TableCell className="font-mono text-xs py-2 text-muted-foreground">
-                        {practiceId}
-                      </TableCell>
-                      <TableCell className="py-2">
-                        {rating ? (
-                          <Badge
-                            variant="outline"
-                            className="font-body text-xs"
-                            style={getRatingBadgeStyle(rating)}
-                          >
-                            {rating}
-                          </Badge>
-                        ) : (
-                          <span className="text-muted-foreground font-body text-xs">
-                            —
-                          </span>
+            <TabsContent value={filter} className="mt-3">
+              {filtered.length === 0 ? (
+                <div
+                  className="rounded-md border border-dashed border-border/60 py-10 text-center"
+                  data-ocid="perform.pa_sw_empty_state"
+                >
+                  <p className="text-sm text-muted-foreground font-body italic">
+                    {allEntries.length === 0
+                      ? "No strengths or weaknesses recorded for this PA level yet."
+                      : "No entries match this filter."}
+                  </p>
+                  <p className="text-xs text-muted-foreground font-body mt-1">
+                    Select individual Base Practices or Generic Practices from
+                    the tree to add entries.
+                  </p>
+                </div>
+              ) : (
+                <div
+                  className="rounded-md border border-border/60 overflow-hidden"
+                  data-ocid="perform.pa_sw_table"
+                >
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/30">
+                        <TableHead className="font-body text-xs w-[90px]">
+                          Practice
+                        </TableHead>
+                        <TableHead className="font-body text-xs w-[70px]">
+                          Rating
+                        </TableHead>
+                        <TableHead className="font-body text-xs w-[90px]">
+                          Type
+                        </TableHead>
+                        <TableHead className="font-body text-xs">
+                          Description
+                        </TableHead>
+                        {!isCompleted && (
+                          <TableHead className="font-body text-xs w-[80px]">
+                            Actions
+                          </TableHead>
                         )}
-                      </TableCell>
-                      <TableCell className="py-2">
-                        <Badge
-                          variant="outline"
-                          className={cn(
-                            "font-body text-xs",
-                            entry.type === "strength"
-                              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                              : entry.type === "weakness"
-                                ? "bg-red-50 text-red-700 border-red-200"
-                                : "bg-blue-50 text-blue-700 border-blue-200",
-                          )}
-                        >
-                          {entry.type === "strength"
-                            ? "Strength"
-                            : entry.type === "weakness"
-                              ? "Weakness"
-                              : "Suggestion"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="py-2 max-w-xs">
-                        <div className="text-xs font-body text-foreground leading-relaxed">
-                          {renderRichText(entry.text)}
-                        </div>
-                      </TableCell>
-                      {!isCompleted && (
-                        <TableCell className="py-2">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              openEditEntry(entry, practiceId, level)
-                            }
-                            className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-                            title="Edit"
-                            data-ocid={`perform.pa_sw_edit_button.${idx + 1}`}
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filtered.map(
+                        ({ entry, practiceId, rating, level }, idx) => (
+                          <TableRow
+                            key={`${practiceId}-${entry.id}`}
+                            data-ocid={`perform.pa_sw_row.${idx + 1}`}
+                            className="transition-colors hover:bg-muted/30"
                           >
-                            <Pencil className="h-3.5 w-3.5" />
-                          </button>
-                        </TableCell>
+                            <TableCell className="font-mono text-xs py-2 text-muted-foreground">
+                              {practiceId}
+                            </TableCell>
+                            <TableCell className="py-2">
+                              {rating ? (
+                                <Badge
+                                  variant="outline"
+                                  className="font-body text-xs"
+                                  style={getRatingBadgeStyle(rating)}
+                                >
+                                  {rating}
+                                </Badge>
+                              ) : (
+                                <span className="text-muted-foreground font-body text-xs">
+                                  —
+                                </span>
+                              )}
+                            </TableCell>
+                            <TableCell className="py-2">
+                              <Badge
+                                variant="outline"
+                                className={cn(
+                                  "font-body text-xs",
+                                  entry.type === "strength"
+                                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                    : entry.type === "weakness"
+                                      ? "bg-red-50 text-red-700 border-red-200"
+                                      : "bg-blue-50 text-blue-700 border-blue-200",
+                                )}
+                              >
+                                {entry.type === "strength"
+                                  ? "Strength"
+                                  : entry.type === "weakness"
+                                    ? "Weakness"
+                                    : "Suggestion"}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="py-2 max-w-xs">
+                              <div className="text-xs font-body text-foreground leading-relaxed">
+                                {renderRichText(entry.text)}
+                              </div>
+                            </TableCell>
+                            {!isCompleted && (
+                              <TableCell className="py-2">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    openEditEntry(entry, practiceId, level)
+                                  }
+                                  className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                                  title="Edit"
+                                  data-ocid={`perform.pa_sw_edit_button.${idx + 1}`}
+                                >
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </button>
+                              </TableCell>
+                            )}
+                          </TableRow>
+                        ),
                       )}
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </TabsContent>
+          </Tabs>
+
+          {editingMeta && (
+            <AddEntryDialog
+              open={editDialogOpen}
+              onOpenChange={setEditDialogOpen}
+              initialEntry={editingMeta.entry}
+              practiceId={`${processId} ${editingMeta.practiceId}`}
+              onSubmit={handleEditSubmit}
+            />
           )}
-        </TabsContent>
-      </Tabs>
-
-      {editingMeta && (
-        <AddEntryDialog
-          open={editDialogOpen}
-          onOpenChange={setEditDialogOpen}
-          initialEntry={editingMeta.entry}
-          practiceId={`${processId} ${editingMeta.practiceId}`}
-          onSubmit={handleEditSubmit}
-        />
-      )}
-
-      {/* Evidence section — aggregated from all practices in this PA */}
-      {(() => {
-        const allEvidence: Array<{ item: EvidenceItem; practiceId: string }> =
-          [];
-        const seen = new Set<string>();
-        for (const { practice, level: lvl } of practices) {
-          const k = `${processId}_${lvl}_${practice.id}`;
-          const st = ratings[k];
-          if (st?.workProducts) {
-            for (const wp of st.workProducts as EvidenceItem[]) {
-              const key = `${practice.id}::${wp.description}::${wp.link}`;
-              if (!seen.has(key)) {
-                seen.add(key);
-                allEvidence.push({ item: wp, practiceId: practice.id });
+        </div>
+        <div
+          style={{ flex: 1, minWidth: 0, overflow: "hidden", paddingLeft: 16 }}
+        >
+          {/* Evidence section — aggregated from all practices in this PA */}
+          {(() => {
+            const allEvidence: Array<{
+              item: EvidenceItem;
+              practiceId: string;
+            }> = [];
+            const seen = new Set<string>();
+            for (const { practice, level: lvl } of practices) {
+              const k = `${processId}_${lvl}_${practice.id}`;
+              const st = ratings[k];
+              if (st?.workProducts) {
+                for (const wp of st.workProducts as EvidenceItem[]) {
+                  const key = `${practice.id}::${wp.description}::${wp.link}`;
+                  if (!seen.has(key)) {
+                    seen.add(key);
+                    allEvidence.push({ item: wp, practiceId: practice.id });
+                  }
+                }
               }
             }
-          }
-        }
-        return (
-          <div className="space-y-2 border-t border-border/40 pt-4 mt-2">
-            <div className="flex items-center gap-2">
-              <h3 className="text-xs font-semibold font-heading text-foreground">
-                Evidence
-              </h3>
-              <span className="text-xs text-muted-foreground font-body">
-                ({allEvidence.length})
-              </span>
-            </div>
-            {allEvidence.length === 0 ? (
-              <div
-                className="rounded-md border border-dashed border-border/60 py-6 text-center"
-                data-ocid="perform.pa_evidence_empty_state"
-              >
-                <p className="text-xs text-muted-foreground font-body italic">
-                  No evidence recorded for practices in this PA yet.
-                </p>
-                <p className="text-xs text-muted-foreground font-body mt-1">
-                  Select individual practices from the tree to add evidence.
-                </p>
+            return (
+              <div className="space-y-2 border-l-2 border-gray-300 pl-4 ml-2">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-xs font-semibold font-heading text-foreground">
+                    Evidence
+                  </h3>
+                  <span className="text-xs text-muted-foreground font-body">
+                    ({allEvidence.length})
+                  </span>
+                </div>
+                {allEvidence.length === 0 ? (
+                  <div
+                    className="rounded-md border border-dashed border-border/60 py-6 text-center"
+                    data-ocid="perform.pa_evidence_empty_state"
+                  >
+                    <p className="text-xs text-muted-foreground font-body italic">
+                      No evidence recorded for practices in this PA yet.
+                    </p>
+                    <p className="text-xs text-muted-foreground font-body mt-1">
+                      Select individual practices from the tree to add evidence.
+                    </p>
+                  </div>
+                ) : (
+                  <div
+                    className="rounded-md border border-border/60 overflow-hidden"
+                    data-ocid="perform.pa_evidence_table"
+                  >
+                    <Table>
+                      <TableHeader>
+                        <TableRow className="bg-muted/30">
+                          <TableHead className="font-body text-xs w-[90px]">
+                            Practice
+                          </TableHead>
+                          <TableHead className="font-body text-xs">
+                            Evidence
+                          </TableHead>
+                          <TableHead className="font-body text-xs w-[160px]">
+                            Link
+                          </TableHead>
+                          <TableHead className="font-body text-xs w-[80px]">
+                            Version
+                          </TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {allEvidence.map(({ item, practiceId: pid }, idx) => (
+                          <TableRow
+                            key={`${pid}-${item.description}-${item.link}`}
+                            data-ocid={`perform.pa_evidence_row.${idx + 1}`}
+                            className="hover:bg-muted/20 transition-colors"
+                          >
+                            <TableCell className="py-2 font-body text-xs font-medium text-muted-foreground">
+                              {pid}
+                            </TableCell>
+                            <TableCell className="py-2 font-body text-xs">
+                              {item.description || "—"}
+                            </TableCell>
+                            <TableCell className="py-2 font-body text-xs">
+                              {item.link ? (
+                                <a
+                                  href={item.link}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-blue-600 hover:underline truncate block max-w-[150px]"
+                                >
+                                  {item.link}
+                                </a>
+                              ) : (
+                                "—"
+                              )}
+                            </TableCell>
+                            <TableCell className="py-2 font-body text-xs text-muted-foreground">
+                              {item.version || "—"}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
               </div>
-            ) : (
-              <div
-                className="rounded-md border border-border/60 overflow-hidden"
-                data-ocid="perform.pa_evidence_table"
-              >
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-muted/30">
-                      <TableHead className="font-body text-xs w-[90px]">
-                        Practice
-                      </TableHead>
-                      <TableHead className="font-body text-xs">
-                        Evidence Name
-                      </TableHead>
-                      <TableHead className="font-body text-xs w-[160px]">
-                        Link
-                      </TableHead>
-                      <TableHead className="font-body text-xs w-[80px]">
-                        Version
-                      </TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {allEvidence.map(({ item, practiceId: pid }, idx) => (
-                      <TableRow
-                        key={`${pid}-${item.description}-${item.link}`}
-                        data-ocid={`perform.pa_evidence_row.${idx + 1}`}
-                        className="hover:bg-muted/20 transition-colors"
-                      >
-                        <TableCell className="py-2 font-body text-xs font-medium text-muted-foreground">
-                          {pid}
-                        </TableCell>
-                        <TableCell className="py-2 font-body text-xs">
-                          {item.description || "—"}
-                        </TableCell>
-                        <TableCell className="py-2 font-body text-xs">
-                          {item.link ? (
-                            <a
-                              href={item.link}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-blue-600 hover:underline truncate block max-w-[150px]"
-                            >
-                              {item.link}
-                            </a>
-                          ) : (
-                            "—"
-                          )}
-                        </TableCell>
-                        <TableCell className="py-2 font-body text-xs text-muted-foreground">
-                          {item.version || "—"}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </div>
-        );
-      })()}
+            );
+          })()}
+        </div>
+      </div>
     </div>
   );
 }
@@ -2161,303 +2217,323 @@ function ProcessOverviewView({
         )}
       </div>
 
-      {targetLevel === 0 ? (
-        <Card className="border-border/60">
-          <CardContent className="py-10 text-center">
-            <p className="text-muted-foreground font-body text-xs">
-              This process is excluded from assessment (Target Level: NA).
-            </p>
-          </CardContent>
-        </Card>
-      ) : (
-        <>
-          {/* Consolidated S&W summary */}
-          <Tabs
-            value={filter}
-            onValueChange={(v) => setFilter(v as typeof filter)}
-          >
-            <TabsList className="h-8">
-              <TabsTrigger
-                value="all"
-                className="font-body text-xs h-6 px-3"
-                data-ocid="perform.process_sw_filter_all_tab"
+      <div
+        style={{ display: "flex", flexDirection: "row", gap: 0, minHeight: 0 }}
+      >
+        <div
+          style={{
+            flex: 1,
+            minWidth: 0,
+            overflow: "hidden",
+            borderRight: "2px solid #d1d5db",
+            paddingRight: 16,
+          }}
+        >
+          {targetLevel === 0 ? (
+            <Card className="border-border/60">
+              <CardContent className="py-10 text-center">
+                <p className="text-muted-foreground font-body text-xs">
+                  This process is excluded from assessment (Target Level: NA).
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <>
+              {/* Consolidated S&W summary */}
+              <Tabs
+                value={filter}
+                onValueChange={(v) => setFilter(v as typeof filter)}
               >
-                All ({allEntries.length})
-              </TabsTrigger>
-              <TabsTrigger
-                value="strengths"
-                className="font-body text-xs h-6 px-3"
-                data-ocid="perform.process_sw_filter_strengths_tab"
-              >
-                Strengths ({strengthsCount})
-              </TabsTrigger>
-              <TabsTrigger
-                value="weaknesses"
-                className="font-body text-xs h-6 px-3"
-                data-ocid="perform.process_sw_filter_weaknesses_tab"
-              >
-                Weaknesses ({weaknessesCount})
-              </TabsTrigger>
-              <TabsTrigger
-                value="observations"
-                className="font-body text-xs h-6 px-3"
-                data-ocid="perform.process_sw_filter_observations_tab"
-              >
-                Suggestions ({observationsCount})
-              </TabsTrigger>
-            </TabsList>
+                <TabsList className="h-8">
+                  <TabsTrigger
+                    value="all"
+                    className="font-body text-xs h-6 px-3"
+                    data-ocid="perform.process_sw_filter_all_tab"
+                  >
+                    All ({allEntries.length})
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="strengths"
+                    className="font-body text-xs h-6 px-3"
+                    data-ocid="perform.process_sw_filter_strengths_tab"
+                  >
+                    Strengths ({strengthsCount})
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="weaknesses"
+                    className="font-body text-xs h-6 px-3"
+                    data-ocid="perform.process_sw_filter_weaknesses_tab"
+                  >
+                    Weaknesses ({weaknessesCount})
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="observations"
+                    className="font-body text-xs h-6 px-3"
+                    data-ocid="perform.process_sw_filter_observations_tab"
+                  >
+                    Suggestions ({observationsCount})
+                  </TabsTrigger>
+                </TabsList>
 
-            <TabsContent value={filter} className="mt-3">
-              {filtered.length === 0 ? (
-                <div
-                  className="rounded-md border border-dashed border-border/60 py-10 text-center"
-                  data-ocid="perform.process_sw_empty_state"
-                >
-                  <p className="text-xs text-muted-foreground font-body italic">
-                    {allEntries.length === 0
-                      ? "No strengths or weaknesses recorded for this process yet."
-                      : "No entries match this filter."}
-                  </p>
-                  <p className="text-xs text-muted-foreground font-body mt-1">
-                    Select individual Base Practices or Generic Practices from
-                    the tree to add entries.
-                  </p>
-                </div>
-              ) : (
-                <div
-                  className="rounded-md border border-border/60 overflow-hidden"
-                  data-ocid="perform.process_sw_table"
-                >
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="bg-muted/30">
-                        <TableHead className="font-body text-xs w-[90px]">
-                          Practice
-                        </TableHead>
-                        <TableHead className="font-body text-xs w-[70px]">
-                          Rating
-                        </TableHead>
-                        <TableHead className="font-body text-xs w-[90px]">
-                          Type
-                        </TableHead>
-                        <TableHead className="font-body text-xs">
-                          Description
-                        </TableHead>
-                        {!isCompleted && (
-                          <TableHead className="font-body text-xs w-[80px]">
-                            Actions
-                          </TableHead>
-                        )}
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filtered.map(
-                        ({ entry, practiceId, rating, level }, idx) => (
-                          <TableRow
-                            key={`${practiceId}-${entry.id}`}
-                            data-ocid={`perform.process_sw_row.${idx + 1}`}
-                            className="transition-colors hover:bg-muted/30"
-                          >
-                            <TableCell className="font-mono text-xs py-2 text-muted-foreground">
-                              {practiceId}
-                            </TableCell>
-                            <TableCell className="py-2">
-                              {rating ? (
-                                <Badge
-                                  variant="outline"
-                                  className="font-body text-xs"
-                                  style={getRatingBadgeStyle(rating)}
-                                >
-                                  {rating}
-                                </Badge>
-                              ) : (
-                                <span className="text-muted-foreground font-body text-xs">
-                                  —
-                                </span>
-                              )}
-                            </TableCell>
-                            <TableCell className="py-2">
-                              <Badge
-                                variant="outline"
-                                className={cn(
-                                  "font-body text-xs",
-                                  entry.type === "strength"
-                                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                                    : entry.type === "weakness"
-                                      ? "bg-red-50 text-red-700 border-red-200"
-                                      : "bg-blue-50 text-blue-700 border-blue-200",
-                                )}
-                              >
-                                {entry.type === "strength"
-                                  ? "Strength"
-                                  : entry.type === "weakness"
-                                    ? "Weakness"
-                                    : "Suggestion"}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="py-2 max-w-xs">
-                              <div className="text-xs font-body text-foreground leading-relaxed">
-                                {renderRichText(entry.text)}
-                              </div>
-                            </TableCell>
+                <TabsContent value={filter} className="mt-3">
+                  {filtered.length === 0 ? (
+                    <div
+                      className="rounded-md border border-dashed border-border/60 py-10 text-center"
+                      data-ocid="perform.process_sw_empty_state"
+                    >
+                      <p className="text-xs text-muted-foreground font-body italic">
+                        {allEntries.length === 0
+                          ? "No strengths or weaknesses recorded for this process yet."
+                          : "No entries match this filter."}
+                      </p>
+                      <p className="text-xs text-muted-foreground font-body mt-1">
+                        Select individual Base Practices or Generic Practices
+                        from the tree to add entries.
+                      </p>
+                    </div>
+                  ) : (
+                    <div
+                      className="rounded-md border border-border/60 overflow-hidden"
+                      data-ocid="perform.process_sw_table"
+                    >
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="bg-muted/30">
+                            <TableHead className="font-body text-xs w-[90px]">
+                              Practice
+                            </TableHead>
+                            <TableHead className="font-body text-xs w-[70px]">
+                              Rating
+                            </TableHead>
+                            <TableHead className="font-body text-xs w-[90px]">
+                              Type
+                            </TableHead>
+                            <TableHead className="font-body text-xs">
+                              Description
+                            </TableHead>
                             {!isCompleted && (
-                              <TableCell className="py-2">
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    openEditEntry(entry, practiceId, level)
-                                  }
-                                  className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-                                  title="Edit"
-                                  data-ocid={`perform.process_sw_edit_button.${idx + 1}`}
-                                >
-                                  <Pencil className="h-3.5 w-3.5" />
-                                </button>
-                              </TableCell>
+                              <TableHead className="font-body text-xs w-[80px]">
+                                Actions
+                              </TableHead>
                             )}
                           </TableRow>
-                        ),
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
-              )}
-            </TabsContent>
-          </Tabs>
-        </>
-      )}
+                        </TableHeader>
+                        <TableBody>
+                          {filtered.map(
+                            ({ entry, practiceId, rating, level }, idx) => (
+                              <TableRow
+                                key={`${practiceId}-${entry.id}`}
+                                data-ocid={`perform.process_sw_row.${idx + 1}`}
+                                className="transition-colors hover:bg-muted/30"
+                              >
+                                <TableCell className="font-mono text-xs py-2 text-muted-foreground">
+                                  {practiceId}
+                                </TableCell>
+                                <TableCell className="py-2">
+                                  {rating ? (
+                                    <Badge
+                                      variant="outline"
+                                      className="font-body text-xs"
+                                      style={getRatingBadgeStyle(rating)}
+                                    >
+                                      {rating}
+                                    </Badge>
+                                  ) : (
+                                    <span className="text-muted-foreground font-body text-xs">
+                                      —
+                                    </span>
+                                  )}
+                                </TableCell>
+                                <TableCell className="py-2">
+                                  <Badge
+                                    variant="outline"
+                                    className={cn(
+                                      "font-body text-xs",
+                                      entry.type === "strength"
+                                        ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                        : entry.type === "weakness"
+                                          ? "bg-red-50 text-red-700 border-red-200"
+                                          : "bg-blue-50 text-blue-700 border-blue-200",
+                                    )}
+                                  >
+                                    {entry.type === "strength"
+                                      ? "Strength"
+                                      : entry.type === "weakness"
+                                        ? "Weakness"
+                                        : "Suggestion"}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell className="py-2 max-w-xs">
+                                  <div className="text-xs font-body text-foreground leading-relaxed">
+                                    {renderRichText(entry.text)}
+                                  </div>
+                                </TableCell>
+                                {!isCompleted && (
+                                  <TableCell className="py-2">
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        openEditEntry(entry, practiceId, level)
+                                      }
+                                      className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                                      title="Edit"
+                                      data-ocid={`perform.process_sw_edit_button.${idx + 1}`}
+                                    >
+                                      <Pencil className="h-3.5 w-3.5" />
+                                    </button>
+                                  </TableCell>
+                                )}
+                              </TableRow>
+                            ),
+                          )}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+                </TabsContent>
+              </Tabs>
+            </>
+          )}
+        </div>
+        <div
+          style={{ flex: 1, minWidth: 0, overflow: "hidden", paddingLeft: 16 }}
+        >
+          {editingMeta && (
+            <AddEntryDialog
+              open={editDialogOpen}
+              onOpenChange={setEditDialogOpen}
+              initialEntry={editingMeta.entry}
+              practiceId={`${processId} ${editingMeta.practiceId}`}
+              onSubmit={handleEditSubmit}
+            />
+          )}
 
-      {editingMeta && (
-        <AddEntryDialog
-          open={editDialogOpen}
-          onOpenChange={setEditDialogOpen}
-          initialEntry={editingMeta.entry}
-          practiceId={`${processId} ${editingMeta.practiceId}`}
-          onSubmit={handleEditSubmit}
-        />
-      )}
+          {/* Evidence section — aggregated from all practices in this process */}
+          {targetLevel !== 0 &&
+            (() => {
+              const allEvidence: Array<{
+                item: EvidenceItem;
+                practiceId: string;
+              }> = [];
+              const seen = new Set<string>();
 
-      {/* Evidence section — aggregated from all practices in this process */}
-      {targetLevel !== 0 &&
-        (() => {
-          const allEvidence: Array<{ item: EvidenceItem; practiceId: string }> =
-            [];
-          const seen = new Set<string>();
+              const addFromKey = (key: string, pid: string) => {
+                const st = ratings[key];
+                if (st?.workProducts) {
+                  for (const wp of st.workProducts as EvidenceItem[]) {
+                    const uniq = `${pid}::${wp.description}::${wp.link}`;
+                    if (!seen.has(uniq)) {
+                      seen.add(uniq);
+                      allEvidence.push({ item: wp, practiceId: pid });
+                    }
+                  }
+                }
+              };
 
-          const addFromKey = (key: string, pid: string) => {
-            const st = ratings[key];
-            if (st?.workProducts) {
-              for (const wp of st.workProducts as EvidenceItem[]) {
-                const uniq = `${pid}::${wp.description}::${wp.link}`;
-                if (!seen.has(uniq)) {
-                  seen.add(uniq);
-                  allEvidence.push({ item: wp, practiceId: pid });
+              if (targetLevel >= 1) {
+                for (const bp of BASE_PRACTICES[processId] ?? []) {
+                  addFromKey(`${processId}_1_${bp.id}`, bp.id);
                 }
               }
-            }
-          };
+              if (targetLevel >= 2) {
+                for (const attr of LEVEL2_ATTRIBUTES) {
+                  for (const gp of attr.practices)
+                    addFromKey(`${processId}_2_${gp.id}`, gp.id);
+                }
+              }
+              if (targetLevel >= 3) {
+                for (const attr of LEVEL3_ATTRIBUTES) {
+                  for (const gp of attr.practices)
+                    addFromKey(`${processId}_3_${gp.id}`, gp.id);
+                }
+              }
 
-          if (targetLevel >= 1) {
-            for (const bp of BASE_PRACTICES[processId] ?? []) {
-              addFromKey(`${processId}_1_${bp.id}`, bp.id);
-            }
-          }
-          if (targetLevel >= 2) {
-            for (const attr of LEVEL2_ATTRIBUTES) {
-              for (const gp of attr.practices)
-                addFromKey(`${processId}_2_${gp.id}`, gp.id);
-            }
-          }
-          if (targetLevel >= 3) {
-            for (const attr of LEVEL3_ATTRIBUTES) {
-              for (const gp of attr.practices)
-                addFromKey(`${processId}_3_${gp.id}`, gp.id);
-            }
-          }
-
-          return (
-            <div className="space-y-2 border-t border-border/40 pt-4 mt-2">
-              <div className="flex items-center gap-2">
-                <h3 className="text-xs font-semibold font-heading text-foreground">
-                  Evidence
-                </h3>
-                <span className="text-xs text-muted-foreground font-body">
-                  ({allEvidence.length})
-                </span>
-              </div>
-              {allEvidence.length === 0 ? (
-                <div
-                  className="rounded-md border border-dashed border-border/60 py-6 text-center"
-                  data-ocid="perform.process_evidence_empty_state"
-                >
-                  <p className="text-xs text-muted-foreground font-body italic">
-                    No evidence recorded for this process yet.
-                  </p>
-                  <p className="text-xs text-muted-foreground font-body mt-1">
-                    Select individual practices from the tree to add evidence.
-                  </p>
+              return (
+                <div className="space-y-2 border-l-2 border-gray-300 pl-4 ml-2">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-xs font-semibold font-heading text-foreground">
+                      Evidence
+                    </h3>
+                    <span className="text-xs text-muted-foreground font-body">
+                      ({allEvidence.length})
+                    </span>
+                  </div>
+                  {allEvidence.length === 0 ? (
+                    <div
+                      className="rounded-md border border-dashed border-border/60 py-6 text-center"
+                      data-ocid="perform.process_evidence_empty_state"
+                    >
+                      <p className="text-xs text-muted-foreground font-body italic">
+                        No evidence recorded for this process yet.
+                      </p>
+                      <p className="text-xs text-muted-foreground font-body mt-1">
+                        Select individual practices from the tree to add
+                        evidence.
+                      </p>
+                    </div>
+                  ) : (
+                    <div
+                      className="rounded-md border border-border/60 overflow-hidden"
+                      data-ocid="perform.process_evidence_table"
+                    >
+                      <Table>
+                        <TableHeader>
+                          <TableRow className="bg-muted/30">
+                            <TableHead className="font-body text-xs w-[90px]">
+                              Practice
+                            </TableHead>
+                            <TableHead className="font-body text-xs">
+                              Evidence
+                            </TableHead>
+                            <TableHead className="font-body text-xs w-[160px]">
+                              Link
+                            </TableHead>
+                            <TableHead className="font-body text-xs w-[80px]">
+                              Version
+                            </TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {allEvidence.map(({ item, practiceId: pid }, idx) => (
+                            <TableRow
+                              key={`${pid}-${item.description}-${item.link}`}
+                              data-ocid={`perform.process_evidence_row.${idx + 1}`}
+                              className="hover:bg-muted/20 transition-colors"
+                            >
+                              <TableCell className="py-2 font-body text-xs font-medium text-muted-foreground">
+                                {pid}
+                              </TableCell>
+                              <TableCell className="py-2 font-body text-xs">
+                                {item.description || "—"}
+                              </TableCell>
+                              <TableCell className="py-2 font-body text-xs">
+                                {item.link ? (
+                                  <a
+                                    href={item.link}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-blue-600 hover:underline truncate block max-w-[150px]"
+                                  >
+                                    {item.link}
+                                  </a>
+                                ) : (
+                                  "—"
+                                )}
+                              </TableCell>
+                              <TableCell className="py-2 font-body text-xs text-muted-foreground">
+                                {item.version || "—"}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
                 </div>
-              ) : (
-                <div
-                  className="rounded-md border border-border/60 overflow-hidden"
-                  data-ocid="perform.process_evidence_table"
-                >
-                  <Table>
-                    <TableHeader>
-                      <TableRow className="bg-muted/30">
-                        <TableHead className="font-body text-xs w-[90px]">
-                          Practice
-                        </TableHead>
-                        <TableHead className="font-body text-xs">
-                          Evidence Name
-                        </TableHead>
-                        <TableHead className="font-body text-xs w-[160px]">
-                          Link
-                        </TableHead>
-                        <TableHead className="font-body text-xs w-[80px]">
-                          Version
-                        </TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {allEvidence.map(({ item, practiceId: pid }, idx) => (
-                        <TableRow
-                          key={`${pid}-${item.description}-${item.link}`}
-                          data-ocid={`perform.process_evidence_row.${idx + 1}`}
-                          className="hover:bg-muted/20 transition-colors"
-                        >
-                          <TableCell className="py-2 font-body text-xs font-medium text-muted-foreground">
-                            {pid}
-                          </TableCell>
-                          <TableCell className="py-2 font-body text-xs">
-                            {item.description || "—"}
-                          </TableCell>
-                          <TableCell className="py-2 font-body text-xs">
-                            {item.link ? (
-                              <a
-                                href={item.link}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-blue-600 hover:underline truncate block max-w-[150px]"
-                              >
-                                {item.link}
-                              </a>
-                            ) : (
-                              "—"
-                            )}
-                          </TableCell>
-                          <TableCell className="py-2 font-body text-xs text-muted-foreground">
-                            {item.version || "—"}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              )}
-            </div>
-          );
-        })()}
+              );
+            })()}
+        </div>
+      </div>
     </div>
   );
 }
@@ -2578,6 +2654,8 @@ function BPGPRightPanel({
   onSelectProcess,
   onSelectPA,
   openSwDialog,
+  findingsPanelWidth,
+  setFindingsPanelWidth,
 }: {
   selectedNode: SelectedNode;
   enabledProcesses: Array<{ id: string; targetLevel: string }>;
@@ -2597,6 +2675,8 @@ function BPGPRightPanel({
   onSelectProcess: (processId: string) => void;
   onSelectPA: (paId: string, processId: string) => void;
   openSwDialog: (entry?: SwEntry) => void;
+  findingsPanelWidth: number;
+  setFindingsPanelWidth: (w: number) => void;
 }) {
   const level = selectedNode.level ?? 1;
   const practiceId = selectedNode.id;
@@ -2690,6 +2770,8 @@ function BPGPRightPanel({
           }
           isCompleted={isCompleted}
           openSwDialog={openSwDialog}
+          findingsPanelWidth={findingsPanelWidth}
+          setFindingsPanelWidth={setFindingsPanelWidth}
         />
       </div>
     </div>
@@ -3485,11 +3567,50 @@ function DraggableThreePanelLayout({
   ) => void;
   currentBpGpOpenDialog: (entry?: SwEntry) => void;
 }) {
-  // Bug Fix 3: Draggable panel width state
-  const [leftPanelWidth, setLeftPanelWidth] = useState(280);
+  // Resizable panel widths — persisted in localStorage
+  const STORAGE_KEY = "qinsight-perform-col-widths";
+  const savedWidths = (() => {
+    try {
+      const s = localStorage.getItem(STORAGE_KEY);
+      return s ? JSON.parse(s) : null;
+    } catch {
+      return null;
+    }
+  })();
+  const [leftPanelWidth, setLeftPanelWidthRaw] = useState<number>(
+    savedWidths?.left ?? 413,
+  );
+  const [findingsPanelWidth, setFindingsPanelWidthRaw] = useState<number>(
+    savedWidths?.findings ?? 717,
+  );
   const [isDragging, setIsDragging] = useState(false);
   // Tree search
   const [treeSearch, setTreeSearch] = useState("");
+
+  function setLeftPanelWidth(w: number) {
+    setLeftPanelWidthRaw(w);
+    try {
+      const s = localStorage.getItem(STORAGE_KEY);
+      const prev = s ? JSON.parse(s) : {};
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...prev, left: w }));
+    } catch {
+      /* ignore */
+    }
+  }
+
+  function setFindingsPanelWidth(w: number) {
+    setFindingsPanelWidthRaw(w);
+    try {
+      const s = localStorage.getItem(STORAGE_KEY);
+      const prev = s ? JSON.parse(s) : {};
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({ ...prev, findings: w }),
+      );
+    } catch {
+      /* ignore */
+    }
+  }
 
   function handleDragStart(e: React.MouseEvent) {
     e.preventDefault();
@@ -3537,9 +3658,10 @@ function DraggableThreePanelLayout({
           flexShrink: 0,
           display: "flex",
           flexDirection: "column",
-          borderRight: "3px solid var(--border)",
+          borderRight: "1px solid var(--border)",
           overflow: "hidden",
           alignSelf: "stretch",
+          position: "relative",
         }}
       >
         {/* Tree header */}
@@ -3676,23 +3798,20 @@ function DraggableThreePanelLayout({
             )}
           </div>
         </div>
+        {/* ── Invisible resize handle on left panel border ── */}
+        <div
+          style={{
+            position: "absolute",
+            top: 0,
+            right: -3,
+            width: 6,
+            height: "100%",
+            cursor: "col-resize",
+            zIndex: 20,
+          }}
+          onMouseDown={handleDragStart}
+        />
       </div>
-
-      {/* ── Drag handle ── */}
-      <div
-        style={{
-          width: 6,
-          cursor: "col-resize",
-          background: isDragging ? "var(--accent)" : "var(--border)",
-          flexShrink: 0,
-          alignSelf: "stretch",
-          transition: isDragging ? "none" : "background 0.15s",
-        }}
-        className="hover:bg-accent/70"
-        onMouseDown={handleDragStart}
-        data-ocid="perform.drag_handle"
-        title="Drag to resize panels"
-      />
 
       {/* ── Right Panel (flex: 1) ── */}
       {selectedNode?.type === "bp" || selectedNode?.type === "gp" ? (
@@ -3729,6 +3848,8 @@ function DraggableThreePanelLayout({
               })
             }
             openSwDialog={currentBpGpOpenDialog}
+            findingsPanelWidth={findingsPanelWidth}
+            setFindingsPanelWidth={setFindingsPanelWidth}
           />
         </div>
       ) : (

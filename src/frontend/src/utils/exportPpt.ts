@@ -11,7 +11,29 @@
  *  7+. Per-Process slides (findings by type, paginated — no summary box)
  */
 
-import PptxGenJS from "pptxgenjs";
+// PptxGenJS loaded dynamically from CDN
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let _PptxGenJS: any = null;
+
+async function loadPptxGenJS(): Promise<any> {
+  if (_PptxGenJS) return _PptxGenJS;
+  return new Promise((resolve, reject) => {
+    if ((window as any).PptxGenJS) {
+      _PptxGenJS = (window as any).PptxGenJS;
+      resolve(_PptxGenJS);
+      return;
+    }
+    const script = document.createElement("script");
+    script.src =
+      "https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js";
+    script.onload = () => {
+      _PptxGenJS = (window as any).PptxGenJS;
+      resolve(_PptxGenJS);
+    };
+    script.onerror = reject;
+    document.head.appendChild(script);
+  });
+}
 import type { ReportData } from "./reportData";
 
 // ─── Theme ─────────────────────────────────────────────────────
@@ -46,12 +68,7 @@ function rc(rating: string | null | undefined): { fill: string; text: string } {
   return RATING_COLORS[rating];
 }
 
-function slideHeader(
-  pptx: PptxGenJS,
-  slide: PptxGenJS.Slide,
-  title: string,
-  subtitle?: string,
-) {
+function slideHeader(pptx: any, slide: any, title: string, subtitle?: string) {
   slide.addShape(pptx.ShapeType.rect, {
     x: 0,
     y: 0,
@@ -89,7 +106,7 @@ function slideHeader(
 
 // ─── Slide 1: Cover ─────────────────────────────────────────────
 
-function addCoverSlide(pptx: PptxGenJS, data: ReportData) {
+function addCoverSlide(pptx: any, data: ReportData) {
   const slide = pptx.addSlide();
   const info = data.info;
 
@@ -243,7 +260,7 @@ function addCoverSlide(pptx: PptxGenJS, data: ReportData) {
 
 // ─── Slide 2: Assessment Information ───────────────────────────
 
-function addAssessmentInfoSlide(pptx: PptxGenJS, data: ReportData) {
+function addAssessmentInfoSlide(pptx: any, data: ReportData) {
   const slide = pptx.addSlide();
   const info = data.info;
   slideHeader(pptx, slide, "Assessment Information", data.assessmentName);
@@ -393,7 +410,7 @@ function addAssessmentInfoSlide(pptx: PptxGenJS, data: ReportData) {
 
 // ─── Slide 3: Condensed Results Summary ────────────────────────
 
-function addCondensedResultsSlide(pptx: PptxGenJS, data: ReportData) {
+function addCondensedResultsSlide(pptx: any, data: ReportData) {
   const slide = pptx.addSlide();
   slideHeader(
     pptx,
@@ -538,7 +555,7 @@ function addCondensedResultsSlide(pptx: PptxGenJS, data: ReportData) {
 
 // ─── Slide 4: Full Results Matrix ───────────────────────────────
 
-function addFullMatrixSlide(pptx: PptxGenJS, data: ReportData) {
+function addFullMatrixSlide(pptx: any, data: ReportData) {
   if (data.processes.length === 0) return;
   const slide = pptx.addSlide();
   slideHeader(
@@ -756,7 +773,7 @@ function addFullMatrixSlide(pptx: PptxGenJS, data: ReportData) {
 
 // ─── Slide 5: Global Strengths ──────────────────────────────────
 
-function addGlobalStrengthsSlide(pptx: PptxGenJS, data: ReportData) {
+function addGlobalStrengthsSlide(pptx: any, data: ReportData) {
   const slide = pptx.addSlide();
   slideHeader(pptx, slide, "Global Strengths", data.assessmentName);
 
@@ -791,7 +808,7 @@ function addGlobalStrengthsSlide(pptx: PptxGenJS, data: ReportData) {
 
 // ─── Slide 6: Global Weaknesses ────────────────────────────────
 
-function addGlobalWeaknessesSlide(pptx: PptxGenJS, data: ReportData) {
+function addGlobalWeaknessesSlide(pptx: any, data: ReportData) {
   const slide = pptx.addSlide();
   slideHeader(pptx, slide, "Global Weaknesses", data.assessmentName);
 
@@ -861,7 +878,7 @@ function collectFindings(proc: ReportData["processes"][0]): FindingItem[] {
   return items;
 }
 
-function addProcessSlides(pptx: PptxGenJS, proc: ReportData["processes"][0]) {
+function addProcessSlides(pptx: any, proc: ReportData["processes"][0]) {
   const allFindings = collectFindings(proc);
 
   const ITEMS_PER_PAGE = 16;
@@ -962,7 +979,8 @@ function addProcessSlides(pptx: PptxGenJS, proc: ReportData["processes"][0]) {
 // ─── Main Export ─────────────────────────────────────────────────
 
 export async function exportToPpt(data: ReportData): Promise<void> {
-  const pptx = new PptxGenJS();
+  const PptxGenJSClass = await loadPptxGenJS();
+  const pptx = new PptxGenJSClass();
   pptx.layout = "LAYOUT_WIDE";
   pptx.author = "Q-Insight";
   pptx.company = "Q-Insight";
