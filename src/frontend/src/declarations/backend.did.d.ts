@@ -70,11 +70,29 @@ export interface ProcessGroupConfig {
   'processLevels' : string,
   'assessmentId' : bigint,
 }
+export interface ProjectEvidence {
+  'id' : bigint,
+  'link' : string,
+  'name' : string,
+  'version' : string,
+  'assessmentId' : bigint,
+  'processId' : string,
+}
+export interface ReportGlobalInputs {
+  'globalStrengths' : string,
+  'globalWeaknesses' : string,
+  'assessmentId' : bigint,
+}
 export type Time = bigint;
 export interface _SERVICE {
+  'addProjectEvidence' : ActorMethod<
+    [bigint, string, string, string, string],
+    bigint
+  >,
   'createAssessment' : ActorMethod<[string], bigint>,
   'deleteAssessment' : ActorMethod<[bigint], undefined>,
   'deleteAssessmentDay' : ActorMethod<[bigint], undefined>,
+  'deleteProjectEvidence' : ActorMethod<[bigint], boolean>,
   'getAllAssessments' : ActorMethod<[], Array<Assessment>>,
   'getAllPracticeRatingsForAssessment' : ActorMethod<
     [bigint],
@@ -85,6 +103,11 @@ export interface _SERVICE {
   'getAssessmentInfoData' : ActorMethod<[bigint], AssessmentInfoData>,
   'getPracticeRatings' : ActorMethod<[bigint, string], Array<PracticeRating>>,
   'getProcessGroupConfig' : ActorMethod<[bigint], ProcessGroupConfig>,
+  'getProjectEvidenceForAssessment' : ActorMethod<
+    [bigint],
+    Array<ProjectEvidence>
+  >,
+  'getReportGlobalInputs' : ActorMethod<[bigint], ReportGlobalInputs>,
   'markAssessmentCompleted' : ActorMethod<[bigint], undefined>,
   'saveAssessmentDay' : ActorMethod<
     [bigint, bigint, string, string, string, string],
@@ -96,8 +119,13 @@ export interface _SERVICE {
     bigint
   >,
   'saveProcessGroupConfig' : ActorMethod<[bigint, string, string], undefined>,
+  'saveReportGlobalInputs' : ActorMethod<[bigint, string, string], undefined>,
   'updateAssessmentStatus' : ActorMethod<[bigint, string], undefined>,
   'updateAssessmentStep' : ActorMethod<[bigint, string], undefined>,
+  'updateProjectEvidence' : ActorMethod<
+    [bigint, string, string, string, string],
+    boolean
+  >,
 }
 export declare const idlService: IDL.ServiceClass;
 export declare const idlInitArgs: IDL.Type[];

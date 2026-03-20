@@ -44,6 +44,7 @@ const defaultFormData = {
   projectContactSWDev: "",
   projectContactSWQuality: "",
   projectName: "",
+  projectId: "",
   projectScope: "",
   modelBasedDev: false,
   agileEnvironments: false,
@@ -125,6 +126,7 @@ export function AssessmentInfo() {
         projectContactSWDev: infoData.projectContactSWDev || "",
         projectContactSWQuality: infoData.projectContactSWQuality || "",
         projectName: infoData.projectName || "",
+        projectId: infoData.intacsId || "",
         projectScope: infoData.projectScope || "",
         modelBasedDev: infoData.modelBasedDev || false,
         agileEnvironments: infoData.agileEnvironments || false,
@@ -176,7 +178,7 @@ export function AssessmentInfo() {
       coAssessor: JSON.stringify(
         coAssessors.map(({ name, id }) => ({ name, id })),
       ),
-      intacsId: "",
+      intacsId: formData.projectId,
       assessorBody: formData.leadAssessorId,
       assessedParty: formData.assessedParty,
       assessedSite: formData.assessedSite,
@@ -514,7 +516,7 @@ export function AssessmentInfo() {
                 <Separator />
               </CardHeader>
               <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2 md:col-span-2">
+                <div className="space-y-2">
                   <Label className="font-body font-medium">Project Name</Label>
                   <Input
                     value={formData.projectName}
@@ -523,6 +525,17 @@ export function AssessmentInfo() {
                     className="font-body"
                     disabled={isCompleted}
                     data-ocid="assessment_info.project_name_input"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="font-body font-medium">Project ID</Label>
+                  <Input
+                    value={formData.projectId}
+                    onChange={(e) => update("projectId", e.target.value)}
+                    placeholder="Enter project ID"
+                    className="font-body"
+                    disabled={isCompleted}
+                    data-ocid="assessment_info.project_id_input"
                   />
                 </div>
                 <div className="space-y-2 md:col-span-2">

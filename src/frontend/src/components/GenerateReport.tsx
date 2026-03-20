@@ -1,3 +1,4 @@
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAppContext } from "@/context/AppContext";
@@ -18,9 +19,10 @@ import {
   Loader2,
   Monitor,
   Plus,
+  Save,
   Trash2,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 export function GenerateReport() {
@@ -46,8 +48,111 @@ export function GenerateReport() {
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">(
     "idle",
   );
-  const isFirstLoad = useRef(true);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [isDirty, setIsDirty] = useState(false);
+
+  // Refs for reliable access in effects/cleanup
+  const strengthsRef = useRef<string[]>([]);
+  const weaknessesRef = useRef<string[]>([]);
+  const isDirtyRef = useRef(false);
+  const assessmentIdRef = useRef(currentAssessmentId);
+  const mutateRef = useRef(saveGlobalInputsMutation.mutate);
+  // Track whether we have initialized data from backend for the current assessment
+  const initializedForRef = useRef<string | null>(null);
+
+  // Keep refs in sync
+  useEffect(() => {
+    strengthsRef.current = globalStrengths;
+  }, [globalStrengths]);
+  useEffect(() => {
+    weaknessesRef.current = globalWeaknesses;
+  }, [globalWeaknesses]);
+  useEffect(() => {
+    isDirtyRef.current = isDirty;
+  }, [isDirty]);
+  useEffect(() => {
+    assessmentIdRef.current = currentAssessmentId;
+  }, [currentAssessmentId]);
+  useEffect(() => {
+    mutateRef.current = saveGlobalInputsMutation.mutate;
+  }, [saveGlobalInputsMutation.mutate]);
+
+  // Reset local state when assessment changes
+  useEffect(() => {
+    const key = currentAssessmentId?.toString() ?? null;
+    if (initializedForRef.current !== key) {
+      setGlobalStrengths([]);
+      setGlobalWeaknesses([]);
+      setIsDirty(false);
+      setSaveStatus("idle");
+      initializedForRef.current = null; // will be set once data arrives
+    }
+  }, [currentAssessmentId]);
+
+  // Load backend data into local state — but ONLY if not dirty (don't overwrite in-progress edits)
+  useEffect(() => {
+    if (!globalInputsData) return;
+    const key = currentAssessmentId?.toString() ?? null;
+    // Skip if already initialized for this assessment AND user has pending changes
+    if (initializedForRef.current === key && isDirtyRef.current) return;
+
+    try {
+      const s = JSON.parse(globalInputsData.globalStrengths) as string[];
+      setGlobalStrengths(Array.isArray(s) ? s : []);
+    } catch {
+      setGlobalStrengths([]);
+    }
+    try {
+      const w = JSON.parse(globalInputsData.globalWeaknesses) as string[];
+      setGlobalWeaknesses(Array.isArray(w) ? w : []);
+    } catch {
+      setGlobalWeaknesses([]);
+    }
+    setIsDirty(false);
+    initializedForRef.current = key;
+  }, [globalInputsData, currentAssessmentId]);
+
+  // Debounced autosave whenever strengths/weaknesses change and isDirty
+  useEffect(() => {
+    if (!isDirty || !currentAssessmentId) return;
+    setSaveStatus("saving");
+    const timer = setTimeout(() => {
+      const aId = currentAssessmentId;
+      if (!aId) return;
+      mutateRef.current(
+        {
+          assessmentId: aId,
+          globalStrengths: JSON.stringify(globalStrengths),
+          globalWeaknesses: JSON.stringify(globalWeaknesses),
+        },
+        {
+          onSuccess: () => {
+            setIsDirty(false);
+            setSaveStatus("saved");
+            setTimeout(() => setSaveStatus("idle"), 2000);
+          },
+          onError: () => {
+            setSaveStatus("idle");
+            toast.error("Failed to save. Please try again.");
+          },
+        },
+      );
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [globalStrengths, globalWeaknesses, isDirty, currentAssessmentId]);
+
+  // Save on unmount if still dirty (navigation away before debounce fires)
+  useEffect(() => {
+    return () => {
+      if (isDirtyRef.current && assessmentIdRef.current) {
+        mutateRef.current({
+          assessmentId: assessmentIdRef.current,
+          globalStrengths: JSON.stringify(strengthsRef.current),
+          globalWeaknesses: JSON.stringify(weaknessesRef.current),
+        });
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const isDataLoading =
     currentAssessmentId != null &&
@@ -62,74 +167,55 @@ export function GenerateReport() {
   );
   const assessmentName = currentAssessment?.name ?? "Assessment";
 
-  useEffect(() => {
-    if (globalInputsData) {
-      try {
-        const s = JSON.parse(globalInputsData.globalStrengths) as string[];
-        if (Array.isArray(s)) setGlobalStrengths(s);
-      } catch {
-        setGlobalStrengths([]);
-      }
-      try {
-        const w = JSON.parse(globalInputsData.globalWeaknesses) as string[];
-        if (Array.isArray(w)) setGlobalWeaknesses(w);
-      } catch {
-        setGlobalWeaknesses([]);
-      }
-      isFirstLoad.current = false;
-    }
-  }, [globalInputsData]);
-
-  const triggerSave = useCallback(
-    (strengths: string[], weaknesses: string[]) => {
-      if (!currentAssessmentId) return;
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-      debounceRef.current = setTimeout(async () => {
-        setSaveStatus("saving");
-        try {
-          await saveGlobalInputsMutation.mutateAsync({
-            assessmentId: currentAssessmentId,
-            globalStrengths: JSON.stringify(strengths),
-            globalWeaknesses: JSON.stringify(weaknesses),
-          });
-          setSaveStatus("saved");
-          setTimeout(() => setSaveStatus("idle"), 2000);
-        } catch {
-          setSaveStatus("idle");
-        }
-      }, 1200);
-    },
-    [currentAssessmentId, saveGlobalInputsMutation],
-  );
-
   function addStrength() {
     const text = newStrength.trim();
     if (!text) return;
-    const updated = [...globalStrengths, text];
-    setGlobalStrengths(updated);
+    setGlobalStrengths((prev) => [...prev, text]);
     setNewStrength("");
-    triggerSave(updated, globalWeaknesses);
+    setIsDirty(true);
   }
 
   function removeStrength(i: number) {
-    const updated = globalStrengths.filter((_, idx) => idx !== i);
-    setGlobalStrengths(updated);
-    triggerSave(updated, globalWeaknesses);
+    setGlobalStrengths((prev) => prev.filter((_, idx) => idx !== i));
+    setIsDirty(true);
   }
 
   function addWeakness() {
     const text = newWeakness.trim();
     if (!text) return;
-    const updated = [...globalWeaknesses, text];
-    setGlobalWeaknesses(updated);
+    setGlobalWeaknesses((prev) => [...prev, text]);
     setNewWeakness("");
-    triggerSave(globalStrengths, updated);
+    setIsDirty(true);
   }
 
   function removeWeakness(i: number) {
-    const updated = globalWeaknesses.filter((_, idx) => idx !== i);
-    setGlobalWeaknesses(updated);
-    triggerSave(globalStrengths, updated);
+    setGlobalWeaknesses((prev) => prev.filter((_, idx) => idx !== i));
+    setIsDirty(true);
+  }
+
+  function handleManualSave() {
+    const aId = currentAssessmentId;
+    if (!aId) return;
+    setSaveStatus("saving");
+    mutateRef.current(
+      {
+        assessmentId: aId,
+        globalStrengths: JSON.stringify(globalStrengths),
+        globalWeaknesses: JSON.stringify(globalWeaknesses),
+      },
+      {
+        onSuccess: () => {
+          setIsDirty(false);
+          setSaveStatus("saved");
+          setTimeout(() => setSaveStatus("idle"), 2000);
+          toast.success("Saved");
+        },
+        onError: () => {
+          setSaveStatus("idle");
+          toast.error("Failed to save. Please try again.");
+        },
+      },
+    );
   }
 
   async function handleExportPpt() {
@@ -210,6 +296,8 @@ export function GenerateReport() {
         saveStatus={saveStatus}
         assessmentName={assessmentName}
         info={info}
+        isDirty={isDirty}
+        onSave={handleManualSave}
       />
 
       {noRatings && (
@@ -255,13 +343,13 @@ export function GenerateReport() {
         inputOcid="report.weakness_input"
       />
 
-      <div>
+      <div className="flex items-center gap-3 flex-wrap">
         <button
           type="button"
           data-ocid="report.export_ppt_button"
           onClick={handleExportPpt}
           disabled={pptLoading}
-          className="w-full sm:w-auto inline-flex items-center justify-center gap-3
+          className="inline-flex items-center justify-center gap-3
             rounded-xl border-2 border-blue-200 bg-blue-50 px-8 py-4
             text-sm font-bold font-heading text-blue-700
             hover:border-blue-400 hover:bg-blue-100
@@ -276,11 +364,11 @@ export function GenerateReport() {
           )}
           {pptLoading ? "Generating..." : "Export PowerPoint (.pptx)"}
         </button>
-        <p className="text-xs text-muted-foreground font-body mt-2">
-          Includes all slides with ratings, findings, global strengths &amp;
-          weaknesses
-        </p>
       </div>
+      <p className="text-xs text-muted-foreground font-body -mt-3">
+        Includes all slides with ratings, findings, global strengths &amp;
+        weaknesses
+      </p>
     </div>
   );
 }
@@ -289,10 +377,14 @@ function PageHeader({
   saveStatus,
   assessmentName,
   info,
+  isDirty,
+  onSave,
 }: {
   saveStatus?: "idle" | "saving" | "saved";
   assessmentName?: string;
   info?: any;
+  isDirty?: boolean;
+  onSave?: () => void;
 }) {
   return (
     <div className="flex items-start justify-between gap-4">
@@ -312,15 +404,34 @@ function PageHeader({
           </p>
         )}
       </div>
-      {saveStatus && saveStatus !== "idle" && (
-        <div
-          className={`text-xs font-medium font-body transition-opacity duration-300 ${
-            saveStatus === "saved" ? "text-green-600" : "text-muted-foreground"
-          }`}
-        >
-          {saveStatus === "saving" ? "Saving..." : "Saved ✓"}
-        </div>
-      )}
+      <div className="flex items-center gap-3">
+        {saveStatus && saveStatus !== "idle" && (
+          <div
+            className={`text-xs font-medium font-body transition-opacity duration-300 ${
+              saveStatus === "saved"
+                ? "text-green-600"
+                : "text-muted-foreground"
+            }`}
+          >
+            {saveStatus === "saving" ? "Saving..." : "Saved ✓"}
+          </div>
+        )}
+        {onSave && assessmentName && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={onSave}
+            className="gap-1.5 h-8 text-xs"
+            data-ocid="report.save_button"
+          >
+            <Save className="h-3.5 w-3.5" />
+            Save
+            {isDirty && (
+              <span className="ml-0.5 h-1.5 w-1.5 rounded-full bg-amber-500 inline-block" />
+            )}
+          </Button>
+        )}
+      </div>
     </div>
   );
 }
@@ -384,7 +495,7 @@ function GlobalInputSection({
           <ul className="space-y-1.5 mb-3">
             {items.map((item, i) => (
               <li
-                key={`${title}-item-${item.slice(0, 20)}-${i}`}
+                key={`${title}-${item}`}
                 data-ocid={`report.${title.toLowerCase().replace(" ", "_")}.item.${i + 1}`}
                 className="flex items-start gap-2 rounded-lg border border-border/50 bg-muted/30 px-3 py-2 text-sm font-body group"
               >

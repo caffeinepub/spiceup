@@ -242,35 +242,35 @@ export function Dashboard() {
           title="Total Assessments"
           value={totalAssessments}
           icon={ClipboardList}
-          iconColor="bg-slate-400"
+          iconColor="bg-blue-600"
           isLoading={loadingAssessments}
         />
         <KpiCard
           title="Completed"
           value={completedCount}
           icon={CheckCircle2}
-          iconColor="bg-emerald-500"
+          iconColor="bg-blue-600"
           isLoading={loadingAssessments}
         />
         <KpiCard
           title="In Progress"
           value={activeCount}
           icon={Clock}
-          iconColor="bg-amber-500"
+          iconColor="bg-blue-600"
           isLoading={loadingAssessments}
         />
         <KpiCard
           title="Assessment Results"
           value={resultsCount}
           icon={TrendingUp}
-          iconColor="bg-slate-400"
+          iconColor="bg-blue-600"
           isLoading={loadingResults}
         />
         <KpiCard
           title="Reports Generated"
           value={reportsCount}
           icon={FileText}
-          iconColor="bg-slate-400"
+          iconColor="bg-blue-600"
           isLoading={loadingReports}
         />
       </div>

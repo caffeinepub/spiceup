@@ -69,11 +69,30 @@ export const ProcessGroupConfig = IDL.Record({
   'processLevels' : IDL.Text,
   'assessmentId' : IDL.Nat,
 });
+export const ProjectEvidence = IDL.Record({
+  'id' : IDL.Nat,
+  'link' : IDL.Text,
+  'name' : IDL.Text,
+  'version' : IDL.Text,
+  'assessmentId' : IDL.Nat,
+  'processId' : IDL.Text,
+});
+export const ReportGlobalInputs = IDL.Record({
+  'globalStrengths' : IDL.Text,
+  'globalWeaknesses' : IDL.Text,
+  'assessmentId' : IDL.Nat,
+});
 
 export const idlService = IDL.Service({
+  'addProjectEvidence' : IDL.Func(
+      [IDL.Nat, IDL.Text, IDL.Text, IDL.Text, IDL.Text],
+      [IDL.Nat],
+      [],
+    ),
   'createAssessment' : IDL.Func([IDL.Text], [IDL.Nat], []),
   'deleteAssessment' : IDL.Func([IDL.Nat], [], []),
   'deleteAssessmentDay' : IDL.Func([IDL.Nat], [], []),
+  'deleteProjectEvidence' : IDL.Func([IDL.Nat], [IDL.Bool], []),
   'getAllAssessments' : IDL.Func([], [IDL.Vec(Assessment)], ['query']),
   'getAllPracticeRatingsForAssessment' : IDL.Func(
       [IDL.Nat],
@@ -101,6 +120,16 @@ export const idlService = IDL.Service({
       [ProcessGroupConfig],
       ['query'],
     ),
+  'getProjectEvidenceForAssessment' : IDL.Func(
+      [IDL.Nat],
+      [IDL.Vec(ProjectEvidence)],
+      ['query'],
+    ),
+  'getReportGlobalInputs' : IDL.Func(
+      [IDL.Nat],
+      [ReportGlobalInputs],
+      ['query'],
+    ),
   'markAssessmentCompleted' : IDL.Func([IDL.Nat], [], []),
   'saveAssessmentDay' : IDL.Func(
       [IDL.Nat, IDL.Nat, IDL.Text, IDL.Text, IDL.Text, IDL.Text],
@@ -123,8 +152,14 @@ export const idlService = IDL.Service({
       [],
     ),
   'saveProcessGroupConfig' : IDL.Func([IDL.Nat, IDL.Text, IDL.Text], [], []),
+  'saveReportGlobalInputs' : IDL.Func([IDL.Nat, IDL.Text, IDL.Text], [], []),
   'updateAssessmentStatus' : IDL.Func([IDL.Nat, IDL.Text], [], []),
   'updateAssessmentStep' : IDL.Func([IDL.Nat, IDL.Text], [], []),
+  'updateProjectEvidence' : IDL.Func(
+      [IDL.Nat, IDL.Text, IDL.Text, IDL.Text, IDL.Text],
+      [IDL.Bool],
+      [],
+    ),
 });
 
 export const idlInitArgs = [];
@@ -191,11 +226,30 @@ export const idlFactory = ({ IDL }) => {
     'processLevels' : IDL.Text,
     'assessmentId' : IDL.Nat,
   });
+  const ProjectEvidence = IDL.Record({
+    'id' : IDL.Nat,
+    'link' : IDL.Text,
+    'name' : IDL.Text,
+    'version' : IDL.Text,
+    'assessmentId' : IDL.Nat,
+    'processId' : IDL.Text,
+  });
+  const ReportGlobalInputs = IDL.Record({
+    'globalStrengths' : IDL.Text,
+    'globalWeaknesses' : IDL.Text,
+    'assessmentId' : IDL.Nat,
+  });
   
   return IDL.Service({
+    'addProjectEvidence' : IDL.Func(
+        [IDL.Nat, IDL.Text, IDL.Text, IDL.Text, IDL.Text],
+        [IDL.Nat],
+        [],
+      ),
     'createAssessment' : IDL.Func([IDL.Text], [IDL.Nat], []),
     'deleteAssessment' : IDL.Func([IDL.Nat], [], []),
     'deleteAssessmentDay' : IDL.Func([IDL.Nat], [], []),
+    'deleteProjectEvidence' : IDL.Func([IDL.Nat], [IDL.Bool], []),
     'getAllAssessments' : IDL.Func([], [IDL.Vec(Assessment)], ['query']),
     'getAllPracticeRatingsForAssessment' : IDL.Func(
         [IDL.Nat],
@@ -223,6 +277,16 @@ export const idlFactory = ({ IDL }) => {
         [ProcessGroupConfig],
         ['query'],
       ),
+    'getProjectEvidenceForAssessment' : IDL.Func(
+        [IDL.Nat],
+        [IDL.Vec(ProjectEvidence)],
+        ['query'],
+      ),
+    'getReportGlobalInputs' : IDL.Func(
+        [IDL.Nat],
+        [ReportGlobalInputs],
+        ['query'],
+      ),
     'markAssessmentCompleted' : IDL.Func([IDL.Nat], [], []),
     'saveAssessmentDay' : IDL.Func(
         [IDL.Nat, IDL.Nat, IDL.Text, IDL.Text, IDL.Text, IDL.Text],
@@ -245,8 +309,14 @@ export const idlFactory = ({ IDL }) => {
         [],
       ),
     'saveProcessGroupConfig' : IDL.Func([IDL.Nat, IDL.Text, IDL.Text], [], []),
+    'saveReportGlobalInputs' : IDL.Func([IDL.Nat, IDL.Text, IDL.Text], [], []),
     'updateAssessmentStatus' : IDL.Func([IDL.Nat, IDL.Text], [], []),
     'updateAssessmentStep' : IDL.Func([IDL.Nat, IDL.Text], [], []),
+    'updateProjectEvidence' : IDL.Func(
+        [IDL.Nat, IDL.Text, IDL.Text, IDL.Text, IDL.Text],
+        [IDL.Bool],
+        [],
+      ),
   });
 };
 

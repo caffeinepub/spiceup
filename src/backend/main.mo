@@ -4,9 +4,9 @@ import Text "mo:core/Text";
 import Time "mo:core/Time";
 import Iter "mo:core/Iter";
 import Runtime "mo:core/Runtime";
+import Migration "migration";
 
-
-
+(with migration = Migration.run)
 actor {
   public type Assessment = {
     id : Nat;
@@ -79,6 +79,15 @@ actor {
     globalWeaknesses : Text; // JSON array of strings
   };
 
+  public type ProjectEvidence = {
+    id : Nat;
+    assessmentId : Nat;
+    processId : Text;
+    name : Text;
+    link : Text;
+    version : Text;
+  };
+
   stable var nextId = 1;
 
   stable var assessmentEntries : [(Nat, Assessment)] = [];
@@ -87,6 +96,7 @@ actor {
   stable var dayEntries : [(Nat, AssessmentDay)] = [];
   stable var practiceRatingEntries : [(Nat, PracticeRating)] = [];
   stable var reportGlobalInputsEntries : [(Nat, ReportGlobalInputs)] = [];
+  stable var projectEvidenceEntries : [(Nat, ProjectEvidence)] = [];
 
   let assessments = Map.fromIter<Nat, Assessment>(assessmentEntries.values());
   let assessmentInfoData = Map.fromIter<Nat, AssessmentInfoData>(assessmentInfoEntries.values());
@@ -94,6 +104,7 @@ actor {
   let assessmentDays = Map.fromIter<Nat, AssessmentDay>(dayEntries.values());
   let practiceRatings = Map.fromIter<Nat, PracticeRating>(practiceRatingEntries.values());
   let reportGlobalInputs = Map.fromIter<Nat, ReportGlobalInputs>(reportGlobalInputsEntries.values());
+  let projectEvidences = Map.fromIter<Nat, ProjectEvidence>(projectEvidenceEntries.values());
 
   // Delete operation: Remove ALL related data for an assessment
   public shared ({ caller }) func deleteAssessment(id : Nat) : async () {
@@ -115,6 +126,12 @@ actor {
       func((_, rating)) { rating.assessmentId != id }
     );
     practiceRatingEntries := filteredRatingEntries;
+
+    // Remove all project evidence entries for this assessment
+    let filteredEvidenceEntries = projectEvidenceEntries.filter(
+      func((_, evidence)) { evidence.assessmentId != id }
+    );
+    projectEvidenceEntries := filteredEvidenceEntries;
   };
 
   // Assessment CRUD
@@ -295,6 +312,56 @@ actor {
     };
   };
 
+  // Project Evidence CRUD
+  public shared ({ caller }) func addProjectEvidence(assessmentId : Nat, processId : Text, name : Text, link : Text, version : Text) : async Nat {
+    let id = nextId;
+    nextId += 1;
+
+    let evidence : ProjectEvidence = {
+      id;
+      assessmentId;
+      processId;
+      name;
+      link;
+      version;
+    };
+
+    projectEvidences.add(id, evidence);
+    id;
+  };
+
+  public shared ({ caller }) func updateProjectEvidence(id : Nat, processId : Text, name : Text, link : Text, version : Text) : async Bool {
+    switch (projectEvidences.get(id)) {
+      case (null) { Runtime.trap("Project Evidence not found") };
+      case (?existing) {
+        let updatedEvidence = {
+          existing with
+          processId;
+          name;
+          link;
+          version;
+        };
+        projectEvidences.add(id, updatedEvidence);
+        true;
+      };
+    };
+  };
+
+  public shared ({ caller }) func deleteProjectEvidence(id : Nat) : async Bool {
+    if (not projectEvidences.containsKey(id)) {
+      Runtime.trap("Project Evidence not found");
+    };
+    projectEvidences.remove(id);
+    true;
+  };
+
+  public query ({ caller }) func getProjectEvidenceForAssessment(assessmentId : Nat) : async [ProjectEvidence] {
+    let filteredEvidence = projectEvidences.values().filter(
+      func(evidence) { evidence.assessmentId == assessmentId }
+    );
+    filteredEvidence.toArray();
+  };
+
   system func preupgrade() {
     assessmentEntries := assessments.entries().toArray();
     assessmentInfoEntries := assessmentInfoData.entries().toArray();
@@ -302,6 +369,7 @@ actor {
     dayEntries := assessmentDays.entries().toArray();
     practiceRatingEntries := practiceRatings.entries().toArray();
     reportGlobalInputsEntries := reportGlobalInputs.entries().toArray();
+    projectEvidenceEntries := projectEvidences.entries().toArray();
   };
 
   system func postupgrade() {
@@ -311,6 +379,7 @@ actor {
     assessmentDays.clear();
     practiceRatings.clear();
     reportGlobalInputs.clear();
+    projectEvidences.clear();
 
     for ((k, v) in assessmentEntries.values()) { assessments.add(k, v) };
     for ((k, v) in assessmentInfoEntries.values()) {
@@ -326,6 +395,9 @@ actor {
     for ((k, v) in reportGlobalInputsEntries.values()) {
       reportGlobalInputs.add(k, v);
     };
+    for ((k, v) in projectEvidenceEntries.values()) {
+      projectEvidences.add(k, v);
+    };
 
     assessmentEntries := [];
     assessmentInfoEntries := [];
@@ -333,5 +405,6 @@ actor {
     dayEntries := [];
     practiceRatingEntries := [];
     reportGlobalInputsEntries := [];
+    projectEvidenceEntries := [];
   };
 };

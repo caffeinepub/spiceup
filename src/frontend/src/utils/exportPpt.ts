@@ -1,59 +1,45 @@
 /**
  * exportPpt.ts
- * PowerPoint (.pptx) export for Q-Insight assessment reports.
- * Slide order:
- *  1. Cover (assessment/project name + all assessors)
- *  2. Assessment Information (all info fields)
- *  3. Condensed Results Summary (process + CL + PA overall ratings)
- *  4. Full Results Matrix (all processes with PA ratings, autoPage)
- *  5. Global Strengths
- *  6. Global Weaknesses
- *  7+. Per-Process slides (findings by type, paginated — no summary box)
+ * PowerPoint (.pptx) export — Infineon template design.
+ *
+ * pptxgenjs is loaded dynamically from CDN (not bundled) to avoid
+ * requiring it in package.json.
  */
 
-// PptxGenJS loaded dynamically from CDN
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let _PptxGenJS: any = null;
+import type { ReportData } from "./reportData";
 
+// ─── CDN loader ──────────────────────────────────────────────────
 async function loadPptxGenJS(): Promise<any> {
-  if (_PptxGenJS) return _PptxGenJS;
+  if ((window as any).PptxGenJS) return (window as any).PptxGenJS;
   return new Promise((resolve, reject) => {
-    if ((window as any).PptxGenJS) {
-      _PptxGenJS = (window as any).PptxGenJS;
-      resolve(_PptxGenJS);
+    const existing = document.getElementById("pptxgenjs-cdn");
+    if (existing) {
+      existing.addEventListener("load", () =>
+        resolve((window as any).PptxGenJS),
+      );
       return;
     }
     const script = document.createElement("script");
+    script.id = "pptxgenjs-cdn";
     script.src =
       "https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js";
-    script.onload = () => {
-      _PptxGenJS = (window as any).PptxGenJS;
-      resolve(_PptxGenJS);
-    };
-    script.onerror = reject;
+    script.onload = () => resolve((window as any).PptxGenJS);
+    script.onerror = () =>
+      reject(new Error("Failed to load pptxgenjs from CDN"));
     document.head.appendChild(script);
   });
 }
-import type { ReportData } from "./reportData";
 
-// ─── Theme ─────────────────────────────────────────────────────
-
-const T = {
-  navy: "0F1F3D",
-  navyMid: "1E3A71",
-  amber: "F59E0B",
-  white: "FFFFFF",
-  lightBg: "F5F7FA",
-  darkText: "1E232D",
-  midGray: "6B7280",
-  lightGray: "E5E7EB",
-  green: "166534",
-  greenBg: "DCFCE7",
-  red: "991B1B",
-  redBg: "FEE2E2",
-  blueBg: "DBEAFE",
-  blueText: "1E40AF",
-};
+// ─── Theme colours ──────────────────────────────────────────────
+const TEAL = "1A8C7A";
+const TEAL_HDR = "2E8B7E";
+const ROW_DARK = "B8CECA";
+const ROW_LIGHT = "D8E8E6";
+const WHITE = "FFFFFF";
+const DARK_TEXT = "1A1A1A";
+const GRAY_TEXT = "555555";
+const FOOTER_C = "666666";
+const FOOTER_BOLD = "222222";
 
 const RATING_COLORS: Record<string, { fill: string; text: string }> = {
   F: { fill: "00B04F", text: "000000" },
@@ -61,456 +47,400 @@ const RATING_COLORS: Record<string, { fill: string; text: string }> = {
   P: { fill: "FFFF00", text: "000000" },
   N: { fill: "990000", text: "FFFFFF" },
 };
-
-function rc(rating: string | null | undefined): { fill: string; text: string } {
-  if (!rating || !RATING_COLORS[rating])
-    return { fill: "E5E7EB", text: "9CA3AF" };
-  return RATING_COLORS[rating];
+function rc(r?: string | null) {
+  return r && RATING_COLORS[r]
+    ? RATING_COLORS[r]
+    : { fill: "F3F4F6", text: "9CA3AF" };
 }
 
-function slideHeader(pptx: any, slide: any, title: string, subtitle?: string) {
-  slide.addShape(pptx.ShapeType.rect, {
-    x: 0,
-    y: 0,
-    w: "100%",
-    h: 0.82,
-    fill: { color: T.navy },
-  });
-  slide.addText(title, {
-    x: 0.25,
-    y: 0.07,
-    w: 8.5,
-    h: 0.45,
-    fontSize: 15,
-    bold: true,
-    color: T.white,
-  });
-  if (subtitle) {
-    slide.addText(subtitle, {
-      x: 0.25,
-      y: 0.54,
-      w: 9.0,
-      h: 0.22,
-      fontSize: 8,
-      color: "B4C8DC",
+// ─── Image helpers ──────────────────────────────────────────────
+async function fetchBase64(url: string): Promise<string> {
+  try {
+    const resp = await fetch(url);
+    const blob = await resp.blob();
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
     });
+  } catch {
+    return "";
   }
-  slide.addShape(pptx.ShapeType.rect, {
-    x: 0,
-    y: 0.82,
-    w: "100%",
-    h: 0.04,
-    fill: { color: T.amber },
+}
+
+// ─── Shared helpers ─────────────────────────────────────────────
+function addLogo(
+  slide: any,
+  b64: string,
+  x = 11.2,
+  y = 0.1,
+  w = 2.0,
+  h = 0.65,
+) {
+  if (!b64) return;
+  slide.addImage({ data: b64, x, y, w, h });
+}
+
+function addFooter(slide: any, dateStr: string, pageNum: number) {
+  slide.addText(dateStr, {
+    x: 0.25,
+    y: 7.1,
+    w: 1.5,
+    h: 0.22,
+    fontSize: 7,
+    color: FOOTER_BOLD,
+    fontFace: "Calibri",
+  });
+  slide.addText("restricted", {
+    x: 1.85,
+    y: 7.1,
+    w: 1.1,
+    h: 0.22,
+    fontSize: 7,
+    color: FOOTER_BOLD,
+    bold: true,
+    fontFace: "Calibri",
+  });
+  slide.addText(
+    "Copyright \u00A9 Infineon Technologies AG 2024. All rights reserved.",
+    {
+      x: 3.2,
+      y: 7.1,
+      w: 7.5,
+      h: 0.22,
+      fontSize: 7,
+      color: FOOTER_C,
+      align: "center",
+      fontFace: "Calibri",
+    },
+  );
+  slide.addText(String(pageNum), {
+    x: 12.5,
+    y: 7.1,
+    w: 0.65,
+    h: 0.22,
+    fontSize: 7,
+    color: FOOTER_C,
+    align: "right",
+    fontFace: "Calibri",
   });
 }
 
-// ─── Slide 1: Cover ─────────────────────────────────────────────
+function addSlideTitle(slide: any, title: string) {
+  slide.addText(title, {
+    x: 0.35,
+    y: 0.18,
+    w: 10.6,
+    h: 0.7,
+    fontSize: 22,
+    bold: true,
+    color: TEAL,
+    fontFace: "Calibri",
+  });
+}
 
-function addCoverSlide(pptx: any, data: ReportData) {
+// ─── Slide 1 — Cover ────────────────────────────────────────────
+function addCoverSlide(
+  pptx: any,
+  data: ReportData,
+  bgBase64: string,
+  logoBase64: string,
+) {
   const slide = pptx.addSlide();
   const info = data.info;
 
-  slide.addShape(pptx.ShapeType.rect, {
+  if (bgBase64) {
+    slide.addImage({ data: bgBase64, x: 0, y: 0, w: 13.33, h: 7.5 });
+  } else {
+    slide.addShape("rect", {
+      x: 0,
+      y: 0,
+      w: 13.33,
+      h: 4.0,
+      fill: { color: "0A7B6E" },
+    });
+  }
+
+  slide.addShape("rect", {
     x: 0,
-    y: 0,
-    w: "100%",
-    h: "100%",
-    fill: { color: T.navy },
-  });
-  slide.addShape(pptx.ShapeType.rect, {
-    x: 0,
-    y: 0,
-    w: 0.18,
-    h: "100%",
-    fill: { color: T.amber },
+    y: 4.0,
+    w: 13.33,
+    h: 3.5,
+    fill: { color: WHITE },
   });
 
-  slide.addText("Q-INSIGHT", {
-    x: 7.2,
-    y: 0.22,
-    w: 2.8,
-    h: 0.35,
-    fontSize: 11,
-    bold: true,
-    color: T.amber,
-    align: "right",
-  });
-  slide.addText("For Smarter Assessments", {
-    x: 7.2,
-    y: 0.58,
-    w: 2.8,
-    h: 0.22,
-    fontSize: 7.5,
-    color: "B4C8DC",
-    align: "right",
-  });
-
-  const mainTitle = info?.projectName?.trim() || data.assessmentName;
-  slide.addText(mainTitle, {
-    x: 0.4,
-    y: 1.3,
-    w: 9.3,
-    h: 1.4,
+  const title = info?.projectName?.trim() || data.assessmentName;
+  slide.addText(title, {
+    x: 0.5,
+    y: 4.1,
+    w: 9.0,
+    h: 0.9,
     fontSize: 30,
     bold: true,
-    color: T.white,
+    color: TEAL,
+    fontFace: "Calibri",
     wrap: true,
   });
 
-  slide.addText("Assessment Report", {
-    x: 0.4,
-    y: 2.8,
-    w: 6,
-    h: 0.4,
-    fontSize: 12,
-    color: "B4C8DC",
-  });
-
-  const assessorParts: string[] = [];
-  if (info?.leadAssessor?.trim())
-    assessorParts.push(`Lead: ${info.leadAssessor}`);
-  if (info?.coAssessor?.trim())
-    assessorParts.push(`Co-Assessor: ${info.coAssessor}`);
-  if (info?.sponsor?.trim()) assessorParts.push(`Sponsor: ${info.sponsor}`);
-  if (assessorParts.length > 0) {
-    slide.addText(assessorParts.join("   |   "), {
-      x: 0.4,
-      y: 3.25,
-      w: 9.3,
-      h: 0.3,
-      fontSize: 9,
-      color: "92C5E8",
+  const projId = info?.intacsId?.trim() || "";
+  if (projId) {
+    slide.addText(`Project ID: ${projId}`, {
+      x: 0.5,
+      y: 5.05,
+      w: 8.5,
+      h: 0.45,
+      fontSize: 14,
+      color: TEAL,
+      fontFace: "Calibri",
     });
   }
 
-  slide.addShape(pptx.ShapeType.line, {
-    x: 0.4,
-    y: 3.65,
-    w: 9.3,
-    h: 0,
-    line: { color: T.amber, width: 1.5 },
-  });
-
-  const leftItems: [string, string][] = [
-    ["Project", info?.projectName ?? "—"],
-    ["Assessment", data.assessmentName],
-    ["Start Date", info?.startDate ?? "—"],
-    ["End Date", info?.endDate ?? "—"],
-    ["Lead Assessor", info?.leadAssessor ?? "—"],
-  ];
-  const rightItems: [string, string][] = [
-    ["Assessed Party", info?.assessedParty ?? "—"],
-    ["Site", info?.assessedSite ?? "—"],
-    ["Assessor Body", info?.assessorBody ?? "—"],
-    ["Co-Assessor", info?.coAssessor ?? "—"],
-    ["Processes in Scope", String(data.processesInScope.length)],
-  ];
-
-  leftItems.forEach(([label, value], i) => {
-    const y = 3.8 + i * 0.4;
-    slide.addText(label, {
-      x: 0.4,
-      y,
-      w: 1.5,
-      h: 0.32,
-      fontSize: 7.5,
-      color: "B4C8DC",
-      bold: true,
-    });
-    slide.addText(value || "—", {
-      x: 1.95,
-      y,
-      w: 3.4,
-      h: 0.32,
-      fontSize: 8,
-      color: T.white,
-    });
-  });
-  rightItems.forEach(([label, value], i) => {
-    const y = 3.8 + i * 0.4;
-    slide.addText(label, {
-      x: 5.5,
-      y,
-      w: 1.5,
-      h: 0.32,
-      fontSize: 7.5,
-      color: "B4C8DC",
-      bold: true,
-    });
-    slide.addText(value || "—", {
-      x: 7.05,
-      y,
-      w: 3.0,
-      h: 0.32,
-      fontSize: 8,
-      color: T.white,
+  const lines: string[] = [];
+  if (info?.leadAssessor?.trim()) lines.push(info.leadAssessor.trim());
+  if (info?.coAssessor?.trim()) lines.push(info.coAssessor.trim());
+  if (info?.sponsor?.trim()) lines.push(info.sponsor.trim());
+  lines.forEach((line, i) => {
+    slide.addText(line, {
+      x: 0.5,
+      y: 5.6 + i * 0.38,
+      w: 8.0,
+      h: 0.35,
+      fontSize: 12,
+      color: DARK_TEXT,
+      fontFace: "Calibri",
     });
   });
 
-  slide.addText(`Generated: ${data.generatedAt}`, {
-    x: 0.4,
+  if (logoBase64) {
+    slide.addImage({ data: logoBase64, x: 10.3, y: 5.8, w: 2.7, h: 0.95 });
+  }
+
+  slide.addText("restricted", {
+    x: 5.5,
     y: 7.1,
-    w: 9.3,
-    h: 0.28,
-    fontSize: 7,
-    color: "5A7A9A",
+    w: 2.3,
+    h: 0.22,
+    fontSize: 8,
+    color: FOOTER_C,
     align: "center",
+    fontFace: "Calibri",
   });
 }
 
-// ─── Slide 2: Assessment Information ───────────────────────────
-
-function addAssessmentInfoSlide(pptx: any, data: ReportData) {
+// ─── Slide 2 — Assessment Information ───────────────────────────
+function addAssessmentInfoSlide(
+  pptx: any,
+  data: ReportData,
+  logoBase64: string,
+  pageNum: number,
+) {
   const slide = pptx.addSlide();
   const info = data.info;
-  slideHeader(pptx, slide, "Assessment Information", data.assessmentName);
 
-  if (!info) {
-    slide.addText("No assessment information available.", {
-      x: 0.25,
-      y: 1.0,
-      w: 9.5,
-      h: 0.5,
-      fontSize: 10,
-      color: T.midGray,
-    });
-    return;
-  }
+  addSlideTitle(slide, "Assessment Information");
+  addLogo(slide, logoBase64);
 
-  const leftFields: [string, string][] = [
-    ["Project Name", info.projectName],
-    ["Assessed Party", info.assessedParty],
-    ["Assessed Site", info.assessedSite],
-    ["Unit / Department", info.unitDepartment],
-    ["Start Date", info.startDate],
-    ["End Date", info.endDate],
-    ["Lead Assessor", info.leadAssessor],
-    ["Co-Assessor", info.coAssessor],
-    ["Sponsor", info.sponsor],
-    ["Assessor Body", info.assessorBody],
-  ];
-  const rightFields: [string, string][] = [
-    ["INTACS ID", info.intacsId],
-    ["PAM Version", info.pamVersion],
-    ["VDA Version", info.vdaVersion],
-    ["Assessment Class", info.assessmentClass],
-    ["Target CL", info.targetCapabilityLevel],
-    ["Functional Safety", info.functionalSafetyLevel],
-    ["Cybersecurity Level", info.cybersecurityLevel],
-    ["Model-Based Dev", info.modelBasedDev ? "Yes" : "No"],
-    ["Agile Environments", info.agileEnvironments ? "Yes" : "No"],
-    ["Dev External", info.developmentExternal ? "Yes" : "No"],
+  const dateStr = info?.startDate
+    ? new Date(info.startDate).toLocaleDateString("en-GB", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      })
+    : new Date().toLocaleDateString("en-GB", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      });
+
+  let timeline = "";
+  if (info?.startDate && info?.endDate)
+    timeline = `${info.startDate} \u2013 ${info.endDate}`;
+  else if (info?.startDate) timeline = info.startDate;
+
+  const fields: [string, string][] = [
+    ["Project Name", info?.projectName || ""],
+    ["Project ID", info?.intacsId || ""],
+    ["Assessed Project", info?.assessedParty || ""],
+    ["Target Level", info?.targetCapabilityLevel || ""],
+    ["PAM Version", info?.pamVersion || ""],
+    ["Assessment Timeline", timeline],
+    ["Sponsor", info?.sponsor || ""],
+    ["Lead Assessor", info?.leadAssessor || ""],
+    ["Co-Assessors", info?.coAssessor || ""],
   ];
 
-  const startY = 0.95;
-  const rowH = 0.38;
-
-  leftFields.forEach(([label, value], i) => {
-    const y = startY + i * rowH;
-    const rowBg = i % 2 === 0 ? "F8F9FC" : T.white;
-    slide.addShape(pptx.ShapeType.rect, {
-      x: 0.2,
-      y,
-      w: 4.6,
-      h: rowH - 0.03,
-      fill: { color: rowBg },
-    });
-    slide.addText(label, {
-      x: 0.25,
-      y: y + 0.04,
-      w: 1.5,
-      h: rowH - 0.1,
-      fontSize: 8,
-      color: T.midGray,
-      bold: true,
-    });
-    slide.addText(value || "—", {
-      x: 1.8,
-      y: y + 0.04,
-      w: 2.9,
-      h: rowH - 0.1,
-      fontSize: 8.5,
-      color: T.darkText,
-    });
-  });
-
-  rightFields.forEach(([label, value], i) => {
-    const y = startY + i * rowH;
-    const rowBg = i % 2 === 0 ? "F8F9FC" : T.white;
-    slide.addShape(pptx.ShapeType.rect, {
-      x: 5.1,
-      y,
-      w: 4.7,
-      h: rowH - 0.03,
-      fill: { color: rowBg },
-    });
-    slide.addText(label, {
-      x: 5.15,
-      y: y + 0.04,
-      w: 1.6,
-      h: rowH - 0.1,
-      fontSize: 8,
-      color: T.midGray,
-      bold: true,
-    });
-    slide.addText(value || "—", {
-      x: 6.8,
-      y: y + 0.04,
-      w: 2.9,
-      h: rowH - 0.1,
-      fontSize: 8.5,
-      color: T.darkText,
-    });
-  });
-
-  if (info.projectScope) {
-    const y = startY + leftFields.length * rowH;
-    slide.addText("Project Scope:", {
-      x: 0.25,
-      y,
-      w: 1.5,
-      h: 0.28,
-      fontSize: 8,
-      color: T.midGray,
-      bold: true,
-    });
-    slide.addText(info.projectScope, {
-      x: 0.25,
-      y: y + 0.28,
-      w: 9.5,
-      h: 0.55,
-      fontSize: 8,
-      color: T.darkText,
-      wrap: true,
-    });
+  let y = 1.1;
+  for (const [label, value] of fields) {
+    slide.addText(
+      [
+        { text: "\u2013  ", options: { color: TEAL, bold: false } },
+        { text: `${label}: `, options: { color: DARK_TEXT, bold: true } },
+        { text: value || "", options: { color: DARK_TEXT, bold: false } },
+      ],
+      {
+        x: 0.35,
+        y,
+        w: 12.0,
+        h: 0.42,
+        fontSize: 13,
+        fontFace: "Calibri",
+        valign: "middle",
+      },
+    );
+    y += 0.48;
   }
 
-  if (info.additionalRemarks) {
-    const y = startY + leftFields.length * rowH + (info.projectScope ? 0.9 : 0);
-    slide.addText("Remarks:", {
-      x: 0.25,
-      y,
-      w: 1.5,
-      h: 0.28,
-      fontSize: 8,
-      color: T.midGray,
-      bold: true,
-    });
-    slide.addText(info.additionalRemarks, {
-      x: 0.25,
-      y: y + 0.28,
-      w: 9.5,
-      h: 0.45,
-      fontSize: 8,
-      color: T.darkText,
-      wrap: true,
-    });
-  }
+  addFooter(slide, dateStr, pageNum);
 }
 
-// ─── Slide 3: Condensed Results Summary ────────────────────────
-
-function addCondensedResultsSlide(pptx: any, data: ReportData) {
+// ─── Slide 3 — Assessment Scope ─────────────────────────────────
+function addAssessmentScopeSlide(
+  pptx: any,
+  data: ReportData,
+  logoBase64: string,
+  pageNum: number,
+) {
   const slide = pptx.addSlide();
-  slideHeader(
-    pptx,
-    slide,
-    "Assessment Results Summary",
-    `${data.processesInScope.length} processes in scope`,
-  );
+  addSlideTitle(slide, "Assessment Scope");
+  addLogo(slide, logoBase64);
 
-  const legendItems: [string, string, string][] = [
-    ["F", "Fully (86–100%)", "00B04F"],
-    ["L", "Largely (51–85%)", "92D050"],
-    ["P", "Partially (16–50%)", "FFFF00"],
-    ["N", "Not Achieved (0–15%)", "990000"],
-  ];
-  legendItems.forEach(([code, label, color], i) => {
-    const x = 0.25 + i * 2.38;
-    slide.addShape(pptx.ShapeType.rect, {
-      x,
-      y: 0.92,
-      w: 0.22,
-      h: 0.18,
-      fill: { color },
-    });
-    slide.addText(`${code} = ${label}`, {
-      x: x + 0.27,
-      y: 0.92,
-      w: 2.0,
-      h: 0.18,
-      fontSize: 7,
-      color: T.darkText,
-    });
-  });
+  const dateStr = data.info?.startDate || "";
 
-  const tableData: any[] = [];
-  const hdOpts = (text: string, bg = T.navyMid) => ({
+  const hdr = (text: string, align = "left") => ({
     text,
     options: {
       bold: true,
-      fill: { color: bg },
-      color: T.white,
-      fontSize: 8,
-      align: "center" as const,
+      fill: { color: TEAL_HDR },
+      color: WHITE,
+      fontSize: 11,
+      fontFace: "Calibri",
+      align,
+      valign: "middle",
     },
   });
 
-  tableData.push([
-    hdOpts("Process", T.navy),
-    hdOpts("Target"),
-    hdOpts("PA 1.1"),
-    hdOpts("PA 2.1"),
-    hdOpts("PA 2.2"),
-    hdOpts("PA 3.1"),
-    hdOpts("PA 3.2"),
-    hdOpts("CL", "D97706"),
-  ]);
+  const tableData: any[] = [
+    [hdr("Process ID"), hdr("Process Area"), hdr("Target Level", "center")],
+  ];
+
+  data.processesInScope.forEach((proc, i) => {
+    const bg = i % 2 === 0 ? ROW_DARK : ROW_LIGHT;
+    const cell = (text: string, align = "left") => ({
+      text,
+      options: {
+        fill: { color: bg },
+        color: DARK_TEXT,
+        fontSize: 11,
+        fontFace: "Calibri",
+        align,
+        valign: "middle",
+      },
+    });
+    tableData.push([
+      cell(proc.id),
+      cell(proc.name),
+      cell(`L${proc.targetLevel}`, "center"),
+    ]);
+  });
+
+  slide.addTable(tableData, {
+    x: 0.5,
+    y: 1.15,
+    w: 12.3,
+    colW: [2.0, 8.5, 1.8],
+    rowH: 0.42,
+    border: { type: "none" },
+    autoPage: true,
+    fontSize: 11,
+  });
+
+  addFooter(slide, dateStr, pageNum);
+}
+
+// ─── Slide 4 — Assessment Results ───────────────────────────────
+function addAssessmentResultsSlide(
+  pptx: any,
+  data: ReportData,
+  logoBase64: string,
+  pageNum: number,
+) {
+  const slide = pptx.addSlide();
+  addSlideTitle(slide, "Assessment Results");
+  addLogo(slide, logoBase64);
+
+  const dateStr = data.info?.startDate || "";
+
+  const hdr = (text: string, align = "center") => ({
+    text,
+    options: {
+      bold: true,
+      fill: { color: TEAL_HDR },
+      color: WHITE,
+      fontSize: 10,
+      fontFace: "Calibri",
+      align,
+      valign: "middle",
+    },
+  });
+
+  const tableData: any[] = [
+    [
+      hdr("Process Areas", "left"),
+      hdr("Target\nlevel"),
+      hdr("PA 1.1"),
+      hdr("PA 2.1"),
+      hdr("PA 2.2"),
+      hdr("PA3.1"),
+      hdr("PA3.2"),
+      hdr("Achieved\nLevel"),
+    ],
+  ];
 
   for (const proc of data.processes) {
-    const rowBg = tableData.length % 2 === 0 ? "F8F9FC" : T.white;
     const mkPA = (paId: string, minLvl: number) => {
-      if (proc.targetLevel < minLvl)
+      if (proc.targetLevel < minLvl) {
         return {
-          text: "—",
-          options: {
-            fill: { color: "E5E7EB" },
-            color: "9CA3AF",
-            fontSize: 8,
-            align: "center" as const,
-          },
+          text: "",
+          options: { fill: { color: "F3F4F6" }, color: "D1D5DB", fontSize: 9 },
         };
+      }
       const r = proc.paRatings[paId] ?? null;
       const c = rc(r);
       return {
-        text: r ?? "—",
+        text: r ?? "",
         options: {
           fill: { color: c.fill },
           color: c.text,
           bold: !!r,
-          fontSize: 8,
-          align: "center" as const,
+          fontSize: 10,
+          align: "center",
+          fontFace: "Calibri",
+          valign: "middle",
         },
       };
     };
     const cl = proc.capabilityLevel;
     tableData.push([
       {
-        text: `${proc.id}\n${proc.label}`,
+        text: `${proc.id} ${proc.label}`,
         options: {
-          fill: { color: rowBg },
-          color: T.darkText,
-          bold: true,
-          fontSize: 7.5,
+          fill: { color: WHITE },
+          color: DARK_TEXT,
+          fontSize: 9,
+          fontFace: "Calibri",
+          valign: "middle",
         },
       },
       {
         text: `L${proc.targetLevel}`,
         options: {
-          fill: { color: rowBg },
-          color: T.midGray,
-          fontSize: 8,
-          align: "center" as const,
+          fill: { color: WHITE },
+          color: DARK_TEXT,
+          fontSize: 9,
+          align: "center",
+          fontFace: "Calibri",
+          valign: "middle",
         },
       },
       mkPA("PA1.1", 1),
@@ -520,85 +450,88 @@ function addCondensedResultsSlide(pptx: any, data: ReportData) {
       mkPA("PA3.2", 3),
       cl === null
         ? {
-            text: "—",
+            text: "",
             options: {
-              fill: { color: "FEF3C7" },
-              color: "9CA3AF",
-              fontSize: 8,
-              align: "center" as const,
+              fill: { color: WHITE },
+              color: GRAY_TEXT,
+              fontSize: 9,
+              align: "center",
             },
           }
         : {
             text: String(cl),
             options: {
-              fill: { color: "F59E0B" },
-              color: T.white,
+              fill: { color: WHITE },
+              color: DARK_TEXT,
               bold: true,
-              fontSize: 9,
-              align: "center" as const,
+              fontSize: 10,
+              align: "center",
+              fontFace: "Calibri",
+              valign: "middle",
             },
           },
     ]);
   }
 
   slide.addTable(tableData, {
-    x: 0.2,
-    y: 1.18,
-    w: 9.6,
-    h: 5.7,
-    colW: [3.0, 0.55, 0.75, 0.75, 0.75, 0.75, 0.75, 0.6],
-    border: { type: "solid", color: "D1D5DB", pt: 0.5 },
+    x: 0.35,
+    y: 1.1,
+    w: 12.6,
+    colW: [4.4, 0.9, 1.0, 1.0, 1.0, 1.0, 1.0, 1.4],
+    rowH: 0.4,
+    border: { type: "solid", color: "555555", pt: 0.5 },
     autoPage: true,
-    fontSize: 8,
+    fontSize: 9,
   });
+
+  addFooter(slide, dateStr, pageNum);
 }
 
-// ─── Slide 4: Full Results Matrix ───────────────────────────────
-
-function addFullMatrixSlide(pptx: any, data: ReportData) {
+// ─── Slide 5 — Full Results Matrix ──────────────────────────────
+function addFullMatrixSlide(
+  pptx: any,
+  data: ReportData,
+  logoBase64: string,
+  pageNum: number,
+) {
   if (data.processes.length === 0) return;
   const slide = pptx.addSlide();
-  slideHeader(
-    pptx,
-    slide,
-    "Full Results Matrix",
-    "All practices with individual ratings",
-  );
+  addSlideTitle(slide, "Full Results Matrix");
+  addLogo(slide, logoBase64);
 
-  const tableData: any[] = [];
-  const hdr = (text: string, bg = T.navyMid, color = T.white, fs = 7) => ({
+  const dateStr = data.info?.startDate || "";
+
+  const hdr = (text: string, align = "center") => ({
     text,
     options: {
       bold: true,
-      fill: { color: bg },
-      color,
-      fontSize: fs,
-      align: "center" as const,
+      fill: { color: TEAL_HDR },
+      color: WHITE,
+      fontSize: 8,
+      fontFace: "Calibri",
+      align,
+      valign: "middle",
     },
   });
 
-  tableData.push([
-    hdr("Process", T.navy, T.white, 8),
-    hdr("Level", T.navy),
-    hdr("Practice ID", T.navy),
-    hdr("Practice Title", T.navy),
-    hdr("Rating", T.navy),
-  ]);
+  const tableData: any[] = [
+    [hdr("Process", "left"), hdr("Practice ID"), hdr("Rating")],
+  ];
 
   for (const proc of data.processes) {
     tableData.push([
       {
-        text: `${proc.id} – ${proc.label}`,
+        text: `${proc.id} \u2013 ${proc.label}`,
         options: {
           bold: true,
-          fill: { color: T.navyMid },
-          color: T.white,
-          fontSize: 8,
-          colspan: 5,
+          fill: { color: TEAL_HDR },
+          color: WHITE,
+          fontSize: 9,
+          fontFace: "Calibri",
+          colspan: 3,
+          valign: "middle",
         },
       },
-      { text: "", options: {} },
-      { text: "", options: {} },
       { text: "", options: {} },
       { text: "", options: {} },
     ]);
@@ -610,70 +543,52 @@ function addFullMatrixSlide(pptx: any, data: ReportData) {
         text: "PA 1.1",
         options: {
           bold: true,
-          fill: { color: "E0E7FF" },
-          color: "3730A3",
+          fill: { color: "D6EAE7" },
+          color: "1A7066",
           fontSize: 7,
-          colspan: 3,
+          colspan: 2,
+          fontFace: "Calibri",
+          valign: "middle",
         },
       },
       { text: "", options: {} },
-      { text: "", options: {} },
       {
-        text: "Overall",
-        options: {
-          fill: { color: "E0E7FF" },
-          color: "3730A3",
-          fontSize: 7,
-          align: "right" as const,
-        },
-      },
-      {
-        text: pa11 ?? "—",
+        text: pa11 ?? "\u2014",
         options: {
           fill: { color: cPA11.fill },
           color: cPA11.text,
           bold: !!pa11,
           fontSize: 8,
-          align: "center" as const,
+          align: "center",
+          fontFace: "Calibri",
         },
       },
     ]);
 
     for (const bp of proc.bpDetails) {
       const c = rc(bp.rating);
-      const rowBg = tableData.length % 2 === 0 ? "F8F9FC" : T.white;
+      const bg = tableData.length % 2 === 0 ? "F5F9F8" : WHITE;
       tableData.push([
-        { text: "", options: { fill: { color: rowBg } } },
-        {
-          text: "BP",
-          options: {
-            fill: { color: rowBg },
-            color: T.midGray,
-            fontSize: 7,
-            align: "center" as const,
-          },
-        },
+        { text: "", options: { fill: { color: bg } } },
         {
           text: bp.id,
           options: {
-            fill: { color: rowBg },
-            color: T.darkText,
+            fill: { color: bg },
+            color: DARK_TEXT,
             bold: true,
             fontSize: 7,
+            fontFace: "Calibri",
           },
         },
         {
-          text: bp.title.length > 60 ? `${bp.title.slice(0, 57)}...` : bp.title,
-          options: { fill: { color: rowBg }, color: T.darkText, fontSize: 7 },
-        },
-        {
-          text: bp.rating ?? "—",
+          text: bp.rating ?? "\u2014",
           options: {
-            fill: { color: bp.rating ? c.fill : "E5E7EB" },
+            fill: { color: bp.rating ? c.fill : "F3F4F6" },
             color: bp.rating ? c.text : "9CA3AF",
             bold: !!bp.rating,
             fontSize: 8,
-            align: "center" as const,
+            align: "center",
+            fontFace: "Calibri",
           },
         },
       ]);
@@ -685,73 +600,54 @@ function addFullMatrixSlide(pptx: any, data: ReportData) {
       const cPA = rc(paRating);
       tableData.push([
         {
-          text: `${paId} – ${gpGroup.paName}`,
+          text: `${paId} \u2013 ${gpGroup.paName}`,
           options: {
             bold: true,
-            fill: { color: "E0E7FF" },
-            color: "3730A3",
+            fill: { color: "D6EAE7" },
+            color: "1A7066",
             fontSize: 7,
-            colspan: 3,
+            colspan: 2,
+            fontFace: "Calibri",
+            valign: "middle",
           },
         },
         { text: "", options: {} },
-        { text: "", options: {} },
         {
-          text: "Overall",
-          options: {
-            fill: { color: "E0E7FF" },
-            color: "3730A3",
-            fontSize: 7,
-            align: "right" as const,
-          },
-        },
-        {
-          text: paRating ?? "—",
+          text: paRating ?? "\u2014",
           options: {
             fill: { color: cPA.fill },
             color: cPA.text,
             bold: !!paRating,
             fontSize: 8,
-            align: "center" as const,
+            align: "center",
+            fontFace: "Calibri",
           },
         },
       ]);
       for (const gp of gpGroup.practices) {
         const c = rc(gp.rating);
-        const rowBg = tableData.length % 2 === 0 ? "F8F9FC" : T.white;
+        const bg = tableData.length % 2 === 0 ? "F5F9F8" : WHITE;
         tableData.push([
-          { text: "", options: { fill: { color: rowBg } } },
-          {
-            text: "GP",
-            options: {
-              fill: { color: rowBg },
-              color: T.midGray,
-              fontSize: 7,
-              align: "center" as const,
-            },
-          },
+          { text: "", options: { fill: { color: bg } } },
           {
             text: gp.id,
             options: {
-              fill: { color: rowBg },
-              color: T.darkText,
+              fill: { color: bg },
+              color: DARK_TEXT,
               bold: true,
               fontSize: 7,
+              fontFace: "Calibri",
             },
           },
           {
-            text:
-              gp.title.length > 60 ? `${gp.title.slice(0, 57)}...` : gp.title,
-            options: { fill: { color: rowBg }, color: T.darkText, fontSize: 7 },
-          },
-          {
-            text: gp.rating ?? "—",
+            text: gp.rating ?? "\u2014",
             options: {
-              fill: { color: gp.rating ? c.fill : "E5E7EB" },
+              fill: { color: gp.rating ? c.fill : "F3F4F6" },
               color: gp.rating ? c.text : "9CA3AF",
               bold: !!gp.rating,
               fontSize: 8,
-              align: "center" as const,
+              align: "center",
+              fontFace: "Calibri",
             },
           },
         ]);
@@ -760,88 +656,122 @@ function addFullMatrixSlide(pptx: any, data: ReportData) {
   }
 
   slide.addTable(tableData, {
-    x: 0.2,
-    y: 0.95,
-    w: 9.6,
-    h: 6.5,
-    colW: [2.0, 0.5, 1.4, 4.7, 0.7],
-    border: { type: "solid", color: "D1D5DB", pt: 0.5 },
+    x: 0.3,
+    y: 1.05,
+    w: 12.7,
+    colW: [3.5, 7.8, 1.4],
+    rowH: 0.3,
+    border: { type: "solid", color: "D1D5DB", pt: 0.4 },
     autoPage: true,
     fontSize: 7,
   });
+
+  addFooter(slide, dateStr, pageNum);
 }
 
-// ─── Slide 5: Global Strengths ──────────────────────────────────
-
-function addGlobalStrengthsSlide(pptx: any, data: ReportData) {
+// ─── Slide 6 — Global Strengths ─────────────────────────────────
+function addGlobalStrengthsSlide(
+  pptx: any,
+  data: ReportData,
+  logoBase64: string,
+  pageNum: number,
+) {
   const slide = pptx.addSlide();
-  slideHeader(pptx, slide, "Global Strengths", data.assessmentName);
+  addSlideTitle(slide, "Global Strengths");
+  addLogo(slide, logoBase64);
 
+  const dateStr = data.info?.startDate || "";
   const items = data.globalStrengths.filter((s) => s.trim());
+
   if (items.length === 0) {
     slide.addText("No global strengths recorded.", {
-      x: 0.25,
-      y: 1.1,
-      w: 9.5,
+      x: 0.4,
+      y: 1.2,
+      w: 12.0,
       h: 0.4,
-      fontSize: 10,
-      color: T.midGray,
+      fontSize: 11,
+      color: GRAY_TEXT,
       italic: true,
+      fontFace: "Calibri",
     });
-    return;
+  } else {
+    let y = 1.15;
+    for (const item of items) {
+      slide.addText(
+        [
+          { text: "\u2013  ", options: { color: TEAL, bold: false } },
+          { text: item, options: { color: DARK_TEXT } },
+        ],
+        {
+          x: 0.35,
+          y,
+          w: 12.0,
+          h: 0.42,
+          fontSize: 13,
+          fontFace: "Calibri",
+          wrap: true,
+          valign: "middle",
+        },
+      );
+      y += 0.48;
+    }
   }
 
-  items.forEach((item, i) => {
-    const y = 1.05 + i * 0.46;
-    slide.addText(`${i + 1}.  ${item}`, {
-      x: 0.3,
-      y,
-      w: 9.4,
-      h: 0.38,
-      fontSize: 9.5,
-      color: T.darkText,
-      wrap: true,
-      valign: "middle",
-    });
-  });
+  addFooter(slide, dateStr, pageNum);
 }
 
-// ─── Slide 6: Global Weaknesses ────────────────────────────────
-
-function addGlobalWeaknessesSlide(pptx: any, data: ReportData) {
+// ─── Slide 7 — Global Weaknesses ────────────────────────────────
+function addGlobalWeaknessesSlide(
+  pptx: any,
+  data: ReportData,
+  logoBase64: string,
+  pageNum: number,
+) {
   const slide = pptx.addSlide();
-  slideHeader(pptx, slide, "Global Weaknesses", data.assessmentName);
+  addSlideTitle(slide, "Global Weakness");
+  addLogo(slide, logoBase64);
 
+  const dateStr = data.info?.startDate || "";
   const items = data.globalWeaknesses.filter((s) => s.trim());
+
   if (items.length === 0) {
     slide.addText("No global weaknesses recorded.", {
-      x: 0.25,
-      y: 1.1,
-      w: 9.5,
+      x: 0.4,
+      y: 1.2,
+      w: 12.0,
       h: 0.4,
-      fontSize: 10,
-      color: T.midGray,
+      fontSize: 11,
+      color: GRAY_TEXT,
       italic: true,
+      fontFace: "Calibri",
     });
-    return;
+  } else {
+    let y = 1.15;
+    for (const item of items) {
+      slide.addText(
+        [
+          { text: "\u2013  ", options: { color: TEAL, bold: false } },
+          { text: item, options: { color: DARK_TEXT } },
+        ],
+        {
+          x: 0.35,
+          y,
+          w: 12.0,
+          h: 0.42,
+          fontSize: 13,
+          fontFace: "Calibri",
+          wrap: true,
+          valign: "middle",
+        },
+      );
+      y += 0.48;
+    }
   }
 
-  items.forEach((item, i) => {
-    const y = 1.05 + i * 0.46;
-    slide.addText(`${i + 1}.  ${item}`, {
-      x: 0.3,
-      y,
-      w: 9.4,
-      h: 0.38,
-      fontSize: 9.5,
-      color: T.darkText,
-      wrap: true,
-      valign: "middle",
-    });
-  });
+  addFooter(slide, dateStr, pageNum);
 }
 
-// ─── Slides 7+: Per-Process ─────────────────────────────────────
+// ─── Slides 8+ — Per-Process ────────────────────────────────────
 
 interface FindingItem {
   text: string;
@@ -851,41 +781,41 @@ interface FindingItem {
 
 function collectFindings(proc: ReportData["processes"][0]): FindingItem[] {
   const items: FindingItem[] = [];
-  const allPractices = [
+  const practices = [
     ...proc.bpDetails,
     ...proc.gpGroups.flatMap((g) => g.practices),
   ];
-  for (const p of allPractices) {
-    if (p.strengths) {
-      for (const raw of p.strengths.split("\n")) {
-        const text = raw.trim();
-        if (text) items.push({ text, ref: p.id, type: "strength" });
-      }
+  for (const p of practices) {
+    for (const raw of (p.strengths || "").split("\n")) {
+      const t = raw.trim();
+      if (t) items.push({ text: t, ref: p.id, type: "strength" });
     }
-    if (p.weaknesses) {
-      for (const raw of p.weaknesses.split("\n")) {
-        const text = raw.trim();
-        if (text) items.push({ text, ref: p.id, type: "weakness" });
-      }
+    for (const raw of (p.weaknesses || "").split("\n")) {
+      const t = raw.trim();
+      if (t) items.push({ text: t, ref: p.id, type: "weakness" });
     }
-    if (p.suggestions) {
-      for (const raw of p.suggestions.split("\n")) {
-        const text = raw.trim();
-        if (text) items.push({ text, ref: p.id, type: "suggestion" });
-      }
+    for (const raw of (p.suggestions || "").split("\n")) {
+      const t = raw.trim();
+      if (t) items.push({ text: t, ref: p.id, type: "suggestion" });
     }
   }
   return items;
 }
 
-function addProcessSlides(pptx: any, proc: ReportData["processes"][0]) {
+function addProcessSlides(
+  pptx: any,
+  proc: ReportData["processes"][0],
+  logoBase64: string,
+  dateStr: string,
+  startPageNum: number,
+): number {
   const allFindings = collectFindings(proc);
-
-  const ITEMS_PER_PAGE = 16;
+  const ITEMS_PER_PAGE = 15;
   const totalPages = Math.max(
     1,
     Math.ceil(allFindings.length / ITEMS_PER_PAGE),
   );
+  let pageOffset = 0;
 
   for (let page = 0; page < totalPages; page++) {
     const slide = pptx.addSlide();
@@ -895,109 +825,152 @@ function addProcessSlides(pptx: any, proc: ReportData["processes"][0]) {
     );
     const pageTitle =
       totalPages > 1
-        ? `${proc.id} \u2013 ${proc.label} (${page + 1}/${totalPages})`
-        : `${proc.id} \u2013 ${proc.label}`;
-    const subtitle = `Target: L${proc.targetLevel}   |   CL: ${
-      proc.capabilityLevel !== null ? proc.capabilityLevel : "—"
-    }`;
+        ? `${proc.id}: ${proc.label} (${page + 1}/${totalPages})`
+        : `${proc.id}: ${proc.label}`;
 
-    slideHeader(pptx, slide, pageTitle, subtitle);
+    addSlideTitle(slide, pageTitle);
+    addLogo(slide, logoBase64);
 
-    const findX = 0.2;
-    const findW = 9.6;
-    let findY = 0.92;
+    const strengths = pageFindings.filter((f) => f.type === "strength");
+    const weaknesses = pageFindings.filter((f) => f.type === "weakness");
+    const suggestions = pageFindings.filter((f) => f.type === "suggestion");
 
-    const pageStrengths = pageFindings.filter((f) => f.type === "strength");
-    const pageWeaknesses = pageFindings.filter((f) => f.type === "weakness");
-    const pageSuggestions = pageFindings.filter((f) => f.type === "suggestion");
+    let y = 1.15;
 
-    if (allFindings.length === 0) {
-      slide.addText("No findings recorded for this process.", {
-        x: findX,
-        y: findY + 0.3,
-        w: findW,
-        h: 0.4,
-        fontSize: 9,
-        color: T.midGray,
-        italic: true,
-      });
-      continue;
-    }
-
-    function renderSection(sectionTitle: string, items: FindingItem[]) {
-      if (items.length === 0) return;
-
-      // Section heading — plain, bold, dark text
-      slide.addText(sectionTitle, {
-        x: findX,
-        y: findY,
-        w: findW,
-        h: 0.28,
-        fontSize: 10,
+    function renderSection(sectionLabel: string, items: FindingItem[]) {
+      slide.addText(`${sectionLabel}:`, {
+        x: 0.35,
+        y,
+        w: 12.0,
+        h: 0.35,
+        fontSize: 13,
         bold: true,
-        color: T.darkText,
+        color: DARK_TEXT,
+        fontFace: "Calibri",
       });
-      findY += 0.32;
+      y += items.length === 0 ? 0.42 : 0.38;
 
       for (const item of items) {
-        const maxTextLen = 130;
         const displayText =
-          item.text.length > maxTextLen
-            ? `${item.text.slice(0, maxTextLen)}...`
+          item.text.length > 140
+            ? `${item.text.slice(0, 137)}\u2026`
             : item.text;
-        const refText = `[${item.ref}]`;
-
         slide.addText(
           [
+            { text: "\u2013  ", options: { color: TEAL, bold: false } },
+            { text: displayText, options: { color: DARK_TEXT, bold: false } },
             {
-              text: `\u2022  ${displayText}  `,
-              options: { color: T.darkText },
+              text: `  [${item.ref}]`,
+              options: { color: GRAY_TEXT, bold: false },
             },
-            { text: refText, options: { color: T.midGray, bold: true } },
           ],
           {
-            x: findX + 0.15,
-            y: findY,
-            w: findW - 0.15,
-            h: 0.32,
-            fontSize: 9,
+            x: 0.35,
+            y,
+            w: 12.0,
+            h: 0.38,
+            fontSize: 11,
+            fontFace: "Calibri",
             wrap: true,
             valign: "middle",
           },
         );
-        findY += 0.34;
+        y += 0.4;
       }
-      findY += 0.12;
+      y += 0.1;
     }
 
-    renderSection("Strengths", pageStrengths);
-    renderSection("Weaknesses", pageWeaknesses);
-    renderSection("Suggestions", pageSuggestions);
+    if (allFindings.length === 0 && page === 0) {
+      slide.addText("No findings recorded for this process.", {
+        x: 0.35,
+        y,
+        w: 12.0,
+        h: 0.4,
+        fontSize: 11,
+        color: GRAY_TEXT,
+        italic: true,
+        fontFace: "Calibri",
+      });
+    } else {
+      renderSection("Strength", strengths);
+      renderSection("Weakness", weaknesses);
+      renderSection("Suggestions", suggestions);
+    }
+
+    addFooter(slide, dateStr, startPageNum + pageOffset);
+    pageOffset++;
   }
+
+  return pageOffset;
 }
 
-// ─── Main Export ─────────────────────────────────────────────────
-
+// ─── Main export ─────────────────────────────────────────────────
 export async function exportToPpt(data: ReportData): Promise<void> {
-  const PptxGenJSClass = await loadPptxGenJS();
-  const pptx = new PptxGenJSClass();
+  const PptxGenJS = await loadPptxGenJS();
+  const pptx = new PptxGenJS();
   pptx.layout = "LAYOUT_WIDE";
   pptx.author = "Q-Insight";
   pptx.company = "Q-Insight";
   pptx.subject = `Assessment Report: ${data.assessmentName}`;
-  pptx.title = `Q-Insight — ${data.assessmentName}`;
+  pptx.title = data.assessmentName;
 
-  addCoverSlide(pptx, data);
-  addAssessmentInfoSlide(pptx, data);
-  addCondensedResultsSlide(pptx, data);
-  addFullMatrixSlide(pptx, data);
-  addGlobalStrengthsSlide(pptx, data);
-  addGlobalWeaknessesSlide(pptx, data);
+  const [bgBase64, logoBase64] = await Promise.all([
+    fetchBase64("/assets/generated/cover-bg.dim_1280x960.jpg"),
+    fetchBase64("/assets/uploads/Slide9-8.JPG"),
+  ]);
+
+  const dateStr = data.info?.startDate
+    ? new Date(data.info.startDate).toLocaleDateString("en-GB", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      })
+    : new Date().toLocaleDateString("en-GB", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      });
+
+  addCoverSlide(pptx, data, bgBase64, logoBase64);
+
+  let pageNum = 2;
+  addAssessmentInfoSlide(pptx, data, logoBase64, pageNum++);
+  addAssessmentScopeSlide(pptx, data, logoBase64, pageNum++);
+  addAssessmentResultsSlide(pptx, data, logoBase64, pageNum++);
+  addFullMatrixSlide(pptx, data, logoBase64, pageNum++);
+  addGlobalStrengthsSlide(pptx, data, logoBase64, pageNum++);
+  addGlobalWeaknessesSlide(pptx, data, logoBase64, pageNum++);
 
   for (const proc of data.processes) {
-    addProcessSlides(pptx, proc);
+    const pagesAdded = addProcessSlides(
+      pptx,
+      proc,
+      logoBase64,
+      dateStr,
+      pageNum,
+    );
+    pageNum += pagesAdded;
   }
 
-  const fileName = `QInsight-${data.assessmentName.replace(/[^a-z0-9]/gi, "_")}-Report.pptx`;
+  const projectName = (data.info?.projectName || data.assessmentName)
+    .replace(/[\/\\?%*:|"<>]/g, "-")
+    .trim();
+  const assessmentDate = data.info?.startDate
+    ? new Date(data.info.startDate)
+        .toLocaleDateString("en-GB", {
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+        })
+        .replace(/ /g, "-")
+    : new Date()
+        .toLocaleDateString("en-GB", {
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+        })
+        .replace(/ /g, "-");
+  const fileName = `${projectName}_ASPICE_v4.0 Assessment_${assessmentDate}_Readout.pptx`;
+
   await pptx.writeFile({ fileName });
 }

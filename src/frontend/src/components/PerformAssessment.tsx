@@ -1,6 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -45,12 +46,17 @@ import {
   PROCESS_GROUPS,
 } from "@/data/aspiceData";
 import {
+  useAddProjectEvidence,
+  useDeleteProjectEvidence,
   useGetAllAssessments,
   useGetAllPracticeRatingsForAssessment,
   useGetProcessGroupConfig,
+  useGetProjectEvidenceForAssessment,
   useSavePracticeRating,
+  useUpdateProjectEvidence,
 } from "@/hooks/useQueries";
 import { cn } from "@/lib/utils";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle,
   Bold,
@@ -70,7 +76,7 @@ import {
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import type { PracticeRating } from "../backend.d";
+import type { PracticeRating, ProjectEvidence } from "../backend.d";
 
 // ─── Types ─────────────────────────────────────────────────────
 
@@ -84,10 +90,11 @@ interface EvidenceItem {
 
 interface SwEntry {
   id: string;
-  type: "strength" | "weakness" | "observation";
+  type: "strength" | "weakness" | "observation" | "suggestion";
   text: string;
   status?: "draft" | "final";
   createdBy?: string;
+  referencedEvidenceIds?: string[];
 }
 
 interface PracticeState {
@@ -455,80 +462,142 @@ function RichTextEditor({
 function EvidenceDialog({
   open,
   onOpenChange,
+  assessmentId,
+  enabledProcessIds,
   initialEvidence,
-  onSubmit,
+  onSuccess,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  initialEvidence?: EvidenceItem & { index: number };
-  onSubmit: (item: EvidenceItem, index: number | null) => void;
+  assessmentId: bigint | null;
+  enabledProcessIds: string[];
+  initialEvidence?: ProjectEvidence;
+  onSuccess: () => void;
 }) {
-  const [description, setDescription] = useState(
-    initialEvidence?.description ?? "",
-  );
+  const addEvidence = useAddProjectEvidence();
+  const updateEvidence = useUpdateProjectEvidence();
+  const [name, setName] = useState(initialEvidence?.name ?? "");
   const [link, setLink] = useState(initialEvidence?.link ?? "");
   const [version, setVersion] = useState(initialEvidence?.version ?? "");
-  const [descriptionError, setDescriptionError] = useState("");
+  const [processId, setProcessId] = useState(initialEvidence?.processId ?? "");
+  const [nameError, setNameError] = useState("");
+  const [processError, setProcessError] = useState("");
 
   useEffect(() => {
     if (open) {
-      setDescription(initialEvidence?.description ?? "");
+      setName(initialEvidence?.name ?? "");
       setLink(initialEvidence?.link ?? "");
       setVersion(initialEvidence?.version ?? "");
-      setDescriptionError("");
+      setProcessId(initialEvidence?.processId ?? enabledProcessIds[0] ?? "");
+      setNameError("");
+      setProcessError("");
     }
-  }, [open, initialEvidence]);
+  }, [open, initialEvidence, enabledProcessIds]);
 
-  function handleSubmit() {
-    if (!description.trim()) {
-      setDescriptionError("Evidence name is required.");
-      return;
+  async function handleSubmit() {
+    let valid = true;
+    if (!name.trim()) {
+      setNameError("Evidence name is required.");
+      valid = false;
     }
-    setDescriptionError("");
-    onSubmit(
-      {
-        description: description.trim(),
-        link: link.trim(),
-        version: version.trim(),
-      },
-      initialEvidence?.index ?? null,
-    );
-    onOpenChange(false);
+    if (!processId) {
+      setProcessError("Process is required.");
+      valid = false;
+    }
+    if (!valid || !assessmentId) return;
+    try {
+      if (initialEvidence) {
+        await updateEvidence.mutateAsync({
+          id: initialEvidence.id,
+          processId,
+          name: name.trim(),
+          link: link.trim(),
+          version: version.trim(),
+          assessmentId: assessmentId.toString(),
+        });
+      } else {
+        await addEvidence.mutateAsync({
+          assessmentId,
+          processId,
+          name: name.trim(),
+          link: link.trim(),
+          version: version.trim(),
+        });
+      }
+      onSuccess();
+      onOpenChange(false);
+    } catch {
+      toast.error("Failed to save evidence");
+    }
   }
 
-  const isEdit = initialEvidence !== undefined;
+  const isEdit = !!initialEvidence;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg" data-ocid="perform.evidence_dialog">
         <DialogHeader>
           <DialogTitle className="font-heading text-base">
-            {isEdit ? "Edit Work Product" : "Add Work Product"}
+            {isEdit ? "Edit Evidence" : "Add Evidence"}
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-4 py-2">
           <div className="space-y-1.5">
             <Label
-              htmlFor="ev-description"
+              htmlFor="ev-process"
+              className="font-body text-xs font-medium text-muted-foreground"
+            >
+              Process <span className="text-destructive">*</span>
+            </Label>
+            <Select
+              value={processId}
+              onValueChange={(v) => {
+                setProcessId(v);
+                if (v) setProcessError("");
+              }}
+            >
+              <SelectTrigger
+                id="ev-process"
+                className={`font-body text-sm ${processError ? "border-destructive" : ""}`}
+                data-ocid="perform.evidence_process_select"
+              >
+                <SelectValue placeholder="Select process..." />
+              </SelectTrigger>
+              <SelectContent>
+                {enabledProcessIds.map((pid) => (
+                  <SelectItem key={pid} value={pid}>
+                    {pid}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {processError && (
+              <p className="text-xs text-destructive font-body mt-1">
+                {processError}
+              </p>
+            )}
+          </div>
+          <div className="space-y-1.5">
+            <Label
+              htmlFor="ev-name"
               className="font-body text-xs font-medium text-muted-foreground"
             >
               Evidence Name <span className="text-destructive">*</span>
             </Label>
-            <Textarea
-              id="ev-description"
-              value={description}
+            <Input
+              id="ev-name"
+              value={name}
               onChange={(e) => {
-                setDescription(e.target.value);
-                if (e.target.value.trim()) setDescriptionError("");
+                setName(e.target.value);
+                if (e.target.value.trim()) setNameError("");
               }}
               placeholder="Evidence name..."
-              rows={3}
-              className={`font-body text-sm resize-none ${descriptionError ? "border-destructive" : ""}`}
-              data-ocid="perform.evidence_description_input"
+              className={`font-body text-sm ${nameError ? "border-destructive" : ""}`}
+              data-ocid="perform.evidence_name_input"
             />
-            {descriptionError && (
+            {nameError && (
               <p className="text-xs text-destructive font-body mt-1">
-                {descriptionError}
+                {nameError}
               </p>
             )}
           </div>
@@ -576,11 +645,20 @@ function EvidenceDialog({
           </Button>
           <Button
             onClick={handleSubmit}
-            disabled={!description.trim()}
+            disabled={
+              !name.trim() ||
+              !processId ||
+              addEvidence.isPending ||
+              updateEvidence.isPending
+            }
             className="spice-gradient text-white border-0 font-body"
             data-ocid="perform.evidence_dialog_submit_button"
           >
-            {isEdit ? "Save Changes" : "Add Work Product"}
+            {addEvidence.isPending || updateEvidence.isPending
+              ? "Saving..."
+              : isEdit
+                ? "Save Changes"
+                : "Add Evidence"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -588,7 +666,7 @@ function EvidenceDialog({
   );
 }
 
-// ─── Add / Edit Entry Dialog ──────────────────────────────────────
+// ─── Add / Edit Finding Dialog ──────────────────────────────────
 
 function AddEntryDialog({
   open,
@@ -597,6 +675,7 @@ function AddEntryDialog({
   practiceId,
   onSubmit,
   currentUser,
+  projectEvidence,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -604,15 +683,19 @@ function AddEntryDialog({
   practiceId: string;
   onSubmit: (entry: SwEntry) => void;
   currentUser?: string;
+  projectEvidence?: ProjectEvidence[];
 }) {
   const [entryType, setEntryType] = useState<
-    "strength" | "weakness" | "observation"
+    "strength" | "weakness" | "observation" | "suggestion"
   >(initialEntry?.type ?? "strength");
   const [entryStatus, setEntryStatus] = useState<"draft" | "final">(
     initialEntry?.status ?? "draft",
   );
   const [text, setText] = useState(initialEntry?.text ?? "");
   const [textError, setTextError] = useState("");
+  const [selectedEvidenceIds, setSelectedEvidenceIds] = useState<string[]>(
+    initialEntry?.referencedEvidenceIds ?? [],
+  );
 
   // Reset when dialog opens or initialEntry changes
   useEffect(() => {
@@ -621,8 +704,15 @@ function AddEntryDialog({
       setEntryStatus(initialEntry?.status ?? "draft");
       setText(initialEntry?.text ?? "");
       setTextError("");
+      setSelectedEvidenceIds(initialEntry?.referencedEvidenceIds ?? []);
     }
   }, [open, initialEntry]);
+
+  function toggleEvidenceId(id: string) {
+    setSelectedEvidenceIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
+  }
 
   function handleSubmit() {
     if (!text.trim()) {
@@ -636,6 +726,8 @@ function AddEntryDialog({
       text: text.trim(),
       status: entryStatus,
       createdBy: initialEntry?.createdBy ?? currentUser ?? "Unknown",
+      referencedEvidenceIds:
+        selectedEvidenceIds.length > 0 ? selectedEvidenceIds : undefined,
     });
     onOpenChange(false);
   }
@@ -689,7 +781,9 @@ function AddEntryDialog({
             <Select
               value={entryType}
               onValueChange={(v) =>
-                setEntryType(v as "strength" | "weakness" | "observation")
+                setEntryType(
+                  v as "strength" | "weakness" | "observation" | "suggestion",
+                )
               }
             >
               <SelectTrigger
@@ -712,7 +806,7 @@ function AddEntryDialog({
                     Weakness
                   </span>
                 </SelectItem>
-                <SelectItem value="observation">
+                <SelectItem value="suggestion">
                   <span className="flex items-center gap-2">
                     <span className="h-2 w-2 rounded-full bg-blue-500 inline-block" />
                     Suggestion
@@ -745,6 +839,38 @@ function AddEntryDialog({
               </p>
             )}
           </div>
+          {projectEvidence && projectEvidence.length > 0 && (
+            <div className="space-y-1.5">
+              <Label className="font-body text-xs font-medium text-muted-foreground">
+                Referenced Evidence (optional)
+              </Label>
+              <div className="border border-border rounded-md max-h-36 overflow-y-auto p-2 space-y-1.5">
+                {projectEvidence.map((ev) => {
+                  const evId = ev.id.toString();
+                  return (
+                    <label
+                      key={evId}
+                      htmlFor={`ev-ref-${evId}`}
+                      className="flex items-center gap-2 cursor-pointer hover:bg-muted/40 px-1.5 py-1 rounded-sm"
+                    >
+                      <Checkbox
+                        id={`ev-ref-${evId}`}
+                        checked={selectedEvidenceIds.includes(evId)}
+                        onCheckedChange={() => toggleEvidenceId(evId)}
+                        data-ocid={`perform.entry_evidence_checkbox.${evId}`}
+                      />
+                      <span className="font-body text-xs text-foreground leading-tight">
+                        {ev.name}
+                        <span className="text-muted-foreground ml-1">
+                          (Process: {ev.processId})
+                        </span>
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
         <DialogFooter>
           <Button
@@ -848,6 +974,10 @@ function BPPracticePanel({
   openSwDialog,
   findingsPanelWidth,
   setFindingsPanelWidth,
+  projectEvidence,
+  assessmentId,
+  enabledProcessIds,
+  onEvidenceChange,
 }: {
   practice: BasePractice | GenericPractice;
   processId: string;
@@ -858,10 +988,14 @@ function BPPracticePanel({
   openSwDialog: (entry?: SwEntry) => void;
   findingsPanelWidth: number;
   setFindingsPanelWidth: (w: number) => void;
+  projectEvidence: ProjectEvidence[];
+  assessmentId: bigint | null;
+  enabledProcessIds: string[];
+  onEvidenceChange: () => void;
 }) {
   const [evidenceDialogOpen, setEvidenceDialogOpen] = useState(false);
   const [editingEvidence, setEditingEvidence] = useState<
-    (EvidenceItem & { index: number }) | undefined
+    ProjectEvidence | undefined
   >(undefined);
   const [swFilter, setSwFilter] = useState<
     "all" | "strengths" | "weaknesses" | "observations"
@@ -872,26 +1006,23 @@ function BPPracticePanel({
     setEvidenceDialogOpen(true);
   }
 
-  function handleOpenEditEvidence(i: number) {
-    setEditingEvidence({ ...state.workProducts[i], index: i });
+  function handleOpenEditEvidence(ev: ProjectEvidence) {
+    setEditingEvidence(ev);
     setEvidenceDialogOpen(true);
   }
 
-  function handleEvidenceSubmit(item: EvidenceItem, index: number | null) {
-    if (index !== null) {
-      const updated = state.workProducts.map((wp, idx) =>
-        idx === index ? item : wp,
-      );
-      onChange({ workProducts: updated });
-    } else {
-      onChange({ workProducts: [...state.workProducts, item] });
-    }
-  }
+  const deleteEvidence = useDeleteProjectEvidence();
 
-  function removeEvidence(i: number) {
-    onChange({
-      workProducts: state.workProducts.filter((_, idx) => idx !== i),
-    });
+  async function handleDeleteEvidence(ev: ProjectEvidence) {
+    try {
+      await deleteEvidence.mutateAsync({
+        id: ev.id,
+        assessmentId: assessmentId?.toString() ?? "",
+      });
+      onEvidenceChange();
+    } catch {
+      toast.error("Failed to delete evidence");
+    }
   }
 
   function deleteSwEntry(id: string) {
@@ -903,12 +1034,15 @@ function BPPracticePanel({
   const swEntries = state.swEntries ?? [];
   const strengths = swEntries.filter((e) => e.type === "strength");
   const weaknesses = swEntries.filter((e) => e.type === "weakness");
-  const observations = swEntries.filter((e) => e.type === "observation");
+  const observations = swEntries.filter(
+    (e) => e.type === "observation" || e.type === "suggestion",
+  );
 
   const filteredSw = swEntries.filter((e) => {
     if (swFilter === "strengths") return e.type === "strength";
     if (swFilter === "weaknesses") return e.type === "weakness";
-    if (swFilter === "observations") return e.type === "observation";
+    if (swFilter === "observations")
+      return e.type === "observation" || e.type === "suggestion";
     return true;
   });
 
@@ -1088,6 +1222,24 @@ function BPPracticePanel({
                     </td>
                     <td className="px-3 py-2 align-top text-foreground font-body leading-relaxed">
                       {renderRichText(entry.text)}
+                      {entry.referencedEvidenceIds &&
+                        entry.referencedEvidenceIds.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-1.5">
+                            {entry.referencedEvidenceIds.map((evId) => {
+                              const ev = projectEvidence.find(
+                                (e) => e.id.toString() === evId,
+                              );
+                              return ev ? (
+                                <span
+                                  key={evId}
+                                  className="inline-flex items-center gap-0.5 text-[10px] font-body px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200"
+                                >
+                                  📎 {ev.name}
+                                </span>
+                              ) : null;
+                            })}
+                          </div>
+                        )}
                     </td>
                     <td className="px-3 py-2 align-top text-muted-foreground font-body text-[11px]">
                       {entry.createdBy ?? "—"}
@@ -1179,7 +1331,7 @@ function BPPracticePanel({
               className="font-body text-xs h-5 px-1.5 rounded-full"
               data-ocid="perform.evidence_count_badge"
             >
-              {state.workProducts.length}
+              {projectEvidence.length}
             </Badge>
           </div>
           {!isCompleted && (
@@ -1197,45 +1349,50 @@ function BPPracticePanel({
 
         {/* Section body — scrollable */}
         <div style={{ flex: 1, overflow: "auto", minHeight: 0 }}>
-          {state.workProducts.length === 0 ? (
+          {projectEvidence.length === 0 ? (
             <div className="flex items-center justify-center h-full py-4">
               <p className="text-xs text-muted-foreground font-body italic">
-                No work products added yet.
+                No project evidence added yet.
               </p>
             </div>
           ) : (
             <table className="w-full text-xs">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-200">
-                  <th className="font-body font-medium text-gray-700 text-left px-3 py-2 text-xs font-semibold">
+                  <th className="font-body font-semibold text-gray-700 text-left px-3 py-2.5 w-[80px]">
+                    Process
+                  </th>
+                  <th className="font-body font-semibold text-gray-700 text-left px-3 py-2.5">
                     Evidence
                   </th>
-                  <th className="font-body font-medium text-gray-700 text-left px-3 py-2 text-xs font-semibold w-[120px]">
+                  <th className="font-body font-semibold text-gray-700 text-left px-3 py-2.5 w-[100px]">
                     Link
                   </th>
-                  <th className="font-body font-medium text-gray-700 text-right px-3 py-2 text-xs font-semibold w-[70px]">
+                  <th className="font-body font-semibold text-gray-700 text-left px-3 py-2.5 w-[65px]">
                     Version
                   </th>
                   {!isCompleted && (
-                    <th className="font-body font-medium text-gray-700 text-right px-3 py-2 text-xs font-semibold w-[72px]">
+                    <th className="font-body font-semibold text-gray-700 text-right px-3 py-2.5 w-[72px]">
                       Actions
                     </th>
                   )}
                 </tr>
               </thead>
               <tbody>
-                {state.workProducts.map((ev, i) => (
+                {projectEvidence.map((ev, i) => (
                   <tr
-                    // biome-ignore lint/suspicious/noArrayIndexKey: evidence items have no stable IDs
-                    key={`wp-row-${i}`}
+                    key={ev.id.toString()}
                     data-ocid={`perform.evidence_row.${i + 1}`}
                     className={cn(
                       "border-b border-gray-100 last:border-b-0 hover:bg-muted/30 transition-colors",
                       i % 2 === 1 ? "bg-gray-50/50" : "",
                     )}
                   >
+                    <td className="px-3 py-2 font-body text-muted-foreground align-top text-xs">
+                      {ev.processId}
+                    </td>
                     <td className="px-3 py-2 font-body text-foreground align-top">
-                      {ev.description}
+                      {ev.name}
                     </td>
                     <td className="px-3 py-2 align-top">
                       {ev.link ? (
@@ -1243,7 +1400,7 @@ function BPPracticePanel({
                           href={ev.link}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-blue-600 hover:text-blue-800 hover:underline font-body truncate flex items-center gap-0.5 max-w-[110px]"
+                          className="text-blue-600 hover:text-blue-800 hover:underline font-body truncate flex items-center gap-0.5 max-w-[90px]"
                         >
                           <span className="truncate">{ev.link}</span>
                           <ExternalLink
@@ -1257,7 +1414,7 @@ function BPPracticePanel({
                         </span>
                       )}
                     </td>
-                    <td className="px-3 py-2 font-body text-muted-foreground text-right align-top">
+                    <td className="px-3 py-2 font-body text-muted-foreground align-top">
                       {ev.version || "—"}
                     </td>
                     {!isCompleted && (
@@ -1265,7 +1422,7 @@ function BPPracticePanel({
                         <div className="flex items-center justify-end gap-1">
                           <button
                             type="button"
-                            onClick={() => handleOpenEditEvidence(i)}
+                            onClick={() => handleOpenEditEvidence(ev)}
                             className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
                             title="Edit"
                             data-ocid={`perform.evidence_edit_button.${i + 1}`}
@@ -1274,7 +1431,7 @@ function BPPracticePanel({
                           </button>
                           <button
                             type="button"
-                            onClick={() => removeEvidence(i)}
+                            onClick={() => handleDeleteEvidence(ev)}
                             className="p-1 rounded hover:bg-destructive/10 transition-colors text-muted-foreground hover:text-destructive"
                             title="Delete"
                             data-ocid={`perform.evidence_remove_button.${i + 1}`}
@@ -1295,8 +1452,10 @@ function BPPracticePanel({
       <EvidenceDialog
         open={evidenceDialogOpen}
         onOpenChange={setEvidenceDialogOpen}
+        assessmentId={assessmentId}
+        enabledProcessIds={enabledProcessIds}
         initialEvidence={editingEvidence}
-        onSubmit={handleEvidenceSubmit}
+        onSuccess={onEvidenceChange}
       />
     </div>
   );
@@ -1518,6 +1677,180 @@ function TreeNode({
 
 // ─── PA Summary View (Consolidated S&W list) ─────────────────────
 
+function ProjectEvidencePanel({
+  projectEvidence,
+  assessmentId,
+  enabledProcessIds,
+  onEvidenceChange,
+  isCompleted,
+  ocidPrefix,
+}: {
+  projectEvidence: ProjectEvidence[];
+  assessmentId: bigint | null | undefined;
+  enabledProcessIds: string[];
+  onEvidenceChange: (() => void) | undefined;
+  isCompleted?: boolean;
+  ocidPrefix: string;
+}) {
+  const [evidenceDialogOpen, setEvidenceDialogOpen] = useState(false);
+  const [editingEvidence, setEditingEvidence] = useState<
+    ProjectEvidence | undefined
+  >(undefined);
+  const deleteEvidence = useDeleteProjectEvidence();
+
+  async function handleDeleteEvidence(ev: ProjectEvidence) {
+    try {
+      await deleteEvidence.mutateAsync({
+        id: ev.id,
+        assessmentId: assessmentId?.toString() ?? "",
+      });
+      onEvidenceChange?.();
+    } catch {
+      toast.error("Failed to delete evidence");
+    }
+  }
+
+  const allEvidence = projectEvidence ?? [];
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <h3 className="text-xs font-semibold font-heading text-foreground">
+            Evidence
+          </h3>
+          <span className="text-xs text-muted-foreground font-body">
+            ({allEvidence.length})
+          </span>
+        </div>
+        {!isCompleted && onEvidenceChange && (
+          <Button
+            size="sm"
+            onClick={() => {
+              setEditingEvidence(undefined);
+              setEvidenceDialogOpen(true);
+            }}
+            className="spice-gradient text-white border-0 gap-1 font-body text-xs h-7 px-3"
+            data-ocid={`${ocidPrefix}_evidence_add_button`}
+          >
+            <Plus className="h-3.5 w-3.5" /> Add Evidence
+          </Button>
+        )}
+      </div>
+      {allEvidence.length === 0 ? (
+        <div
+          className="rounded-md border border-dashed border-border/60 py-6 text-center"
+          data-ocid={`${ocidPrefix}_evidence_empty_state`}
+        >
+          <p className="text-xs text-muted-foreground font-body italic">
+            No project evidence yet.
+          </p>
+        </div>
+      ) : (
+        <div
+          className="rounded-md border border-border/60 overflow-hidden"
+          data-ocid={`${ocidPrefix}_evidence_table`}
+        >
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-muted/30">
+                <TableHead className="font-body text-xs font-semibold text-gray-700 w-[80px]">
+                  Process
+                </TableHead>
+                <TableHead className="font-body text-xs font-semibold text-gray-700">
+                  Evidence
+                </TableHead>
+                <TableHead className="font-body text-xs font-semibold text-gray-700 w-[140px]">
+                  Link
+                </TableHead>
+                <TableHead className="font-body text-xs font-semibold text-gray-700 w-[70px]">
+                  Version
+                </TableHead>
+                {!isCompleted && onEvidenceChange && (
+                  <TableHead className="font-body text-xs font-semibold text-gray-700 w-[72px] text-right">
+                    Actions
+                  </TableHead>
+                )}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {allEvidence.map((ev, idx) => (
+                <TableRow
+                  key={ev.id.toString()}
+                  data-ocid={`${ocidPrefix}_evidence_row.${idx + 1}`}
+                  className={cn(
+                    "hover:bg-muted/20 transition-colors",
+                    idx % 2 === 1 ? "bg-gray-50/40" : "",
+                  )}
+                >
+                  <TableCell className="py-2 font-body text-xs text-muted-foreground">
+                    {ev.processId}
+                  </TableCell>
+                  <TableCell className="py-2 font-body text-xs text-foreground">
+                    {ev.name}
+                  </TableCell>
+                  <TableCell className="py-2 font-body text-xs">
+                    {ev.link ? (
+                      <a
+                        href={ev.link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:underline truncate block max-w-[130px]"
+                      >
+                        {ev.link}
+                      </a>
+                    ) : (
+                      "—"
+                    )}
+                  </TableCell>
+                  <TableCell className="py-2 font-body text-xs text-muted-foreground">
+                    {ev.version || "—"}
+                  </TableCell>
+                  {!isCompleted && onEvidenceChange && (
+                    <TableCell className="py-2 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingEvidence(ev);
+                            setEvidenceDialogOpen(true);
+                          }}
+                          className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                          title="Edit"
+                          data-ocid={`${ocidPrefix}_evidence_edit_button.${idx + 1}`}
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteEvidence(ev)}
+                          className="p-1 rounded hover:bg-destructive/10 transition-colors text-muted-foreground hover:text-destructive"
+                          title="Delete"
+                          data-ocid={`${ocidPrefix}_evidence_delete_button.${idx + 1}`}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </TableCell>
+                  )}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+      <EvidenceDialog
+        open={evidenceDialogOpen}
+        onOpenChange={setEvidenceDialogOpen}
+        assessmentId={assessmentId ?? null}
+        enabledProcessIds={enabledProcessIds}
+        initialEvidence={editingEvidence}
+        onSuccess={() => onEvidenceChange?.()}
+      />
+    </div>
+  );
+}
+
 function PASummaryView({
   paId,
   processId,
@@ -1525,6 +1858,10 @@ function PASummaryView({
   onEdit,
   isCompleted,
   onRatingChange,
+  projectEvidence,
+  assessmentId,
+  enabledProcessIds,
+  onEvidenceChange,
 }: {
   paId: string;
   processId: string;
@@ -1532,6 +1869,10 @@ function PASummaryView({
   onEdit: (practiceId: string, level: number, entry: SwEntry) => void;
   isCompleted?: boolean;
   onRatingChange?: (rating: Rating) => void;
+  projectEvidence?: ProjectEvidence[];
+  assessmentId?: bigint | null;
+  enabledProcessIds?: string[];
+  onEvidenceChange?: () => void;
 }) {
   const [filter, setFilter] = useState<
     "all" | "strengths" | "weaknesses" | "observations"
@@ -1863,115 +2204,23 @@ function PASummaryView({
               initialEntry={editingMeta.entry}
               practiceId={`${processId} ${editingMeta.practiceId}`}
               onSubmit={handleEditSubmit}
+              projectEvidence={projectEvidence}
             />
           )}
         </div>
         <div
           style={{ flex: 1, minWidth: 0, overflow: "hidden", paddingLeft: 16 }}
         >
-          {/* Evidence section — aggregated from all practices in this PA */}
-          {(() => {
-            const allEvidence: Array<{
-              item: EvidenceItem;
-              practiceId: string;
-            }> = [];
-            const seen = new Set<string>();
-            for (const { practice, level: lvl } of practices) {
-              const k = `${processId}_${lvl}_${practice.id}`;
-              const st = ratings[k];
-              if (st?.workProducts) {
-                for (const wp of st.workProducts as EvidenceItem[]) {
-                  const key = `${practice.id}::${wp.description}::${wp.link}`;
-                  if (!seen.has(key)) {
-                    seen.add(key);
-                    allEvidence.push({ item: wp, practiceId: practice.id });
-                  }
-                }
-              }
-            }
-            return (
-              <div className="space-y-2 border-l-2 border-gray-300 pl-4 ml-2">
-                <div className="flex items-center gap-2">
-                  <h3 className="text-xs font-semibold font-heading text-foreground">
-                    Evidence
-                  </h3>
-                  <span className="text-xs text-muted-foreground font-body">
-                    ({allEvidence.length})
-                  </span>
-                </div>
-                {allEvidence.length === 0 ? (
-                  <div
-                    className="rounded-md border border-dashed border-border/60 py-6 text-center"
-                    data-ocid="perform.pa_evidence_empty_state"
-                  >
-                    <p className="text-xs text-muted-foreground font-body italic">
-                      No evidence recorded for practices in this PA yet.
-                    </p>
-                    <p className="text-xs text-muted-foreground font-body mt-1">
-                      Select individual practices from the tree to add evidence.
-                    </p>
-                  </div>
-                ) : (
-                  <div
-                    className="rounded-md border border-border/60 overflow-hidden"
-                    data-ocid="perform.pa_evidence_table"
-                  >
-                    <Table>
-                      <TableHeader>
-                        <TableRow className="bg-muted/30">
-                          <TableHead className="font-body text-xs w-[90px]">
-                            Practice
-                          </TableHead>
-                          <TableHead className="font-body text-xs">
-                            Evidence
-                          </TableHead>
-                          <TableHead className="font-body text-xs w-[160px]">
-                            Link
-                          </TableHead>
-                          <TableHead className="font-body text-xs w-[80px]">
-                            Version
-                          </TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {allEvidence.map(({ item, practiceId: pid }, idx) => (
-                          <TableRow
-                            key={`${pid}-${item.description}-${item.link}`}
-                            data-ocid={`perform.pa_evidence_row.${idx + 1}`}
-                            className="hover:bg-muted/20 transition-colors"
-                          >
-                            <TableCell className="py-2 font-body text-xs font-medium text-muted-foreground">
-                              {pid}
-                            </TableCell>
-                            <TableCell className="py-2 font-body text-xs">
-                              {item.description || "—"}
-                            </TableCell>
-                            <TableCell className="py-2 font-body text-xs">
-                              {item.link ? (
-                                <a
-                                  href={item.link}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-blue-600 hover:underline truncate block max-w-[150px]"
-                                >
-                                  {item.link}
-                                </a>
-                              ) : (
-                                "—"
-                              )}
-                            </TableCell>
-                            <TableCell className="py-2 font-body text-xs text-muted-foreground">
-                              {item.version || "—"}
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                )}
-              </div>
-            );
-          })()}
+          <div style={{ paddingTop: 44 }}>
+            <ProjectEvidencePanel
+              projectEvidence={projectEvidence ?? []}
+              assessmentId={assessmentId}
+              enabledProcessIds={enabledProcessIds ?? []}
+              onEvidenceChange={onEvidenceChange}
+              isCompleted={isCompleted}
+              ocidPrefix="perform.pa"
+            />
+          </div>
         </div>
       </div>
     </div>
@@ -1987,6 +2236,10 @@ function ProcessOverviewView({
   isCompleted,
   onEdit,
   onRatingChange,
+  projectEvidence,
+  assessmentId,
+  enabledProcessIds,
+  onEvidenceChange,
 }: {
   processId: string;
   processInfo: { targetLevel: string };
@@ -1994,6 +2247,10 @@ function ProcessOverviewView({
   isCompleted?: boolean;
   onEdit: (practiceId: string, level: number, entry: SwEntry) => void;
   onRatingChange: (rating: Rating) => void;
+  projectEvidence?: ProjectEvidence[];
+  assessmentId?: bigint | null;
+  enabledProcessIds?: string[];
+  onEvidenceChange?: () => void;
 }) {
   const [filter, setFilter] = useState<
     "all" | "strengths" | "weaknesses" | "observations"
@@ -2405,133 +2662,23 @@ function ProcessOverviewView({
               initialEntry={editingMeta.entry}
               practiceId={`${processId} ${editingMeta.practiceId}`}
               onSubmit={handleEditSubmit}
+              projectEvidence={projectEvidence}
             />
           )}
 
-          {/* Evidence section — aggregated from all practices in this process */}
-          {targetLevel !== 0 &&
-            (() => {
-              const allEvidence: Array<{
-                item: EvidenceItem;
-                practiceId: string;
-              }> = [];
-              const seen = new Set<string>();
-
-              const addFromKey = (key: string, pid: string) => {
-                const st = ratings[key];
-                if (st?.workProducts) {
-                  for (const wp of st.workProducts as EvidenceItem[]) {
-                    const uniq = `${pid}::${wp.description}::${wp.link}`;
-                    if (!seen.has(uniq)) {
-                      seen.add(uniq);
-                      allEvidence.push({ item: wp, practiceId: pid });
-                    }
-                  }
-                }
-              };
-
-              if (targetLevel >= 1) {
-                for (const bp of BASE_PRACTICES[processId] ?? []) {
-                  addFromKey(`${processId}_1_${bp.id}`, bp.id);
-                }
-              }
-              if (targetLevel >= 2) {
-                for (const attr of LEVEL2_ATTRIBUTES) {
-                  for (const gp of attr.practices)
-                    addFromKey(`${processId}_2_${gp.id}`, gp.id);
-                }
-              }
-              if (targetLevel >= 3) {
-                for (const attr of LEVEL3_ATTRIBUTES) {
-                  for (const gp of attr.practices)
-                    addFromKey(`${processId}_3_${gp.id}`, gp.id);
-                }
-              }
-
-              return (
-                <div className="space-y-2 border-l-2 border-gray-300 pl-4 ml-2">
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-xs font-semibold font-heading text-foreground">
-                      Evidence
-                    </h3>
-                    <span className="text-xs text-muted-foreground font-body">
-                      ({allEvidence.length})
-                    </span>
-                  </div>
-                  {allEvidence.length === 0 ? (
-                    <div
-                      className="rounded-md border border-dashed border-border/60 py-6 text-center"
-                      data-ocid="perform.process_evidence_empty_state"
-                    >
-                      <p className="text-xs text-muted-foreground font-body italic">
-                        No evidence recorded for this process yet.
-                      </p>
-                      <p className="text-xs text-muted-foreground font-body mt-1">
-                        Select individual practices from the tree to add
-                        evidence.
-                      </p>
-                    </div>
-                  ) : (
-                    <div
-                      className="rounded-md border border-border/60 overflow-hidden"
-                      data-ocid="perform.process_evidence_table"
-                    >
-                      <Table>
-                        <TableHeader>
-                          <TableRow className="bg-muted/30">
-                            <TableHead className="font-body text-xs w-[90px]">
-                              Practice
-                            </TableHead>
-                            <TableHead className="font-body text-xs">
-                              Evidence
-                            </TableHead>
-                            <TableHead className="font-body text-xs w-[160px]">
-                              Link
-                            </TableHead>
-                            <TableHead className="font-body text-xs w-[80px]">
-                              Version
-                            </TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {allEvidence.map(({ item, practiceId: pid }, idx) => (
-                            <TableRow
-                              key={`${pid}-${item.description}-${item.link}`}
-                              data-ocid={`perform.process_evidence_row.${idx + 1}`}
-                              className="hover:bg-muted/20 transition-colors"
-                            >
-                              <TableCell className="py-2 font-body text-xs font-medium text-muted-foreground">
-                                {pid}
-                              </TableCell>
-                              <TableCell className="py-2 font-body text-xs">
-                                {item.description || "—"}
-                              </TableCell>
-                              <TableCell className="py-2 font-body text-xs">
-                                {item.link ? (
-                                  <a
-                                    href={item.link}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-blue-600 hover:underline truncate block max-w-[150px]"
-                                  >
-                                    {item.link}
-                                  </a>
-                                ) : (
-                                  "—"
-                                )}
-                              </TableCell>
-                              <TableCell className="py-2 font-body text-xs text-muted-foreground">
-                                {item.version || "—"}
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  )}
-                </div>
-              );
-            })()}
+          {/* Evidence section — project-level */}
+          {targetLevel !== 0 && (
+            <div style={{ paddingTop: 44 }}>
+              <ProjectEvidencePanel
+                projectEvidence={projectEvidence ?? []}
+                assessmentId={assessmentId}
+                enabledProcessIds={enabledProcessIds ?? []}
+                onEvidenceChange={onEvidenceChange}
+                isCompleted={isCompleted}
+                ocidPrefix="perform.process"
+              />
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -2656,6 +2803,10 @@ function BPGPRightPanel({
   openSwDialog,
   findingsPanelWidth,
   setFindingsPanelWidth,
+  projectEvidence,
+  assessmentId,
+  enabledProcessIds,
+  onEvidenceChange,
 }: {
   selectedNode: SelectedNode;
   enabledProcesses: Array<{ id: string; targetLevel: string }>;
@@ -2677,6 +2828,10 @@ function BPGPRightPanel({
   openSwDialog: (entry?: SwEntry) => void;
   findingsPanelWidth: number;
   setFindingsPanelWidth: (w: number) => void;
+  projectEvidence: ProjectEvidence[];
+  assessmentId: bigint | null;
+  enabledProcessIds: string[];
+  onEvidenceChange: () => void;
 }) {
   const level = selectedNode.level ?? 1;
   const practiceId = selectedNode.id;
@@ -2772,6 +2927,10 @@ function BPGPRightPanel({
           openSwDialog={openSwDialog}
           findingsPanelWidth={findingsPanelWidth}
           setFindingsPanelWidth={setFindingsPanelWidth}
+          projectEvidence={projectEvidence}
+          assessmentId={assessmentId}
+          enabledProcessIds={enabledProcessIds}
+          onEvidenceChange={onEvidenceChange}
         />
       </div>
     </div>
@@ -2800,12 +2959,24 @@ export function PerformAssessment() {
   const { currentAssessmentId, navigateTo, setAutosaveStatus } =
     useAppContext();
   const { currentUser } = useAuth();
+  const queryClient = useQueryClient();
   const { data: assessments } = useGetAllAssessments();
   const { data: processConfig, isLoading: loadingConfig } =
     useGetProcessGroupConfig(currentAssessmentId);
   const { data: savedRatings, isLoading: loadingRatings } =
     useGetAllPracticeRatingsForAssessment(currentAssessmentId);
   const savePracticeRating = useSavePracticeRating();
+
+  const assessmentId =
+    currentAssessmentId != null ? BigInt(currentAssessmentId) : null;
+  const { data: projectEvidence = [] } =
+    useGetProjectEvidenceForAssessment(assessmentId);
+
+  const onEvidenceChange = useCallback(() => {
+    queryClient.invalidateQueries({
+      queryKey: ["projectEvidence", currentAssessmentId?.toString()],
+    });
+  }, [queryClient, currentAssessmentId]);
 
   const [selectedNode, setSelectedNode] = useState<SelectedNode | null>(null);
   const [ratings, setRatings] = useState<RatingsMap>({});
@@ -3496,6 +3667,9 @@ export function PerformAssessment() {
           updatePracticeState={updatePracticeState}
           editSwEntryForPractice={editSwEntryForPractice}
           currentBpGpOpenDialog={currentBpGpOpenDialog}
+          projectEvidence={projectEvidence}
+          assessmentId={assessmentId}
+          onEvidenceChange={onEvidenceChange}
         />
       )}
 
@@ -3508,6 +3682,7 @@ export function PerformAssessment() {
           practiceId={`${swDialogPracticeKey.processId} ${swDialogPracticeKey.practiceId}`}
           onSubmit={handleSwDialogSubmit}
           currentUser={currentUser?.username}
+          projectEvidence={projectEvidence}
         />
       )}
     </div>
@@ -3534,6 +3709,9 @@ function DraggableThreePanelLayout({
   updatePracticeState,
   editSwEntryForPractice,
   currentBpGpOpenDialog,
+  projectEvidence,
+  assessmentId,
+  onEvidenceChange,
 }: {
   selectedNode: SelectedNode | null;
   setSelectedNode: (n: SelectedNode) => void;
@@ -3566,6 +3744,9 @@ function DraggableThreePanelLayout({
     updated: SwEntry,
   ) => void;
   currentBpGpOpenDialog: (entry?: SwEntry) => void;
+  projectEvidence: ProjectEvidence[];
+  assessmentId: bigint | null;
+  onEvidenceChange: () => void;
 }) {
   // Resizable panel widths — persisted in localStorage
   const STORAGE_KEY = "qinsight-perform-col-widths";
@@ -3850,6 +4031,10 @@ function DraggableThreePanelLayout({
             openSwDialog={currentBpGpOpenDialog}
             findingsPanelWidth={findingsPanelWidth}
             setFindingsPanelWidth={setFindingsPanelWidth}
+            projectEvidence={projectEvidence}
+            assessmentId={assessmentId}
+            enabledProcessIds={enabledProcesses.map((p) => p.id)}
+            onEvidenceChange={onEvidenceChange}
           />
         </div>
       ) : (
@@ -3873,6 +4058,10 @@ function DraggableThreePanelLayout({
                     processInfo={procInfo}
                     ratings={ratings}
                     isCompleted={isCompleted}
+                    projectEvidence={projectEvidence}
+                    assessmentId={assessmentId}
+                    enabledProcessIds={enabledProcesses.map((p) => p.id)}
+                    onEvidenceChange={onEvidenceChange}
                     onEdit={(practiceId, level, updated) =>
                       editSwEntryForPractice(
                         selectedNode.processId,
@@ -3906,6 +4095,10 @@ function DraggableThreePanelLayout({
                   );
                 }}
                 isCompleted={!!isCompleted}
+                projectEvidence={projectEvidence}
+                assessmentId={assessmentId}
+                enabledProcessIds={enabledProcesses.map((p) => p.id)}
+                onEvidenceChange={onEvidenceChange}
                 onRatingChange={(r) =>
                   updatePracticeState(
                     selectedNode.processId,

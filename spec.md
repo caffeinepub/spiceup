@@ -1,35 +1,40 @@
 # Q-Insight
 
 ## Current State
-- Full ASPICE assessment tool with login, roles (admin/user), dashboard, assessment info, scope, schedule, perform assessment, results matrix with CL column.
-- GenerateReport page exists but is a placeholder — allows typing free-text report content and saving it to backend; exports only as .txt.
-- The main header bar shows only the assessment selector + profile menu. The app subtitle ("For Smarter Assessments") appears only in the sidebar, not in the top bar.
+
+Evidence items are embedded as JSON inside `PracticeRating.workProductsInspected` (per processId+level+practiceId combination). They have no independent IDs. Findings (SwEntries) are stored in the same JSON blob. The Evidence panel on Perform Assessment shows only items for the currently selected BP/GP/PA/process node. There is no way to reference evidence items from findings.
 
 ## Requested Changes (Diff)
 
 ### Add
-- **Subtitle in header bar**: Show "Q-Insight" + "For Smarter Assessments" at the left side of the top header bar (desktop only, already done).
-- **PDF export**: A structured document that mirrors the PPT layout (Cover section, Executive Summary/Results Matrix, then one section per process with ratings and key findings).
-- **Excel export**: Multi-sheet workbook — Sheet 1: Assessment Info + Scope + Results Matrix; then one sheet per process with BP/GP ratings, strengths, weaknesses, evidence.
-- **PowerPoint export**: Multi-slide presentation — Slide 1: Cover (assessment name, dates, project, lead/co-assessors); Slide 2: Executive summary / Results matrix table; Slide 3+: One slide per assessed process (process ID, target level, PA ratings, key strengths, weaknesses).
-- **Export libraries**: Install `jspdf`, `jspdf-autotable`, `xlsx` (SheetJS), `pptxgenjs` via pnpm.
+- New `ProjectEvidence` backend type: `{ id: Nat, assessmentId: Nat, processId: Text, name: Text, link: Text, version: Text }`
+- New stable map `projectEvidenceMap` for project-level evidence storage
+- Backend functions: `addProjectEvidence`, `updateProjectEvidence`, `deleteProjectEvidence`, `getProjectEvidenceForAssessment`
+- `referencedEvidenceIds` field to `SwEntry` (finding) stored in JSON
+- Process dropdown in Add Evidence dialog (list of in-scope processes for the assessment)
+- Multi-select evidence picker in Add/Edit Finding dialog (shows all project evidence items)
+- Referenced evidence badges on each finding row in the Findings table
+- Evidence panel always shows ALL project evidence regardless of selected process node
 
 ### Modify
-- **GenerateReport component**: Replace the free-text + backend-save approach with a self-contained export UI. User clicks "Export PDF", "Export Excel", or "Export PPT". All data is fetched from the same backend hooks already used by Perform Assessment and View Results (no backend changes needed). Export is generated client-side and downloaded immediately.
+- `EvidenceItem` gains a stable string `id` (uuid) for referencing
+- Add Evidence dialog: add "Process" association field (dropdown)
+- Add/Edit Finding dialog: add "Referenced Evidence" multi-select dropdown
+- Evidence table: show evidence from entire project (not filtered by current node)
+- Findings table: add column or inline display of referenced evidence items
+- Evidence save/load: migrate from per-PracticeRating JSON blobs to new `projectEvidenceMap`
 
 ### Remove
-- Free-text "Report Content" textarea form and the backend report save/list functionality from the UI (the backend hooks for `generateReport`/`getAllReports` can stay but the UI no longer uses them).
+- Evidence storage from `workProductsInspected` JSON (migrate to project-level map)
+- Per-node evidence aggregation logic in ProcessOverviewView and PASummaryView
 
 ## Implementation Plan
 
-1. Install `jspdf`, `jspdf-autotable`, `xlsx`, `pptxgenjs` as frontend dependencies.
-2. Create `/src/utils/reportData.ts` — shared data-assembly logic that takes assessment info, scope config, ratings, and schedule and returns a normalized `ReportData` object (same shape used by all three exporters).
-3. Create `/src/utils/exportPdf.ts` — uses jsPDF + autotable to produce the PDF: cover page, results matrix table, per-process detail sections.
-4. Create `/src/utils/exportExcel.ts` — uses SheetJS to produce a multi-sheet workbook.
-5. Create `/src/utils/exportPpt.ts` — uses pptxgenjs to produce the multi-slide PPTX.
-6. Rewrite `GenerateReport.tsx` to:
-   - Fetch all needed data (assessment info, scope config, practice ratings, schedule days) for the currently selected assessment.
-   - Show three export buttons: Export PDF, Export Excel, Export PPT.
-   - Show a loading/preview summary of what will be included (assessment name, # processes, date range).
-   - Trigger the appropriate client-side export on button click.
-7. Add ASPICE color hex values to export styling (F=#00b04f, L=#92d050, P=#ffff00, N=#990000).
+1. **Backend**: Add `ProjectEvidence` type and stable map. Add CRUD functions. Keep `workProductsInspected` for findings only (remove workProducts from it). Update preupgrade/postupgrade.
+2. **Frontend types**: Update `EvidenceItem` to include `id` and `processId`. Update `SwEntry` to include `referencedEvidenceIds: string[]`.
+3. **Evidence loading**: Replace per-node evidence aggregation with single `getProjectEvidenceForAssessment` call. Store in a flat `projectEvidence` state array.
+4. **Evidence table**: Always render from `projectEvidence` (all items), not from ratings map.
+5. **Add Evidence dialog**: Add process dropdown. On submit, call `addProjectEvidence` directly.
+6. **Add/Edit Finding dialog**: Add multi-select evidence picker populated from `projectEvidence`. Save selected IDs in `referencedEvidenceIds`.
+7. **Findings table**: Show referenced evidence items as small badges/chips below the description or in a separate column.
+8. **Data migration**: On load, if old `workProducts` exist in JSON blobs, migrate them to the new project evidence store.

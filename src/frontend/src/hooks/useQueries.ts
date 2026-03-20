@@ -12,6 +12,7 @@ import type {
   AssessmentInfoData,
   PracticeRating,
   ProcessGroupConfig,
+  ProjectEvidence,
   ReportGlobalInputs,
 } from "../backend.d";
 import { useActor } from "./useActor";
@@ -544,6 +545,109 @@ export function useSaveReportGlobalInputs() {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({
         queryKey: ["reportGlobalInputs", variables.assessmentId.toString()],
+      });
+    },
+  });
+}
+
+export function useGetProjectEvidenceForAssessment(
+  assessmentId: bigint | null,
+) {
+  const { actor, isFetching } = useActor();
+  return useQuery<ProjectEvidence[]>({
+    queryKey: ["projectEvidence", assessmentId?.toString()],
+    queryFn: async () => {
+      if (!actor || assessmentId == null) return [];
+      try {
+        return await actor.getProjectEvidenceForAssessment(assessmentId);
+      } catch {
+        return [];
+      }
+    },
+    enabled: !!actor && !isFetching && assessmentId != null,
+    staleTime: 0,
+    refetchOnMount: true,
+  });
+}
+
+export function useAddProjectEvidence() {
+  const { actor } = useActor();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      assessmentId,
+      processId,
+      name,
+      link,
+      version,
+    }: {
+      assessmentId: bigint;
+      processId: string;
+      name: string;
+      link: string;
+      version: string;
+    }) => {
+      if (!actor) throw new Error("Actor not available");
+      return actor.addProjectEvidence(
+        assessmentId,
+        processId,
+        name,
+        link,
+        version,
+      );
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ["projectEvidence", variables.assessmentId.toString()],
+      });
+    },
+  });
+}
+
+export function useUpdateProjectEvidence() {
+  const { actor } = useActor();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      processId,
+      name,
+      link,
+      version,
+      assessmentId: _assessmentId,
+    }: {
+      id: bigint;
+      processId: string;
+      name: string;
+      link: string;
+      version: string;
+      assessmentId: string;
+    }) => {
+      if (!actor) throw new Error("Actor not available");
+      return actor.updateProjectEvidence(id, processId, name, link, version);
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ["projectEvidence", variables.assessmentId],
+      });
+    },
+  });
+}
+
+export function useDeleteProjectEvidence() {
+  const { actor } = useActor();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      assessmentId: _assessmentId,
+    }: { id: bigint; assessmentId: string }) => {
+      if (!actor) throw new Error("Actor not available");
+      return actor.deleteProjectEvidence(id);
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ["projectEvidence", variables.assessmentId],
       });
     },
   });

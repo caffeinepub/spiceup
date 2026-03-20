@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap");
 
 @tailwind base;
 @tailwind components;
@@ -72,7 +72,7 @@
     --sidebar-accent: 0.22 0.035 264;
     --sidebar-accent-foreground: 0.93 0.01 237;
     /* Divider ≈ rgba(255,255,255,0.06) blended over #0F172A */
-    --sidebar-border: 0.20 0.025 264;
+    --sidebar-border: 0.2 0.025 264;
     --sidebar-ring: 0.546 0.243 264;
   }
 
@@ -115,7 +115,7 @@
     --sidebar-foreground: 0.93 0.01 237;
     --sidebar-primary: 0.546 0.243 264;
     --sidebar-primary-foreground: 1 0 0;
-    --sidebar-accent: 0.20 0.03 264;
+    --sidebar-accent: 0.2 0.03 264;
     --sidebar-accent-foreground: 0.93 0.01 237;
     --sidebar-border: 0.22 0.025 264;
     --sidebar-ring: 0.546 0.243 264;
@@ -127,14 +127,19 @@
 
   body {
     @apply bg-background text-foreground;
-    font-family: 'Inter', sans-serif;
+    font-family: "Inter", sans-serif;
     font-size: 15px;
     line-height: 1.5;
-    background-color: #F8FAFC;
+    background-color: #f8fafc;
   }
 
-  h1, h2, h3, h4, h5, h6 {
-    font-family: 'Inter', sans-serif;
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: "Inter", sans-serif;
   }
 }
 
@@ -171,7 +176,7 @@
 
   /* default icon opacity (icons inherit color; target SVG child) */
   .sidebar-nav-item .nav-icon {
-    color: rgba(255, 255, 255, 0.60);
+    color: rgba(255, 255, 255, 0.6);
     transition: color 150ms ease;
     flex-shrink: 0;
   }
@@ -188,23 +193,23 @@
   /* Active item */
   .sidebar-nav-item.active {
     background: rgba(37, 99, 235, 0.16);
-    color: #FFFFFF;
+    color: #ffffff;
     padding-left: calc(0.75rem - 3px);
-    border-left: 3px solid #2563EB;
+    border-left: 3px solid #2563eb;
   }
 
   .sidebar-nav-item.active .nav-icon {
-    color: #FFFFFF;
+    color: #ffffff;
   }
 
   /* Primary button / CTA */
   .spice-gradient {
-    background: #2563EB;
+    background: #2563eb;
     transition: background 150ms ease;
   }
 
   .spice-gradient:hover {
-    background: #1D4ED8;
+    background: #1d4ed8;
   }
 
   /* Focus ring for interactive elements */

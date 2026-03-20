@@ -89,6 +89,35 @@ export class ExternalBlob {
         return this;
     }
 }
+export interface AssessmentDay {
+    id: bigint;
+    timeTo: string;
+    date: string;
+    dayNumber: bigint;
+    sessions: string;
+    assessmentId: bigint;
+    timeFrom: string;
+}
+export type Time = bigint;
+export interface Assessment {
+    id: bigint;
+    status: string;
+    name: string;
+    createdAt: Time;
+    updatedAt: Time;
+    currentStep: string;
+}
+export interface PracticeRating {
+    id: bigint;
+    weaknesses: string;
+    strengths: string;
+    workProductsInspected: string;
+    level: bigint;
+    rating: string;
+    assessmentId: bigint;
+    processId: string;
+    practiceId: string;
+}
 export interface ProcessGroupConfig {
     enabledGroups: string;
     processLevels: string;
@@ -121,39 +150,25 @@ export interface AssessmentInfoData {
     startDate: string;
     vdaVersion: string;
 }
-export interface AssessmentDay {
+export interface ProjectEvidence {
     id: bigint;
-    timeTo: string;
-    date: string;
-    dayNumber: bigint;
-    sessions: string;
-    assessmentId: bigint;
-    timeFrom: string;
-}
-export type Time = bigint;
-export interface Assessment {
-    id: bigint;
-    status: string;
+    link: string;
     name: string;
-    createdAt: Time;
-    updatedAt: Time;
-    currentStep: string;
-}
-export interface PracticeRating {
-    id: bigint;
-    weaknesses: string;
-    strengths: string;
-    workProductsInspected: string;
-    level: bigint;
-    rating: string;
+    version: string;
     assessmentId: bigint;
     processId: string;
-    practiceId: string;
+}
+export interface ReportGlobalInputs {
+    globalStrengths: string;
+    globalWeaknesses: string;
+    assessmentId: bigint;
 }
 export interface backendInterface {
+    addProjectEvidence(assessmentId: bigint, processId: string, name: string, link: string, version: string): Promise<bigint>;
     createAssessment(name: string): Promise<bigint>;
     deleteAssessment(id: bigint): Promise<void>;
     deleteAssessmentDay(id: bigint): Promise<void>;
+    deleteProjectEvidence(id: bigint): Promise<boolean>;
     getAllAssessments(): Promise<Array<Assessment>>;
     getAllPracticeRatingsForAssessment(assessmentId: bigint): Promise<Array<PracticeRating>>;
     getAssessment(id: bigint): Promise<Assessment>;
@@ -161,16 +176,34 @@ export interface backendInterface {
     getAssessmentInfoData(assessmentId: bigint): Promise<AssessmentInfoData>;
     getPracticeRatings(assessmentId: bigint, processId: string): Promise<Array<PracticeRating>>;
     getProcessGroupConfig(assessmentId: bigint): Promise<ProcessGroupConfig>;
+    getProjectEvidenceForAssessment(assessmentId: bigint): Promise<Array<ProjectEvidence>>;
+    getReportGlobalInputs(assessmentId: bigint): Promise<ReportGlobalInputs>;
     markAssessmentCompleted(id: bigint): Promise<void>;
     saveAssessmentDay(assessmentId: bigint, dayNumber: bigint, date: string, timeFrom: string, timeTo: string, sessions: string): Promise<bigint>;
     saveAssessmentInfoData(data: AssessmentInfoData): Promise<void>;
     savePracticeRating(assessmentId: bigint, processId: string, level: bigint, practiceId: string, rating: string, strengths: string, weaknesses: string, workProductsInspected: string): Promise<bigint>;
     saveProcessGroupConfig(assessmentId: bigint, enabledGroups: string, processLevels: string): Promise<void>;
+    saveReportGlobalInputs(assessmentId: bigint, globalStrengths: string, globalWeaknesses: string): Promise<void>;
     updateAssessmentStatus(id: bigint, status: string): Promise<void>;
     updateAssessmentStep(id: bigint, step: string): Promise<void>;
+    updateProjectEvidence(id: bigint, processId: string, name: string, link: string, version: string): Promise<boolean>;
 }
 export class Backend implements backendInterface {
     constructor(private actor: ActorSubclass<_SERVICE>, private _uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, private _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, private processError?: (error: unknown) => never){}
+    async addProjectEvidence(arg0: bigint, arg1: string, arg2: string, arg3: string, arg4: string): Promise<bigint> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.addProjectEvidence(arg0, arg1, arg2, arg3, arg4);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.addProjectEvidence(arg0, arg1, arg2, arg3, arg4);
+            return result;
+        }
+    }
     async createAssessment(arg0: string): Promise<bigint> {
         if (this.processError) {
             try {
@@ -210,6 +243,20 @@ export class Backend implements backendInterface {
             }
         } else {
             const result = await this.actor.deleteAssessmentDay(arg0);
+            return result;
+        }
+    }
+    async deleteProjectEvidence(arg0: bigint): Promise<boolean> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.deleteProjectEvidence(arg0);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.deleteProjectEvidence(arg0);
             return result;
         }
     }
@@ -311,6 +358,34 @@ export class Backend implements backendInterface {
             return result;
         }
     }
+    async getProjectEvidenceForAssessment(arg0: bigint): Promise<Array<ProjectEvidence>> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getProjectEvidenceForAssessment(arg0);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getProjectEvidenceForAssessment(arg0);
+            return result;
+        }
+    }
+    async getReportGlobalInputs(arg0: bigint): Promise<ReportGlobalInputs> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.getReportGlobalInputs(arg0);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.getReportGlobalInputs(arg0);
+            return result;
+        }
+    }
     async markAssessmentCompleted(arg0: bigint): Promise<void> {
         if (this.processError) {
             try {
@@ -381,6 +456,20 @@ export class Backend implements backendInterface {
             return result;
         }
     }
+    async saveReportGlobalInputs(arg0: bigint, arg1: string, arg2: string): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.saveReportGlobalInputs(arg0, arg1, arg2);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.saveReportGlobalInputs(arg0, arg1, arg2);
+            return result;
+        }
+    }
     async updateAssessmentStatus(arg0: bigint, arg1: string): Promise<void> {
         if (this.processError) {
             try {
@@ -406,6 +495,20 @@ export class Backend implements backendInterface {
             }
         } else {
             const result = await this.actor.updateAssessmentStep(arg0, arg1);
+            return result;
+        }
+    }
+    async updateProjectEvidence(arg0: bigint, arg1: string, arg2: string, arg3: string, arg4: string): Promise<boolean> {
+        if (this.processError) {
+            try {
+                const result = await this.actor.updateProjectEvidence(arg0, arg1, arg2, arg3, arg4);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await this.actor.updateProjectEvidence(arg0, arg1, arg2, arg3, arg4);
             return result;
         }
     }
