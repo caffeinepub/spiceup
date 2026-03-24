@@ -12,6 +12,11 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -67,6 +72,7 @@ import {
   ExternalLink,
   Italic,
   LayoutDashboard,
+  Link,
   List,
   Pencil,
   Plus,
@@ -666,6 +672,90 @@ function EvidenceDialog({
   );
 }
 
+// ─── Evidence Link Popover ────────────────────────────────────────
+function EvidenceLinkPopover({
+  entry,
+  projectEvidence,
+  onSave,
+}: {
+  entry: SwEntry;
+  projectEvidence: ProjectEvidence[];
+  onSave: (updatedEntry: SwEntry) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [selected, setSelected] = useState<string[]>(
+    entry.referencedEvidenceIds ?? [],
+  );
+
+  function toggle(id: string) {
+    setSelected((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
+  }
+
+  function handleOpenChange(val: boolean) {
+    if (!val) {
+      onSave({
+        ...entry,
+        referencedEvidenceIds: selected.length > 0 ? selected : undefined,
+      });
+    }
+    setOpen(val);
+  }
+
+  return (
+    <Popover open={open} onOpenChange={handleOpenChange}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          title="Link evidence"
+          className={`inline-flex items-center justify-center w-7 h-7 rounded hover:bg-muted transition-colors ${
+            selected.length > 0 ? "text-blue-600" : "text-muted-foreground"
+          }`}
+          data-ocid="perform.sw_link_button"
+        >
+          <Link className="w-3.5 h-3.5" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-72 p-3" align="end">
+        <p className="text-xs font-medium text-foreground mb-2">
+          Link evidence items
+        </p>
+        {projectEvidence.length === 0 ? (
+          <p className="text-xs text-muted-foreground">
+            No evidence added to this project yet.
+          </p>
+        ) : (
+          <div className="flex flex-col gap-1.5 max-h-52 overflow-y-auto">
+            {projectEvidence.map((ev) => {
+              const evId = String(ev.id);
+              return (
+                <label
+                  key={evId}
+                  className="flex items-center gap-2 cursor-pointer text-xs py-1 px-1.5 rounded hover:bg-muted"
+                >
+                  <input
+                    type="checkbox"
+                    checked={selected.includes(evId)}
+                    onChange={() => toggle(evId)}
+                    className="w-3.5 h-3.5 accent-blue-600"
+                  />
+                  <span className="flex-1 truncate">{ev.name}</span>
+                  {ev.processId && (
+                    <span className="text-muted-foreground shrink-0 font-mono text-[10px]">
+                      {String(ev.processId)}
+                    </span>
+                  )}
+                </label>
+              );
+            })}
+          </div>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 // ─── Add / Edit Finding Dialog ──────────────────────────────────
 
 function AddEntryDialog({
@@ -1247,6 +1337,17 @@ function BPPracticePanel({
                     {!isCompleted && (
                       <td className="px-3 py-2 align-top text-right">
                         <div className="flex items-center justify-end gap-1">
+                          <EvidenceLinkPopover
+                            entry={entry}
+                            projectEvidence={projectEvidence}
+                            onSave={(updated) => {
+                              onChange({
+                                swEntries: (state.swEntries ?? []).map((e) =>
+                                  e.id === updated.id ? updated : e,
+                                ),
+                              });
+                            }}
+                          />
                           <button
                             type="button"
                             onClick={() => openSwDialog(entry)}
@@ -2174,17 +2275,26 @@ function PASummaryView({
                             </TableCell>
                             {!isCompleted && (
                               <TableCell className="py-2">
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    openEditEntry(entry, practiceId, level)
-                                  }
-                                  className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-                                  title="Edit"
-                                  data-ocid={`perform.pa_sw_edit_button.${idx + 1}`}
-                                >
-                                  <Pencil className="h-3.5 w-3.5" />
-                                </button>
+                                <div className="flex items-center gap-1">
+                                  <EvidenceLinkPopover
+                                    entry={entry}
+                                    projectEvidence={projectEvidence ?? []}
+                                    onSave={(updated) => {
+                                      onEdit(practiceId, level, updated);
+                                    }}
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      openEditEntry(entry, practiceId, level)
+                                    }
+                                    className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                                    title="Edit"
+                                    data-ocid={`perform.pa_sw_edit_button.${idx + 1}`}
+                                  >
+                                    <Pencil className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
                               </TableCell>
                             )}
                           </TableRow>
@@ -2627,17 +2737,30 @@ function ProcessOverviewView({
                                 </TableCell>
                                 {!isCompleted && (
                                   <TableCell className="py-2">
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        openEditEntry(entry, practiceId, level)
-                                      }
-                                      className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
-                                      title="Edit"
-                                      data-ocid={`perform.process_sw_edit_button.${idx + 1}`}
-                                    >
-                                      <Pencil className="h-3.5 w-3.5" />
-                                    </button>
+                                    <div className="flex items-center gap-1">
+                                      <EvidenceLinkPopover
+                                        entry={entry}
+                                        projectEvidence={projectEvidence ?? []}
+                                        onSave={(updated) => {
+                                          onEdit(practiceId, level, updated);
+                                        }}
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          openEditEntry(
+                                            entry,
+                                            practiceId,
+                                            level,
+                                          )
+                                        }
+                                        className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                                        title="Edit"
+                                        data-ocid={`perform.process_sw_edit_button.${idx + 1}`}
+                                      >
+                                        <Pencil className="h-3.5 w-3.5" />
+                                      </button>
+                                    </div>
                                   </TableCell>
                                 )}
                               </TableRow>
