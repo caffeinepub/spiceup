@@ -777,6 +777,53 @@ interface FindingItem {
   text: string;
   ref: string;
   type: "strength" | "weakness" | "suggestion";
+  runs?: Array<{
+    text: string;
+    options?: { bold?: boolean; italic?: boolean };
+  }>;
+}
+
+// ─── Rich-text to PPT text runs ──────────────────────────────────
+type PptRun = { text: string; options?: { bold?: boolean; italic?: boolean } };
+
+function richTextToPptRuns(text: string): PptRun[] {
+  const runs: PptRun[] = [];
+  let remaining = text;
+  while (remaining.length > 0) {
+    const boldMatch = remaining.match(/\*\*(.+?)\*\*/);
+    const italicMatch = remaining.match(/\*([^*]+?)\*/);
+    const evMatch = remaining.match(/\[\[ev:([^:]+):([^\]]+)\]\]/);
+
+    const boldIdx = boldMatch ? remaining.indexOf(boldMatch[0]) : -1;
+    const italicIdx = italicMatch ? remaining.indexOf(italicMatch[0]) : -1;
+    const evIdx = evMatch ? remaining.indexOf(evMatch[0]) : -1;
+
+    const minIdx = [boldIdx, italicIdx, evIdx]
+      .filter((i) => i !== -1)
+      .reduce((a, b) => (a < b ? a : b), Number.POSITIVE_INFINITY);
+
+    if (minIdx === Number.POSITIVE_INFINITY) {
+      if (remaining) runs.push({ text: remaining });
+      break;
+    }
+    if (evIdx !== -1 && evIdx === minIdx) {
+      if (evIdx > 0) runs.push({ text: remaining.slice(0, evIdx) });
+      runs.push({ text: `[${evMatch![2]}]` });
+      remaining = remaining.slice(evIdx + evMatch![0].length);
+    } else if (boldIdx !== -1 && boldIdx === minIdx) {
+      if (boldIdx > 0) runs.push({ text: remaining.slice(0, boldIdx) });
+      runs.push({ text: boldMatch![1], options: { bold: true } });
+      remaining = remaining.slice(boldIdx + boldMatch![0].length);
+    } else if (italicIdx !== -1) {
+      if (italicIdx > 0) runs.push({ text: remaining.slice(0, italicIdx) });
+      runs.push({ text: italicMatch![1], options: { italic: true } });
+      remaining = remaining.slice(italicIdx + italicMatch![0].length);
+    } else {
+      runs.push({ text: remaining });
+      break;
+    }
+  }
+  return runs;
 }
 
 function collectFindings(proc: ReportData["processes"][0]): FindingItem[] {
@@ -788,15 +835,33 @@ function collectFindings(proc: ReportData["processes"][0]): FindingItem[] {
   for (const p of practices) {
     for (const raw of (p.strengths || "").split("\n")) {
       const t = raw.trim();
-      if (t) items.push({ text: t, ref: p.id, type: "strength" });
+      if (t)
+        items.push({
+          text: t,
+          ref: p.id,
+          type: "strength",
+          runs: richTextToPptRuns(t),
+        });
     }
     for (const raw of (p.weaknesses || "").split("\n")) {
       const t = raw.trim();
-      if (t) items.push({ text: t, ref: p.id, type: "weakness" });
+      if (t)
+        items.push({
+          text: t,
+          ref: p.id,
+          type: "weakness",
+          runs: richTextToPptRuns(t),
+        });
     }
     for (const raw of (p.suggestions || "").split("\n")) {
       const t = raw.trim();
-      if (t) items.push({ text: t, ref: p.id, type: "suggestion" });
+      if (t)
+        items.push({
+          text: t,
+          ref: p.id,
+          type: "suggestion",
+          runs: richTextToPptRuns(t),
+        });
     }
   }
   return items;
@@ -851,30 +916,44 @@ function addProcessSlides(
       y += items.length === 0 ? 0.42 : 0.38;
 
       for (const item of items) {
-        const displayText =
-          item.text.length > 140
-            ? `${item.text.slice(0, 137)}\u2026`
-            : item.text;
-        slide.addText(
-          [
-            { text: "\u2013  ", options: { color: TEAL, bold: false } },
-            { text: displayText, options: { color: DARK_TEXT, bold: false } },
-            {
-              text: `  [${item.ref}]`,
-              options: { color: GRAY_TEXT, bold: false },
-            },
-          ],
-          {
-            x: 0.35,
-            y,
-            w: 12.0,
-            h: 0.38,
-            fontSize: 11,
-            fontFace: "Calibri",
-            wrap: true,
-            valign: "middle",
-          },
-        );
+        const textRuns: any[] = [
+          { text: "\u2013  ", options: { color: TEAL, bold: false } },
+        ];
+        if (item.runs && item.runs.length > 0) {
+          for (const run of item.runs) {
+            textRuns.push({
+              text: run.text,
+              options: {
+                color: DARK_TEXT,
+                bold: run.options?.bold ?? false,
+                italic: run.options?.italic ?? false,
+              },
+            });
+          }
+        } else {
+          const displayText =
+            item.text.length > 140
+              ? `${item.text.slice(0, 137)}\u2026`
+              : item.text;
+          textRuns.push({
+            text: displayText,
+            options: { color: DARK_TEXT, bold: false },
+          });
+        }
+        textRuns.push({
+          text: `  [${item.ref}]`,
+          options: { color: GRAY_TEXT, bold: false },
+        });
+        slide.addText(textRuns, {
+          x: 0.35,
+          y,
+          w: 12.0,
+          h: 0.38,
+          fontSize: 11,
+          fontFace: "Calibri",
+          wrap: true,
+          valign: "middle",
+        });
         y += 0.4;
       }
       y += 0.1;

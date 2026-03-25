@@ -1,34 +1,33 @@
 # Q-Insight
 
 ## Current State
-- Findings (`SwEntry`) have `referencedEvidenceIds?: string[]` stored as JSON in `workProductsInspected`
-- Evidence linking is only available inside the Add/Edit finding dialog as a checklist
-- Evidence panel fetches all project evidence via `getProjectEvidenceForAssessment` (already project-level)
-- `ProjectEvidence` already has `processId` field for process association
-- Add Evidence dialog already has a Process dropdown
-- No backend data model changes needed
+The Add/Edit Finding dialog has a custom `RichTextEditor` with Bold, Italic, Bullet toolbar buttons. Evidence linking is done via a separate popover (chain icon) on the finding row, which stores `referencedEvidenceIds` as badges below the description in the table. `renderRichText` parses `**bold**`, `*italic*`, and `• bullet` markdown but has no inline link support. PPT export strips all markdown via `stripHtml()` and ignores `referencedEvidenceIds`.
 
 ## Requested Changes (Diff)
 
 ### Add
-- A chain/link icon button on each finding row (visible at all times, alongside edit/delete)
-- Clicking the link icon opens an inline popover/panel listing all project evidence items with checkboxes
-- User can toggle evidence references directly from the finding row without opening the full edit dialog
-- Changes auto-save (persist to backend) after linking/unlinking evidence
-- Selected evidence items appear as small badges on the finding row showing evidence name
+- Evidence link button in `RichTextEditor` toolbar (alongside Bold, Italic, Bullet)
+- Clicking the evidence link button opens a picker/popover listing all project evidence items by name; selecting one inserts an inline evidence reference token into the text: `[[ev:ID:Name]]`
+- `renderRichText` parses `[[ev:ID:Name]]` tokens and renders them as clickable blue link spans
+- Clicking an inline evidence link opens a small preview modal showing Evidence Name, Link (clickable URL), and Version
+- PPT export: convert `[[ev:ID:Name]]` tokens to `[Name]` plain text; preserve **bold** and *italic* markers as pptxgenjs bold/italic runs
 
 ### Modify
-- Finding rows: add Link icon button in Actions column next to edit/delete
-- Referenced evidence badges on finding row should show evidence name (not just ID)
-- Ensure evidence panel always shows ALL project evidence regardless of selected process node (already done but verify)
+- `RichTextEditor` component: add a 4th toolbar button (Link/Evidence icon) that opens the evidence picker
+- `renderRichText`: add parsing for `[[ev:ID:Name]]` tokens → render as `<button>` styled as a blue link
+- `collectFindings` in exportPpt: replace `stripHtml` with a function that converts markdown+evidence tokens to pptxgenjs text run arrays (bold, italic, plain, `[Name]` for evidence refs)
+- Add/Edit Finding dialog: remove the separate "Referenced Evidence" checklist section
+- Findings table row: remove the `EvidenceLinkPopover` chain icon and evidence badge renders
 
 ### Remove
-- Nothing removed
+- `EvidenceLinkPopover` component (chain icon on table row)
+- `referencedEvidenceIds` badge rendering below description in table
+- "Referenced Evidence" checklist section in the Add/Edit Finding dialog
 
 ## Implementation Plan
-1. Add `Link` icon import from lucide-react in PerformAssessment.tsx
-2. Create `EvidenceLinkPopover` component: a Popover with a checklist of all project evidence items, showing current `referencedEvidenceIds` for the finding, with save-on-close behavior
-3. Add the link icon button to finding table rows in BP/GP section, PA section, and Process section
-4. Wire the popover to update `referencedEvidenceIds` on the finding and trigger autosave
-5. Update evidence badge rendering on finding rows to show evidence name instead of ID
-6. Validate and deploy
+1. Add evidence link token format `[[ev:ID:Name]]` — update `RichTextEditor` to accept `projectEvidence` prop and add a 4th toolbar button that opens a small Popover listing all evidence; clicking an item inserts `[[ev:ID:Name]]` at cursor
+2. Update `renderRichText` to parse `[[ev:ID:Name]]` tokens and render as clickable inline link spans
+3. Add `EvidencePreviewModal` — small dialog showing name, clickable URL link, and version for a given evidence item
+4. Wire `renderRichText` link clicks to open `EvidencePreviewModal` (pass state up via callback)
+5. Remove `EvidenceLinkPopover` component, remove badge rendering from findings table, remove checklist from Add/Edit dialog
+6. Update PPT export: replace `stripHtml` with a rich-text-to-pptx converter that outputs pptxgenjs text run arrays with bold/italic and `[Name]` for evidence tokens

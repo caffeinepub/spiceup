@@ -299,27 +299,59 @@ function getProcessName(processId: string): string {
   );
 }
 
-/** Simple markdown-like renderer: **bold**, *italic*, • list items */
-function renderRichText(text: string): React.ReactNode {
+/** Simple markdown-like renderer: **bold**, *italic*, • list items, [[ev:ID:Name]] */
+function renderRichText(
+  text: string,
+  onEvidenceClick?: (id: string) => void,
+): React.ReactNode {
   if (!text) return null;
   const lines = text.split("\n");
   return (
     <>
       {lines.map((line, li) => {
-        // Render inline bold/italic
+        // Render inline bold/italic/evidence tokens
         const parts: React.ReactNode[] = [];
         let remaining = line;
         let ki = 0;
         while (remaining.length > 0) {
           const boldMatch = remaining.match(/\*\*(.+?)\*\*/);
           const italicMatch = remaining.match(/\*([^*]+?)\*/);
+          const evMatch = remaining.match(/\[\[ev:([^:]+):([^\]]+)\]\]/);
 
           const boldIdx = boldMatch ? remaining.indexOf(boldMatch[0]) : -1;
           const italicIdx = italicMatch
             ? remaining.indexOf(italicMatch[0])
             : -1;
+          const evIdx = evMatch ? remaining.indexOf(evMatch[0]) : -1;
 
-          if (boldIdx !== -1 && (italicIdx === -1 || boldIdx <= italicIdx)) {
+          // Find the earliest match
+          const minIdx = [boldIdx, italicIdx, evIdx]
+            .filter((i) => i !== -1)
+            .reduce((a, b) => (a < b ? a : b), Number.POSITIVE_INFINITY);
+
+          if (minIdx === Number.POSITIVE_INFINITY) {
+            parts.push(<span key={`${li}-t${ki++}`}>{remaining}</span>);
+            remaining = "";
+          } else if (evIdx !== -1 && evIdx === minIdx) {
+            if (evIdx > 0) {
+              parts.push(
+                <span key={`${li}-t${ki++}`}>{remaining.slice(0, evIdx)}</span>,
+              );
+            }
+            const evId = evMatch![1];
+            const evName = evMatch![2];
+            parts.push(
+              <button
+                key={`${li}-ev${ki++}`}
+                type="button"
+                className="text-blue-600 underline hover:text-blue-800 cursor-pointer font-normal"
+                onClick={() => onEvidenceClick?.(evId)}
+              >
+                {evName}
+              </button>,
+            );
+            remaining = remaining.slice(evIdx + evMatch![0].length);
+          } else if (boldIdx !== -1 && boldIdx === minIdx) {
             if (boldIdx > 0) {
               parts.push(
                 <span key={`${li}-t${ki++}`}>
@@ -368,13 +400,16 @@ function RichTextEditor({
   onChange,
   placeholder,
   disabled,
+  projectEvidence,
 }: {
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
   disabled?: boolean;
+  projectEvidence?: ProjectEvidence[];
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [evidenceLinkOpen, setEvidenceLinkOpen] = useState(false);
 
   function wrapSelection(prefix: string, suffix: string) {
     const el = textareaRef.current;
@@ -402,6 +437,20 @@ function RichTextEditor({
     setTimeout(() => {
       el.focus();
       el.setSelectionRange(start + 2, start + 2);
+    }, 0);
+  }
+
+  function insertEvidenceRef(ev: ProjectEvidence) {
+    const el = textareaRef.current;
+    if (!el) return;
+    const start = el.selectionStart ?? value.length;
+    const token = `[[ev:${ev.id.toString()}:${ev.name}]]`;
+    const newText = value.slice(0, start) + token + value.slice(start);
+    onChange(newText);
+    setEvidenceLinkOpen(false);
+    setTimeout(() => {
+      el.focus();
+      el.setSelectionRange(start + token.length, start + token.length);
     }, 0);
   }
 
@@ -442,6 +491,41 @@ function RichTextEditor({
           >
             <List className="h-3.5 w-3.5" />
           </button>
+          <Popover open={evidenceLinkOpen} onOpenChange={setEvidenceLinkOpen}>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                disabled={!projectEvidence || projectEvidence.length === 0}
+                className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground disabled:opacity-40 disabled:cursor-not-allowed"
+                title="Link evidence reference"
+              >
+                <Link className="h-3.5 w-3.5" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent className="w-72 p-2" align="start">
+              <p className="text-xs font-medium text-muted-foreground mb-2 px-1">
+                Insert evidence reference
+              </p>
+              <div className="max-h-48 overflow-y-auto space-y-0.5">
+                {(projectEvidence ?? []).map((ev) => (
+                  <button
+                    key={ev.id.toString()}
+                    type="button"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      insertEvidenceRef(ev);
+                    }}
+                    className="w-full text-left px-2 py-1.5 rounded text-xs font-body hover:bg-muted transition-colors text-foreground"
+                  >
+                    <span className="font-medium">{ev.name}</span>
+                    <span className="text-muted-foreground ml-1">
+                      ({ev.processId})
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </PopoverContent>
+          </Popover>
           <span className="text-[10px] text-muted-foreground/50 ml-1">
             Select text then B/I
           </span>
@@ -460,6 +544,80 @@ function RichTextEditor({
         )}
       />
     </div>
+  );
+}
+
+// ─── Evidence Preview Modal ──────────────────────────────────────
+
+function EvidencePreviewModal({
+  evidence,
+  onClose,
+}: {
+  evidence: ProjectEvidence | null;
+  onClose: () => void;
+}) {
+  if (!evidence) return null;
+  return (
+    <Dialog
+      open={!!evidence}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <DialogContent
+        className="max-w-sm"
+        data-ocid="perform.evidence_preview_modal"
+      >
+        <DialogHeader>
+          <DialogTitle className="font-heading text-base">
+            {evidence.name}
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 py-2">
+          <div className="space-y-0.5">
+            <p className="text-xs font-medium text-muted-foreground font-body">
+              Evidence Name
+            </p>
+            <p className="text-sm font-body text-foreground">{evidence.name}</p>
+          </div>
+          <div className="space-y-0.5">
+            <p className="text-xs font-medium text-muted-foreground font-body">
+              Link
+            </p>
+            {evidence.link ? (
+              <a
+                href={evidence.link}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm text-blue-600 underline hover:text-blue-800 font-body break-all"
+              >
+                {evidence.link}
+              </a>
+            ) : (
+              <p className="text-sm text-muted-foreground font-body">—</p>
+            )}
+          </div>
+          <div className="space-y-0.5">
+            <p className="text-xs font-medium text-muted-foreground font-body">
+              Version
+            </p>
+            <p className="text-sm font-body text-foreground">
+              {evidence.version || "—"}
+            </p>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={onClose}
+            className="font-body"
+            data-ocid="perform.evidence_preview_close_button"
+          >
+            Close
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -672,91 +830,7 @@ function EvidenceDialog({
   );
 }
 
-// ─── Evidence Link Popover ────────────────────────────────────────
-function EvidenceLinkPopover({
-  entry,
-  projectEvidence,
-  onSave,
-}: {
-  entry: SwEntry;
-  projectEvidence: ProjectEvidence[];
-  onSave: (updatedEntry: SwEntry) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const [selected, setSelected] = useState<string[]>(
-    entry.referencedEvidenceIds ?? [],
-  );
-
-  function toggle(id: string) {
-    setSelected((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
-    );
-  }
-
-  function handleOpenChange(val: boolean) {
-    if (!val) {
-      onSave({
-        ...entry,
-        referencedEvidenceIds: selected.length > 0 ? selected : undefined,
-      });
-    }
-    setOpen(val);
-  }
-
-  return (
-    <Popover open={open} onOpenChange={handleOpenChange}>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          title="Link evidence"
-          className={`inline-flex items-center justify-center w-7 h-7 rounded hover:bg-muted transition-colors ${
-            selected.length > 0 ? "text-blue-600" : "text-muted-foreground"
-          }`}
-          data-ocid="perform.sw_link_button"
-        >
-          <Link className="w-3.5 h-3.5" />
-        </button>
-      </PopoverTrigger>
-      <PopoverContent className="w-72 p-3" align="end">
-        <p className="text-xs font-medium text-foreground mb-2">
-          Link evidence items
-        </p>
-        {projectEvidence.length === 0 ? (
-          <p className="text-xs text-muted-foreground">
-            No evidence added to this project yet.
-          </p>
-        ) : (
-          <div className="flex flex-col gap-1.5 max-h-52 overflow-y-auto">
-            {projectEvidence.map((ev) => {
-              const evId = String(ev.id);
-              return (
-                <label
-                  key={evId}
-                  className="flex items-center gap-2 cursor-pointer text-xs py-1 px-1.5 rounded hover:bg-muted"
-                >
-                  <input
-                    type="checkbox"
-                    checked={selected.includes(evId)}
-                    onChange={() => toggle(evId)}
-                    className="w-3.5 h-3.5 accent-blue-600"
-                  />
-                  <span className="flex-1 truncate">{ev.name}</span>
-                  {ev.processId && (
-                    <span className="text-muted-foreground shrink-0 font-mono text-[10px]">
-                      {String(ev.processId)}
-                    </span>
-                  )}
-                </label>
-              );
-            })}
-          </div>
-        )}
-      </PopoverContent>
-    </Popover>
-  );
-}
-
-// ─── Add / Edit Finding Dialog ──────────────────────────────────
+// ─── Add / Edit Finding Dialog// ─── Add / Edit Finding Dialog ──────────────────────────────────
 
 function AddEntryDialog({
   open,
@@ -783,9 +857,6 @@ function AddEntryDialog({
   );
   const [text, setText] = useState(initialEntry?.text ?? "");
   const [textError, setTextError] = useState("");
-  const [selectedEvidenceIds, setSelectedEvidenceIds] = useState<string[]>(
-    initialEntry?.referencedEvidenceIds ?? [],
-  );
 
   // Reset when dialog opens or initialEntry changes
   useEffect(() => {
@@ -794,15 +865,8 @@ function AddEntryDialog({
       setEntryStatus(initialEntry?.status ?? "draft");
       setText(initialEntry?.text ?? "");
       setTextError("");
-      setSelectedEvidenceIds(initialEntry?.referencedEvidenceIds ?? []);
     }
   }, [open, initialEntry]);
-
-  function toggleEvidenceId(id: string) {
-    setSelectedEvidenceIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
-    );
-  }
 
   function handleSubmit() {
     if (!text.trim()) {
@@ -816,8 +880,6 @@ function AddEntryDialog({
       text: text.trim(),
       status: entryStatus,
       createdBy: initialEntry?.createdBy ?? currentUser ?? "Unknown",
-      referencedEvidenceIds:
-        selectedEvidenceIds.length > 0 ? selectedEvidenceIds : undefined,
     });
     onOpenChange(false);
   }
@@ -922,6 +984,7 @@ function AddEntryDialog({
                     ? "Describe the weakness observed..."
                     : "Describe the suggestion..."
               }
+              projectEvidence={projectEvidence}
             />
             {textError && (
               <p className="text-xs text-destructive font-body mt-1">
@@ -929,38 +992,6 @@ function AddEntryDialog({
               </p>
             )}
           </div>
-          {projectEvidence && projectEvidence.length > 0 && (
-            <div className="space-y-1.5">
-              <Label className="font-body text-xs font-medium text-muted-foreground">
-                Referenced Evidence (optional)
-              </Label>
-              <div className="border border-border rounded-md max-h-36 overflow-y-auto p-2 space-y-1.5">
-                {projectEvidence.map((ev) => {
-                  const evId = ev.id.toString();
-                  return (
-                    <label
-                      key={evId}
-                      htmlFor={`ev-ref-${evId}`}
-                      className="flex items-center gap-2 cursor-pointer hover:bg-muted/40 px-1.5 py-1 rounded-sm"
-                    >
-                      <Checkbox
-                        id={`ev-ref-${evId}`}
-                        checked={selectedEvidenceIds.includes(evId)}
-                        onCheckedChange={() => toggleEvidenceId(evId)}
-                        data-ocid={`perform.entry_evidence_checkbox.${evId}`}
-                      />
-                      <span className="font-body text-xs text-foreground leading-tight">
-                        {ev.name}
-                        <span className="text-muted-foreground ml-1">
-                          (Process: {ev.processId})
-                        </span>
-                      </span>
-                    </label>
-                  );
-                })}
-              </div>
-            </div>
-          )}
         </div>
         <DialogFooter>
           <Button
@@ -1090,6 +1121,8 @@ function BPPracticePanel({
   const [swFilter, setSwFilter] = useState<
     "all" | "strengths" | "weaknesses" | "observations"
   >("all");
+  const [previewEvidence, setPreviewEvidence] =
+    useState<ProjectEvidence | null>(null);
 
   function handleOpenAddEvidence() {
     setEditingEvidence(undefined);
@@ -1311,25 +1344,12 @@ function BPPracticePanel({
                       </Badge>
                     </td>
                     <td className="px-3 py-2 align-top text-foreground font-body leading-relaxed">
-                      {renderRichText(entry.text)}
-                      {entry.referencedEvidenceIds &&
-                        entry.referencedEvidenceIds.length > 0 && (
-                          <div className="flex flex-wrap gap-1 mt-1.5">
-                            {entry.referencedEvidenceIds.map((evId) => {
-                              const ev = projectEvidence.find(
-                                (e) => e.id.toString() === evId,
-                              );
-                              return ev ? (
-                                <span
-                                  key={evId}
-                                  className="inline-flex items-center gap-0.5 text-[10px] font-body px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200"
-                                >
-                                  📎 {ev.name}
-                                </span>
-                              ) : null;
-                            })}
-                          </div>
-                        )}
+                      {renderRichText(entry.text, (id) => {
+                        const ev = projectEvidence.find(
+                          (e) => e.id.toString() === id,
+                        );
+                        if (ev) setPreviewEvidence(ev);
+                      })}
                     </td>
                     <td className="px-3 py-2 align-top text-muted-foreground font-body text-[11px]">
                       {entry.createdBy ?? "—"}
@@ -1337,17 +1357,6 @@ function BPPracticePanel({
                     {!isCompleted && (
                       <td className="px-3 py-2 align-top text-right">
                         <div className="flex items-center justify-end gap-1">
-                          <EvidenceLinkPopover
-                            entry={entry}
-                            projectEvidence={projectEvidence}
-                            onSave={(updated) => {
-                              onChange({
-                                swEntries: (state.swEntries ?? []).map((e) =>
-                                  e.id === updated.id ? updated : e,
-                                ),
-                              });
-                            }}
-                          />
                           <button
                             type="button"
                             onClick={() => openSwDialog(entry)}
@@ -1557,6 +1566,10 @@ function BPPracticePanel({
         enabledProcessIds={enabledProcessIds}
         initialEvidence={editingEvidence}
         onSuccess={onEvidenceChange}
+      />
+      <EvidencePreviewModal
+        evidence={previewEvidence}
+        onClose={() => setPreviewEvidence(null)}
       />
     </div>
   );
@@ -1984,6 +1997,8 @@ function PASummaryView({
     practiceId: string;
     level: number;
   } | null>(null);
+  const [previewEvidence, setPreviewEvidence] =
+    useState<ProjectEvidence | null>(null);
 
   const practices: Array<{
     practice: BasePractice | GenericPractice;
@@ -2270,19 +2285,17 @@ function PASummaryView({
                             </TableCell>
                             <TableCell className="py-2 max-w-xs">
                               <div className="text-xs font-body text-foreground leading-relaxed">
-                                {renderRichText(entry.text)}
+                                {renderRichText(entry.text, (id) => {
+                                  const ev = (projectEvidence ?? []).find(
+                                    (e) => e.id.toString() === id,
+                                  );
+                                  if (ev) setPreviewEvidence(ev);
+                                })}
                               </div>
                             </TableCell>
                             {!isCompleted && (
                               <TableCell className="py-2">
                                 <div className="flex items-center gap-1">
-                                  <EvidenceLinkPopover
-                                    entry={entry}
-                                    projectEvidence={projectEvidence ?? []}
-                                    onSave={(updated) => {
-                                      onEdit(practiceId, level, updated);
-                                    }}
-                                  />
                                   <button
                                     type="button"
                                     onClick={() =>
@@ -2317,6 +2330,10 @@ function PASummaryView({
               projectEvidence={projectEvidence}
             />
           )}
+          <EvidencePreviewModal
+            evidence={previewEvidence}
+            onClose={() => setPreviewEvidence(null)}
+          />
         </div>
         <div
           style={{ flex: 1, minWidth: 0, overflow: "hidden", paddingLeft: 16 }}
@@ -2371,6 +2388,8 @@ function ProcessOverviewView({
     practiceId: string;
     level: number;
   } | null>(null);
+  const [previewEvidence, setPreviewEvidence] =
+    useState<ProjectEvidence | null>(null);
 
   const targetLevel =
     processInfo.targetLevel === "NA"
@@ -2732,19 +2751,17 @@ function ProcessOverviewView({
                                 </TableCell>
                                 <TableCell className="py-2 max-w-xs">
                                   <div className="text-xs font-body text-foreground leading-relaxed">
-                                    {renderRichText(entry.text)}
+                                    {renderRichText(entry.text, (id) => {
+                                      const ev = (projectEvidence ?? []).find(
+                                        (e) => e.id.toString() === id,
+                                      );
+                                      if (ev) setPreviewEvidence(ev);
+                                    })}
                                   </div>
                                 </TableCell>
                                 {!isCompleted && (
                                   <TableCell className="py-2">
                                     <div className="flex items-center gap-1">
-                                      <EvidenceLinkPopover
-                                        entry={entry}
-                                        projectEvidence={projectEvidence ?? []}
-                                        onSave={(updated) => {
-                                          onEdit(practiceId, level, updated);
-                                        }}
-                                      />
                                       <button
                                         type="button"
                                         onClick={() =>
@@ -2788,6 +2805,10 @@ function ProcessOverviewView({
               projectEvidence={projectEvidence}
             />
           )}
+          <EvidencePreviewModal
+            evidence={previewEvidence}
+            onClose={() => setPreviewEvidence(null)}
+          />
 
           {/* Evidence section — project-level */}
           {targetLevel !== 0 && (
