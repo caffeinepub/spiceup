@@ -82,6 +82,7 @@ export interface ReportData {
   generatedAt: string;
   globalStrengths: string[];
   globalWeaknesses: string[];
+  evidenceMap: Record<string, { name: string; link: string; version: string }>;
 }
 
 // ─── HTML Stripper ───────────────────────────────────────────────
@@ -227,6 +228,10 @@ export function buildReportData(
   days: AssessmentDay[],
   globalStrengths: string[] = [],
   globalWeaknesses: string[] = [],
+  evidenceMap: Record<
+    string,
+    { name: string; link: string; version: string }
+  > = {},
 ): ReportData {
   const generatedAt = new Date().toLocaleString("en-US", {
     year: "numeric",
@@ -437,5 +442,6 @@ export function buildReportData(
     generatedAt,
     globalStrengths,
     globalWeaknesses,
+    evidenceMap,
   };
 }

@@ -306,20 +306,30 @@ function addAssessmentInfoSlide(
       }`
     : "";
 
+  // Application parameters
+  const appParams: string[] = [];
+  if (info?.modelBasedDev) appParams.push("Model Based Development");
+  if (info?.agileEnvironments) appParams.push("Agile Environments");
+  if (info?.developmentExternal) appParams.push("Development External");
+  const appParamsDisplay = appParams.length > 0 ? appParams.join(", ") : "None";
+
   const fields: [string, string][] = [
     ["Project Name", info?.projectName || ""],
     ["Project ID", info?.intacsId || ""],
+    ["Project Scope", info?.projectScope || ""],
     ["Assessment Timeline", timeline],
     ["Lead Assessor", leadAssessorDisplay],
     ...coAssessorLines.map((line, i): [string, string] => [
       i === 0 ? "Co-Assessors" : "",
       line,
     ]),
+    ["Application Parameters", appParamsDisplay],
     ["PAM Version", info?.pamVersion || ""],
     ["VDA Version", info?.vdaVersion || ""],
     ["Target Capability Level", info?.targetCapabilityLevel || ""],
     ["Functional Safety Level", info?.functionalSafetyLevel || ""],
     ["Cybersecurity Level", info?.cybersecurityLevel || ""],
+    ["Additional Remarks", info?.additionalRemarks || ""],
   ];
 
   let y = 1.1;
@@ -857,7 +867,13 @@ interface FindingItem {
 // ─── Rich-text to PPT text runs ────────────────────────────────
 type PptRun = { text: string; options?: { bold?: boolean; italic?: boolean } };
 
-function richTextToPptRuns(text: string): PptRun[] {
+function richTextToPptRuns(
+  text: string,
+  evidenceMap: Record<
+    string,
+    { name: string; link: string; version: string }
+  > = {},
+): PptRun[] {
   const runs: PptRun[] = [];
   let remaining = text;
   while (remaining.length > 0) {
@@ -879,7 +895,17 @@ function richTextToPptRuns(text: string): PptRun[] {
     }
     if (evIdx !== -1 && evIdx === minIdx) {
       if (evIdx > 0) runs.push({ text: remaining.slice(0, evIdx) });
-      runs.push({ text: `[${evMatch![2]}]` });
+      const evId = evMatch![1];
+      const evName = evMatch![2];
+      const evEntry = evidenceMap[evId];
+      if (evEntry?.link) {
+        runs.push({
+          text: `[${evName}]`,
+          options: { hyperlink: { url: evEntry.link }, color: "1D4ED8" } as any,
+        });
+      } else {
+        runs.push({ text: `[${evName}]` });
+      }
       remaining = remaining.slice(evIdx + evMatch![0].length);
     } else if (boldIdx !== -1 && boldIdx === minIdx) {
       if (boldIdx > 0) runs.push({ text: remaining.slice(0, boldIdx) });
@@ -897,13 +923,19 @@ function richTextToPptRuns(text: string): PptRun[] {
   return runs;
 }
 
-function collectFindings(proc: ReportData["processes"][0]): FindingItem[] {
+function collectFindings(
+  proc: ReportData["processes"][0],
+  evidenceMap: Record<
+    string,
+    { name: string; link: string; version: string }
+  > = {},
+): FindingItem[] {
   return (proc.findingsList ?? []).map((f) => ({
     text: f.text,
     ref: "",
     type: f.type,
     practiceRefs: f.practiceRefs,
-    runs: richTextToPptRuns(f.text),
+    runs: richTextToPptRuns(f.text, evidenceMap),
   }));
 }
 
@@ -913,8 +945,12 @@ function addProcessSlides(
   logoBase64: string,
   dateStr: string,
   startPageNum: number,
+  evidenceMap: Record<
+    string,
+    { name: string; link: string; version: string }
+  > = {},
 ): number {
-  const allFindings = collectFindings(proc);
+  const allFindings = collectFindings(proc, evidenceMap);
   const ITEMS_PER_PAGE = 15;
   const totalPages = Math.max(
     1,

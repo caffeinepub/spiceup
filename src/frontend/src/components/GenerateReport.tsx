@@ -8,6 +8,7 @@ import {
   useGetAssessmentDays,
   useGetAssessmentInfoData,
   useGetProcessGroupConfig,
+  useGetProjectEvidenceForAssessment,
   useGetReportGlobalInputs,
   useSaveReportGlobalInputs,
 } from "@/hooks/useQueries";
@@ -39,6 +40,8 @@ export function GenerateReport() {
   const { data: globalInputsData, isLoading: globalInputsLoading } =
     useGetReportGlobalInputs(currentAssessmentId);
   const saveGlobalInputsMutation = useSaveReportGlobalInputs();
+  const { data: projectEvidence } =
+    useGetProjectEvidenceForAssessment(currentAssessmentId);
 
   const [globalStrengths, setGlobalStrengths] = useState<string[]>([]);
   const [globalWeaknesses, setGlobalWeaknesses] = useState<string[]>([]);
@@ -231,6 +234,17 @@ export function GenerateReport() {
     }
     setPptLoading(true);
     try {
+      const evidenceMap: Record<
+        string,
+        { name: string; link: string; version: string }
+      > = {};
+      for (const ev of projectEvidence ?? []) {
+        evidenceMap[ev.id.toString()] = {
+          name: ev.name,
+          link: ev.link,
+          version: ev.version,
+        };
+      }
       const reportData = buildReportData(
         assessmentName,
         info ?? null,
@@ -239,6 +253,7 @@ export function GenerateReport() {
         days ?? [],
         globalStrengths,
         globalWeaknesses,
+        evidenceMap,
       );
       await exportToPpt(reportData);
       toast.success("PowerPoint report downloaded successfully");
