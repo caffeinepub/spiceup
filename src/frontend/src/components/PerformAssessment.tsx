@@ -101,6 +101,7 @@ interface SwEntry {
   status?: "draft" | "final";
   createdBy?: string;
   referencedEvidenceIds?: string[];
+  practiceIds?: string[]; // array of node keys e.g. ["MAN.3_1_MAN.3.BP1"]
 }
 
 interface PracticeState {
@@ -177,6 +178,61 @@ const RATING_OPTIONS: {
 ];
 
 // ─── Helpers ────────────────────────────────────────────────────
+
+// ─── Multi-practice helper functions ────────────────────────────────────────
+
+// Collect all findings for a given node key.
+// Combines: (1) legacy entries at that exact key without practiceIds,
+//           (2) entries from ANY key where practiceIds includes this key
+function getEntriesForNodeKey(nodeKey: string, ratings: RatingsMap): SwEntry[] {
+  const result: SwEntry[] = [];
+  const seen = new Set<string>();
+  // Legacy: direct entries at this key without practiceIds set (or empty)
+  for (const e of ratings[nodeKey]?.swEntries ?? []) {
+    if (!e.practiceIds || e.practiceIds.length === 0) {
+      if (!seen.has(e.id)) {
+        seen.add(e.id);
+        result.push(e);
+      }
+    }
+  }
+  // Pool: any entry across ALL keys that has this nodeKey in practiceIds
+  for (const state of Object.values(ratings)) {
+    for (const e of state.swEntries ?? []) {
+      if (e.practiceIds?.includes(nodeKey) && !seen.has(e.id)) {
+        seen.add(e.id);
+        result.push(e);
+      }
+    }
+  }
+  return result;
+}
+
+// Delete entry by id across all keys
+function deleteEntryById(id: string, ratings: RatingsMap): RatingsMap {
+  const next: RatingsMap = {};
+  for (const [k, v] of Object.entries(ratings)) {
+    next[k] = {
+      ...v,
+      swEntries: (v.swEntries ?? []).filter((e) => e.id !== id),
+    };
+  }
+  return next;
+}
+
+// Update entry by id across all keys
+function updateEntryById(updated: SwEntry, ratings: RatingsMap): RatingsMap {
+  const next: RatingsMap = {};
+  for (const [k, v] of Object.entries(ratings)) {
+    next[k] = {
+      ...v,
+      swEntries: (v.swEntries ?? []).map((e) =>
+        e.id === updated.id ? updated : e,
+      ),
+    };
+  }
+  return next;
+}
 
 function buildEnabledProcesses(
   config: { enabledGroups: string; processLevels: string } | null,
@@ -830,24 +886,26 @@ function EvidenceDialog({
   );
 }
 
-// ─── Add / Edit Finding Dialog// ─── Add / Edit Finding Dialog ──────────────────────────────────
+// ─── Add / Edit Finding Dialog ──────────────────────────────────
 
 function AddEntryDialog({
   open,
   onOpenChange,
   initialEntry,
-  practiceId,
   onSubmit,
   currentUser,
   projectEvidence,
+  allPractices,
+  initialPracticeIds,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   initialEntry?: SwEntry;
-  practiceId: string;
   onSubmit: (entry: SwEntry) => void;
   currentUser?: string;
   projectEvidence?: ProjectEvidence[];
+  allPractices: { key: string; label: string }[];
+  initialPracticeIds?: string[];
 }) {
   const [entryType, setEntryType] = useState<
     "strength" | "weakness" | "observation" | "suggestion"
@@ -857,6 +915,10 @@ function AddEntryDialog({
   );
   const [text, setText] = useState(initialEntry?.text ?? "");
   const [textError, setTextError] = useState("");
+  const [selectedPracticeIds, setSelectedPracticeIds] = useState<string[]>(
+    initialEntry?.practiceIds ?? initialPracticeIds ?? [],
+  );
+  const [practiceSearch, setPracticeSearch] = useState("");
 
   // Reset when dialog opens or initialEntry changes
   useEffect(() => {
@@ -865,8 +927,28 @@ function AddEntryDialog({
       setEntryStatus(initialEntry?.status ?? "draft");
       setText(initialEntry?.text ?? "");
       setTextError("");
+      setSelectedPracticeIds(
+        initialEntry?.practiceIds ?? initialPracticeIds ?? [],
+      );
+      setPracticeSearch("");
     }
-  }, [open, initialEntry]);
+  }, [open, initialEntry, initialPracticeIds]);
+
+  const filteredPractices = practiceSearch.trim()
+    ? allPractices.filter((p) =>
+        p.label.toLowerCase().includes(practiceSearch.toLowerCase()),
+      )
+    : allPractices;
+
+  function togglePractice(key: string) {
+    setSelectedPracticeIds((prev) =>
+      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key],
+    );
+  }
+
+  function removePractice(key: string) {
+    setSelectedPracticeIds((prev) => prev.filter((k) => k !== key));
+  }
 
   function handleSubmit() {
     if (!text.trim()) {
@@ -880,25 +962,91 @@ function AddEntryDialog({
       text: text.trim(),
       status: entryStatus,
       createdBy: initialEntry?.createdBy ?? currentUser ?? "Unknown",
+      practiceIds: selectedPracticeIds,
     });
     onOpenChange(false);
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg" data-ocid="perform.entry_dialog">
+      <DialogContent
+        className="max-w-lg max-h-[90vh] overflow-y-auto"
+        data-ocid="perform.entry_dialog"
+      >
         <DialogHeader>
           <DialogTitle className="font-heading text-base">
             {initialEntry ? "Edit Entry" : "Add Finding"}
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-4 py-2">
+          {/* Practices multi-select */}
           <div className="space-y-1.5">
             <Label className="font-body text-xs font-medium text-muted-foreground">
-              Practice
+              Practices
             </Label>
-            <p className="text-sm font-mono text-foreground">{practiceId}</p>
+            <Input
+              placeholder="Search practices…"
+              value={practiceSearch}
+              onChange={(e) => setPracticeSearch(e.target.value)}
+              className="font-body text-xs h-8"
+              data-ocid="perform.entry_practice_search_input"
+            />
+            {/* Scrollable list */}
+            <div
+              className="border border-border/60 rounded-md overflow-y-auto bg-background"
+              style={{ maxHeight: 200 }}
+            >
+              {filteredPractices.length === 0 ? (
+                <p className="text-xs text-muted-foreground font-body p-3 text-center italic">
+                  No practices found.
+                </p>
+              ) : (
+                filteredPractices.map((p) => (
+                  <button
+                    key={p.key}
+                    type="button"
+                    className="flex items-center gap-2 px-3 py-1.5 hover:bg-muted/50 cursor-pointer text-xs font-body w-full text-left"
+                    onClick={() => togglePractice(p.key)}
+                  >
+                    <Checkbox
+                      checked={selectedPracticeIds.includes(p.key)}
+                      onCheckedChange={(checked) => {
+                        if (checked !== "indeterminate") togglePractice(p.key);
+                      }}
+                      className="h-3.5 w-3.5"
+                    />
+                    <span className="font-mono">{p.label}</span>
+                  </button>
+                ))
+              )}
+            </div>
+            {/* Selected badges */}
+            {selectedPracticeIds.length > 0 && (
+              <div className="flex flex-wrap gap-1 pt-1">
+                {selectedPracticeIds.map((key) => {
+                  const label =
+                    allPractices.find((p) => p.key === key)?.label ?? key;
+                  return (
+                    <span
+                      key={key}
+                      className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 border border-blue-200 rounded px-2 py-0.5 text-[11px] font-mono"
+                    >
+                      {label}
+                      <button
+                        type="button"
+                        onClick={() => removePractice(key)}
+                        className="ml-0.5 text-blue-400 hover:text-blue-700"
+                        aria-label={`Remove ${label}`}
+                      >
+                        ×
+                      </button>
+                    </span>
+                  );
+                })}
+              </div>
+            )}
           </div>
+
           <div className="space-y-1.5">
             <Label
               htmlFor="entry-status"
@@ -1099,6 +1247,10 @@ function BPPracticePanel({
   assessmentId,
   enabledProcessIds,
   onEvidenceChange,
+  allNodeEntries,
+  onDeleteEntryGlobal,
+  onEditEntryGlobal: _onEditEntryGlobal,
+  allPractices: _allPractices,
 }: {
   practice: BasePractice | GenericPractice;
   processId: string;
@@ -1113,6 +1265,10 @@ function BPPracticePanel({
   assessmentId: bigint | null;
   enabledProcessIds: string[];
   onEvidenceChange: () => void;
+  allNodeEntries?: SwEntry[];
+  onDeleteEntryGlobal?: (id: string) => void;
+  onEditEntryGlobal?: (entry: SwEntry) => void;
+  allPractices?: { key: string; label: string }[];
 }) {
   const [evidenceDialogOpen, setEvidenceDialogOpen] = useState(false);
   const [editingEvidence, setEditingEvidence] = useState<
@@ -1149,12 +1305,16 @@ function BPPracticePanel({
   }
 
   function deleteSwEntry(id: string) {
-    onChange({
-      swEntries: (state.swEntries ?? []).filter((e) => e.id !== id),
-    });
+    if (onDeleteEntryGlobal) {
+      onDeleteEntryGlobal(id);
+    } else {
+      onChange({
+        swEntries: (state.swEntries ?? []).filter((e) => e.id !== id),
+      });
+    }
   }
 
-  const swEntries = state.swEntries ?? [];
+  const swEntries = allNodeEntries ?? state.swEntries ?? [];
   const strengths = swEntries.filter((e) => e.type === "strength");
   const weaknesses = swEntries.filter((e) => e.type === "weakness");
   const observations = swEntries.filter(
@@ -1286,6 +1446,9 @@ function BPPracticePanel({
                   <th className="font-body font-semibold text-gray-700 text-left px-3 py-2.5 w-[100px]">
                     Type
                   </th>
+                  <th className="font-body font-semibold text-gray-700 text-left px-3 py-2.5 w-[160px]">
+                    Practices
+                  </th>
                   <th className="font-body font-semibold text-gray-700 text-left px-3 py-2.5">
                     Description
                   </th>
@@ -1342,6 +1505,50 @@ function BPPracticePanel({
                             ? "Weakness"
                             : "Suggestion"}
                       </Badge>
+                    </td>
+                    <td
+                      className="px-3 py-2 align-top"
+                      style={{ maxWidth: 160 }}
+                    >
+                      {entry.practiceIds && entry.practiceIds.length > 0 ? (
+                        <div className="flex flex-wrap gap-0.5">
+                          {entry.practiceIds.slice(0, 2).map((pid) => {
+                            const parts = pid.split("_");
+                            const practiceLabel =
+                              parts.length >= 3
+                                ? parts
+                                    .slice(2)
+                                    .join(".")
+                                    .replace(
+                                      /^([A-Z]+\.\d+)\.BP(\d+)$/,
+                                      "$1 BP$2",
+                                    )
+                                    .replace(
+                                      /^([A-Z]+\.\d+)\.(GP\S+)$/,
+                                      "$1 $2",
+                                    )
+                                : pid;
+                            return (
+                              <span
+                                key={pid}
+                                className="inline-block bg-slate-100 text-slate-600 border border-slate-200 rounded px-1 py-0 text-[10px] font-mono truncate max-w-[70px]"
+                                title={practiceLabel}
+                              >
+                                {practiceLabel}
+                              </span>
+                            );
+                          })}
+                          {entry.practiceIds.length > 2 && (
+                            <span className="inline-block text-[10px] font-body text-muted-foreground">
+                              +{entry.practiceIds.length - 2}
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground font-body text-[11px]">
+                          —
+                        </span>
+                      )}
                     </td>
                     <td className="px-3 py-2 align-top text-foreground font-body leading-relaxed">
                       {renderRichText(entry.text, (id) => {
@@ -2325,9 +2532,10 @@ function PASummaryView({
               open={editDialogOpen}
               onOpenChange={setEditDialogOpen}
               initialEntry={editingMeta.entry}
-              practiceId={`${processId} ${editingMeta.practiceId}`}
               onSubmit={handleEditSubmit}
               projectEvidence={projectEvidence}
+              allPractices={[]}
+              initialPracticeIds={editingMeta.entry.practiceIds}
             />
           )}
           <EvidencePreviewModal
@@ -2800,9 +3008,10 @@ function ProcessOverviewView({
               open={editDialogOpen}
               onOpenChange={setEditDialogOpen}
               initialEntry={editingMeta.entry}
-              practiceId={`${processId} ${editingMeta.practiceId}`}
               onSubmit={handleEditSubmit}
               projectEvidence={projectEvidence}
+              allPractices={[]}
+              initialPracticeIds={editingMeta.entry.practiceIds}
             />
           )}
           <EvidencePreviewModal
@@ -2951,6 +3160,10 @@ function BPGPRightPanel({
   assessmentId,
   enabledProcessIds,
   onEvidenceChange,
+  allPractices,
+  onDeleteEntryGlobal,
+  onEditEntryGlobal: _onEditEntryGlobal,
+  ratings,
 }: {
   selectedNode: SelectedNode;
   enabledProcesses: Array<{ id: string; targetLevel: string }>;
@@ -2976,6 +3189,9 @@ function BPGPRightPanel({
   assessmentId: bigint | null;
   enabledProcessIds: string[];
   onEvidenceChange: () => void;
+  allPractices: { key: string; label: string }[];
+  onDeleteEntryGlobal: (id: string) => void;
+  onEditEntryGlobal: (entry: SwEntry) => void;
 }) {
   const level = selectedNode.level ?? 1;
   const practiceId = selectedNode.id;
@@ -3064,6 +3280,13 @@ function BPGPRightPanel({
           processId={processId}
           level={level}
           state={practiceState}
+          allNodeEntries={getEntriesForNodeKey(
+            `${processId}_${level}_${practiceId}`,
+            ratings,
+          )}
+          onDeleteEntryGlobal={onDeleteEntryGlobal}
+          onEditEntryGlobal={_onEditEntryGlobal}
+          allPractices={allPractices}
           onChange={(patch) =>
             updatePracticeState(processId, level, practiceId, patch)
           }
@@ -3136,6 +3359,7 @@ export function PerformAssessment() {
     processId: string;
     level: number;
     practiceId: string;
+    nodeKey: string;
   } | null>(null);
 
   const currentAssessment = assessments?.find(
@@ -3151,6 +3375,45 @@ export function PerformAssessment() {
     () => buildEnabledProcesses(processConfig ?? null),
     [processConfig],
   );
+
+  // ─── All practices for the current assessment (for Practice multi-select) ──
+  const allPracticesForAssessment = useMemo(() => {
+    const list: { key: string; label: string }[] = [];
+    for (const proc of enabledProcesses) {
+      const tl =
+        proc.targetLevel === "NA" ? 0 : Number.parseInt(proc.targetLevel, 10);
+      if (tl >= 1) {
+        for (const bp of BASE_PRACTICES[proc.id] ?? []) {
+          const bpSuffix = bp.id.startsWith(`${proc.id}.`)
+            ? bp.id.slice(proc.id.length + 1)
+            : bp.id;
+          const label = `${proc.id} ${bpSuffix}`;
+          list.push({ key: `${proc.id}_1_${bp.id}`, label });
+        }
+      }
+      if (tl >= 2) {
+        for (const attr of LEVEL2_ATTRIBUTES) {
+          for (const gp of attr.practices) {
+            list.push({
+              key: `${proc.id}_2_${gp.id}`,
+              label: `${proc.id} ${gp.id}`,
+            });
+          }
+        }
+      }
+      if (tl >= 3) {
+        for (const attr of LEVEL3_ATTRIBUTES) {
+          for (const gp of attr.practices) {
+            list.push({
+              key: `${proc.id}_3_${gp.id}`,
+              label: `${proc.id} ${gp.id}`,
+            });
+          }
+        }
+      }
+    }
+    return list;
+  }, [enabledProcesses]);
 
   // ─── Tree expand/collapse logic ───────────────────────────────────────────
   // Use a ref to store the toggle function so TreeNode always gets the latest
@@ -3310,7 +3573,8 @@ export function PerformAssessment() {
   const openSwDialog = useCallback(
     (processId: string, level: number, practiceId: string, entry?: SwEntry) => {
       setSwDialogEntry(entry);
-      setSwDialogPracticeKey({ processId, level, practiceId });
+      const nodeKey = `${processId}_${level}_${practiceId}`;
+      setSwDialogPracticeKey({ processId, level, practiceId, nodeKey });
       setSwDialogOpen(true);
     },
     [],
@@ -3321,6 +3585,11 @@ export function PerformAssessment() {
     if (!swDialogPracticeKey) return;
     const { processId, level, practiceId } = swDialogPracticeKey;
     const key = getRatingKey(processId, level, practiceId);
+    // If editing an existing entry, update across all keys (multi-practice support)
+    if (swDialogEntry) {
+      updateEntryInRatings(entry);
+      return;
+    }
     setRatings((prev) => {
       const existing = prev[key] ?? defaultPracticeState();
       const existingEntries = existing.swEntries ?? [];
@@ -3523,6 +3792,29 @@ export function PerformAssessment() {
       saveProcessRatings,
       setAutosaveStatus,
     ],
+  );
+
+  // ─── Global entry delete / update (multi-practice support) ──────────────
+  const deleteEntryFromRatings = useCallback(
+    (id: string) => {
+      setRatings((prev) => {
+        const next = deleteEntryById(id, prev);
+        scheduleAutosave(next);
+        return next;
+      });
+    },
+    [scheduleAutosave],
+  );
+
+  const updateEntryInRatings = useCallback(
+    (updated: SwEntry) => {
+      setRatings((prev) => {
+        const next = updateEntryById(updated, prev);
+        scheduleAutosave(next);
+        return next;
+      });
+    },
+    [scheduleAutosave],
   );
 
   // ─── Tree building ───────────────────────────────────────────
@@ -3814,6 +4106,9 @@ export function PerformAssessment() {
           projectEvidence={projectEvidence}
           assessmentId={assessmentId}
           onEvidenceChange={onEvidenceChange}
+          allPractices={allPracticesForAssessment}
+          onDeleteEntryGlobal={deleteEntryFromRatings}
+          onEditEntryGlobal={updateEntryInRatings}
         />
       )}
 
@@ -3823,10 +4118,14 @@ export function PerformAssessment() {
           open={swDialogOpen}
           onOpenChange={setSwDialogOpen}
           initialEntry={swDialogEntry}
-          practiceId={`${swDialogPracticeKey.processId} ${swDialogPracticeKey.practiceId}`}
           onSubmit={handleSwDialogSubmit}
           currentUser={currentUser?.username}
           projectEvidence={projectEvidence}
+          allPractices={allPracticesForAssessment}
+          initialPracticeIds={
+            swDialogEntry?.practiceIds ??
+            (swDialogPracticeKey ? [swDialogPracticeKey.nodeKey] : [])
+          }
         />
       )}
     </div>
@@ -3856,6 +4155,9 @@ function DraggableThreePanelLayout({
   projectEvidence,
   assessmentId,
   onEvidenceChange,
+  allPractices,
+  onDeleteEntryGlobal,
+  onEditEntryGlobal,
 }: {
   selectedNode: SelectedNode | null;
   setSelectedNode: (n: SelectedNode) => void;
@@ -3891,6 +4193,9 @@ function DraggableThreePanelLayout({
   projectEvidence: ProjectEvidence[];
   assessmentId: bigint | null;
   onEvidenceChange: () => void;
+  allPractices: { key: string; label: string }[];
+  onDeleteEntryGlobal: (id: string) => void;
+  onEditEntryGlobal: (entry: SwEntry) => void;
 }) {
   // Resizable panel widths — persisted in localStorage
   const STORAGE_KEY = "qinsight-perform-col-widths";
@@ -4179,6 +4484,9 @@ function DraggableThreePanelLayout({
             assessmentId={assessmentId}
             enabledProcessIds={enabledProcesses.map((p) => p.id)}
             onEvidenceChange={onEvidenceChange}
+            allPractices={allPractices}
+            onDeleteEntryGlobal={onDeleteEntryGlobal}
+            onEditEntryGlobal={onEditEntryGlobal}
           />
         </div>
       ) : (

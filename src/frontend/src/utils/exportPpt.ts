@@ -8,7 +8,7 @@
 
 import type { ReportData } from "./reportData";
 
-// ─── CDN loader ──────────────────────────────────────────────────
+// ─── CDN loader ──────────────────────────────────────────────
 async function loadPptxGenJS(): Promise<any> {
   if ((window as any).PptxGenJS) return (window as any).PptxGenJS;
   return new Promise((resolve, reject) => {
@@ -30,7 +30,7 @@ async function loadPptxGenJS(): Promise<any> {
   });
 }
 
-// ─── Theme colours ──────────────────────────────────────────────
+// ─── Theme colours ────────────────────────────────────────────
 const TEAL = "1A8C7A";
 const TEAL_HDR = "2E8B7E";
 const ROW_DARK = "B8CECA";
@@ -53,7 +53,7 @@ function rc(r?: string | null) {
     : { fill: "F3F4F6", text: "9CA3AF" };
 }
 
-// ─── Image helpers ──────────────────────────────────────────────
+// ─── Image helpers ───────────────────────────────────────────
 async function fetchBase64(url: string): Promise<string> {
   try {
     const resp = await fetch(url);
@@ -69,7 +69,7 @@ async function fetchBase64(url: string): Promise<string> {
   }
 }
 
-// ─── Shared helpers ─────────────────────────────────────────────
+// ─── Shared helpers ──────────────────────────────────────────
 function addLogo(
   slide: any,
   b64: string,
@@ -140,7 +140,7 @@ function addSlideTitle(slide: any, title: string) {
   });
 }
 
-// ─── Slide 1 — Cover ────────────────────────────────────────────
+// ─── Slide 1 — Cover ──────────────────────────────────────────
 function addCoverSlide(
   pptx: any,
   data: ReportData,
@@ -196,11 +196,30 @@ function addCoverSlide(
     });
   }
 
-  const lines: string[] = [];
-  if (info?.leadAssessor?.trim()) lines.push(info.leadAssessor.trim());
-  if (info?.coAssessor?.trim()) lines.push(info.coAssessor.trim());
-  if (info?.sponsor?.trim()) lines.push(info.sponsor.trim());
-  lines.forEach((line, i) => {
+  // Build co-assessor lines for cover
+  const coverLines: string[] = [];
+  if (info?.leadAssessor?.trim()) coverLines.push(info.leadAssessor.trim());
+  try {
+    const raw = JSON.parse(info?.coAssessor || "[]") as Array<{
+      name?: string;
+      id?: string;
+    }>;
+    if (Array.isArray(raw)) {
+      for (const ca of raw) {
+        const line = [
+          ca.name?.trim() || "",
+          ca.id?.trim() ? `| ${ca.id.trim()}` : "",
+        ]
+          .filter(Boolean)
+          .join(" ");
+        if (line) coverLines.push(line);
+      }
+    }
+  } catch {
+    // ignore
+  }
+
+  coverLines.forEach((line, i) => {
     slide.addText(line, {
       x: 0.5,
       y: 5.6 + i * 0.38,
@@ -258,43 +277,95 @@ function addAssessmentInfoSlide(
     timeline = `${info.startDate} \u2013 ${info.endDate}`;
   else if (info?.startDate) timeline = info.startDate;
 
+  // Parse co-assessors from JSON
+  let coAssessorLines: string[] = [];
+  try {
+    const raw = JSON.parse(info?.coAssessor || "[]") as Array<{
+      name?: string;
+      id?: string;
+    }>;
+    if (Array.isArray(raw)) {
+      coAssessorLines = raw
+        .filter((ca) => ca.name?.trim() || ca.id?.trim())
+        .map(
+          (ca) =>
+            `${ca.name?.trim() || ""}${
+              ca.id?.trim() ? ` | ${ca.id.trim()}` : ""
+            }`,
+        );
+    }
+  } catch {
+    // ignore
+  }
+
+  // Lead assessor with ID
+  const leadAssessorId = info?.assessorBody?.trim() || "";
+  const leadAssessorDisplay = info?.leadAssessor?.trim()
+    ? `${info.leadAssessor.trim()}${
+        leadAssessorId ? ` | ${leadAssessorId}` : ""
+      }`
+    : "";
+
   const fields: [string, string][] = [
     ["Project Name", info?.projectName || ""],
     ["Project ID", info?.intacsId || ""],
-    ["Assessed Project", info?.assessedParty || ""],
-    ["Target Level", info?.targetCapabilityLevel || ""],
-    ["PAM Version", info?.pamVersion || ""],
     ["Assessment Timeline", timeline],
-    ["Sponsor", info?.sponsor || ""],
-    ["Lead Assessor", info?.leadAssessor || ""],
-    ["Co-Assessors", info?.coAssessor || ""],
+    ["Lead Assessor", leadAssessorDisplay],
+    ...coAssessorLines.map((line, i): [string, string] => [
+      i === 0 ? "Co-Assessors" : "",
+      line,
+    ]),
+    ["PAM Version", info?.pamVersion || ""],
+    ["VDA Version", info?.vdaVersion || ""],
+    ["Target Capability Level", info?.targetCapabilityLevel || ""],
+    ["Functional Safety Level", info?.functionalSafetyLevel || ""],
+    ["Cybersecurity Level", info?.cybersecurityLevel || ""],
   ];
 
   let y = 1.1;
   for (const [label, value] of fields) {
-    slide.addText(
-      [
-        { text: "\u2013  ", options: { color: TEAL, bold: false } },
-        { text: `${label}: `, options: { color: DARK_TEXT, bold: true } },
-        { text: value || "", options: { color: DARK_TEXT, bold: false } },
-      ],
-      {
-        x: 0.35,
-        y,
-        w: 12.0,
-        h: 0.42,
-        fontSize: 13,
-        fontFace: "Calibri",
-        valign: "middle",
-      },
-    );
+    if (label === "") {
+      // continuation co-assessor line — indent only, no label
+      slide.addText(
+        [
+          { text: "    ", options: { color: DARK_TEXT } },
+          { text: value || "", options: { color: DARK_TEXT, bold: false } },
+        ],
+        {
+          x: 0.35,
+          y,
+          w: 12.0,
+          h: 0.42,
+          fontSize: 13,
+          fontFace: "Calibri",
+          valign: "middle",
+        },
+      );
+    } else {
+      slide.addText(
+        [
+          { text: "\u2013  ", options: { color: TEAL, bold: false } },
+          { text: `${label}: `, options: { color: DARK_TEXT, bold: true } },
+          { text: value || "", options: { color: DARK_TEXT, bold: false } },
+        ],
+        {
+          x: 0.35,
+          y,
+          w: 12.0,
+          h: 0.42,
+          fontSize: 13,
+          fontFace: "Calibri",
+          valign: "middle",
+        },
+      );
+    }
     y += 0.48;
   }
 
   addFooter(slide, dateStr, pageNum);
 }
 
-// ─── Slide 3 — Assessment Scope ─────────────────────────────────
+// ─── Slide 3 — Assessment Scope ───────────────────────────────
 function addAssessmentScopeSlide(
   pptx: any,
   data: ReportData,
@@ -340,25 +411,24 @@ function addAssessmentScopeSlide(
     tableData.push([
       cell(proc.id),
       cell(proc.name),
-      cell(`L${proc.targetLevel}`, "center"),
+      cell(`Level ${proc.targetLevel}`, "center"),
     ]);
   });
 
   slide.addTable(tableData, {
-    x: 0.5,
-    y: 1.15,
-    w: 12.3,
-    colW: [2.0, 8.5, 1.8],
+    x: 0.35,
+    y: 1.1,
+    w: 12.6,
+    colW: [2.2, 8.4, 2.0],
     rowH: 0.42,
-    border: { type: "none" },
-    autoPage: true,
+    border: { type: "solid", color: "555555", pt: 0.5 },
     fontSize: 11,
   });
 
   addFooter(slide, dateStr, pageNum);
 }
 
-// ─── Slide 4 — Assessment Results ───────────────────────────────
+// ─── Slide 4 — Assessment Results Summary ───────────────────────
 function addAssessmentResultsSlide(
   pptx: any,
   data: ReportData,
@@ -669,7 +739,7 @@ function addFullMatrixSlide(
   addFooter(slide, dateStr, pageNum);
 }
 
-// ─── Slide 6 — Global Strengths ─────────────────────────────────
+// ─── Slide 6 — Global Strengths ───────────────────────────────
 function addGlobalStrengthsSlide(
   pptx: any,
   data: ReportData,
@@ -720,7 +790,7 @@ function addGlobalStrengthsSlide(
   addFooter(slide, dateStr, pageNum);
 }
 
-// ─── Slide 7 — Global Weaknesses ────────────────────────────────
+// ─── Slide 7 — Global Weaknesses ──────────────────────────────
 function addGlobalWeaknessesSlide(
   pptx: any,
   data: ReportData,
@@ -771,19 +841,20 @@ function addGlobalWeaknessesSlide(
   addFooter(slide, dateStr, pageNum);
 }
 
-// ─── Slides 8+ — Per-Process ────────────────────────────────────
+// ─── Slides 8+ — Per-Process ─────────────────────────────────────
 
 interface FindingItem {
   text: string;
   ref: string;
   type: "strength" | "weakness" | "suggestion";
+  practiceRefs?: string[];
   runs?: Array<{
     text: string;
     options?: { bold?: boolean; italic?: boolean };
   }>;
 }
 
-// ─── Rich-text to PPT text runs ──────────────────────────────────
+// ─── Rich-text to PPT text runs ────────────────────────────────
 type PptRun = { text: string; options?: { bold?: boolean; italic?: boolean } };
 
 function richTextToPptRuns(text: string): PptRun[] {
@@ -827,44 +898,13 @@ function richTextToPptRuns(text: string): PptRun[] {
 }
 
 function collectFindings(proc: ReportData["processes"][0]): FindingItem[] {
-  const items: FindingItem[] = [];
-  const practices = [
-    ...proc.bpDetails,
-    ...proc.gpGroups.flatMap((g) => g.practices),
-  ];
-  for (const p of practices) {
-    for (const raw of (p.strengths || "").split("\n")) {
-      const t = raw.trim();
-      if (t)
-        items.push({
-          text: t,
-          ref: p.id,
-          type: "strength",
-          runs: richTextToPptRuns(t),
-        });
-    }
-    for (const raw of (p.weaknesses || "").split("\n")) {
-      const t = raw.trim();
-      if (t)
-        items.push({
-          text: t,
-          ref: p.id,
-          type: "weakness",
-          runs: richTextToPptRuns(t),
-        });
-    }
-    for (const raw of (p.suggestions || "").split("\n")) {
-      const t = raw.trim();
-      if (t)
-        items.push({
-          text: t,
-          ref: p.id,
-          type: "suggestion",
-          runs: richTextToPptRuns(t),
-        });
-    }
-  }
-  return items;
+  return (proc.findingsList ?? []).map((f) => ({
+    text: f.text,
+    ref: "",
+    type: f.type,
+    practiceRefs: f.practiceRefs,
+    runs: richTextToPptRuns(f.text),
+  }));
 }
 
 function addProcessSlides(
@@ -940,10 +980,17 @@ function addProcessSlides(
             options: { color: DARK_TEXT, bold: false },
           });
         }
-        textRuns.push({
-          text: `  [${item.ref}]`,
-          options: { color: GRAY_TEXT, bold: false },
-        });
+        // Append BP/GP references at the end
+        const refLabel =
+          item.practiceRefs && item.practiceRefs.length > 0
+            ? item.practiceRefs.join(", ")
+            : item.ref;
+        if (refLabel) {
+          textRuns.push({
+            text: `  [${refLabel}]`,
+            options: { color: GRAY_TEXT, bold: false },
+          });
+        }
         slide.addText(textRuns, {
           x: 0.35,
           y,

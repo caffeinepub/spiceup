@@ -42,6 +42,13 @@ export interface PAGroup {
   practices: PracticeDetail[];
 }
 
+export interface FindingItem {
+  id: string;
+  type: "strength" | "weakness" | "suggestion";
+  text: string;
+  practiceRefs: string[]; // short labels e.g. ["BP1", "BP3"]
+}
+
 export interface ReportProcess {
   id: string;
   label: string;
@@ -50,6 +57,7 @@ export interface ReportProcess {
   paRatings: Record<string, Rating | null>;
   bpDetails: PracticeDetail[];
   gpGroups: PAGroup[];
+  findingsList: FindingItem[];
 }
 
 export interface ScheduleSession {
@@ -136,6 +144,20 @@ function parseSuggestions(rawWPI: string): string {
     // ignore
   }
   return "";
+}
+
+// ─── Practice label shortener ─────────────────────────────────────
+
+function shortPracticeLabel(nodeKey: string): string {
+  // nodeKey format: processId_level_practiceId e.g. MAN.3_1_MAN.3.BP1
+  const parts = nodeKey.split("_");
+  if (parts.length < 3) return nodeKey;
+  const pid = parts[0]; // e.g. MAN.3
+  const fullPracticeId = parts.slice(2).join("_"); // e.g. MAN.3.BP1
+  const short = fullPracticeId.startsWith(`${pid}.`)
+    ? fullPracticeId.slice(pid.length + 1)
+    : fullPracticeId;
+  return short; // e.g. BP1, GP2.1.1
 }
 
 // ─── Capability Level Calculator ────────────────────────────────
@@ -333,6 +355,43 @@ export function buildReportData(
 
     const capabilityLevel = computeCapabilityLevel(targetLevel, paRatings);
 
+    // ─── Build findingsList ─────────────────────────────────────
+    const seenIds = new Set<string>();
+    const findingsList: FindingItem[] = [];
+
+    for (const r of allProcRatings) {
+      if (!r.workProductsInspected) continue;
+      try {
+        const parsed = JSON.parse(r.workProductsInspected) as {
+          swEntries?: Array<{
+            id?: string;
+            type?: string;
+            text?: string;
+            practiceIds?: string[];
+          }>;
+        };
+        const entries = parsed.swEntries ?? [];
+        for (const e of entries) {
+          if (!e.id || seenIds.has(e.id)) continue;
+          seenIds.add(e.id);
+          const type: "strength" | "weakness" | "suggestion" =
+            e.type === "strength"
+              ? "strength"
+              : e.type === "weakness"
+                ? "weakness"
+                : "suggestion";
+          const text = stripHtml(String(e.text ?? "")).trim();
+          if (!text) continue;
+          const practiceRefs: string[] = (e.practiceIds ?? []).map(
+            (nodeKey: string) => shortPracticeLabel(nodeKey),
+          );
+          findingsList.push({ id: e.id, type, text, practiceRefs });
+        }
+      } catch {
+        // ignore
+      }
+    }
+
     processes.push({
       id: procId,
       label: procLabel,
@@ -341,6 +400,7 @@ export function buildReportData(
       paRatings,
       bpDetails,
       gpGroups,
+      findingsList,
     });
   }
 

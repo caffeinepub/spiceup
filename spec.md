@@ -1,33 +1,42 @@
 # Q-Insight
 
 ## Current State
-The Add/Edit Finding dialog has a custom `RichTextEditor` with Bold, Italic, Bullet toolbar buttons. Evidence linking is done via a separate popover (chain icon) on the finding row, which stores `referencedEvidenceIds` as badges below the description in the table. `renderRichText` parses `**bold**`, `*italic*`, and `• bullet` markdown but has no inline link support. PPT export strips all markdown via `stripHtml()` and ignores `referencedEvidenceIds`.
+- Assessment Info page has sections: Assessment Timeline, Assessment Team (with Sponsor + Lead Assessor on separate rows), Organization Details, Project Information (4th), Application Parameters, Standards & Classification (with Assessment Class), Additional Information
+- Co-Assessors are displayed with Name and ID on separate input rows
+- PPT Assessment Info slide lists: Project Name, Project ID, Assessed Project, Target Level, PAM Version, Timeline, Sponsor, Lead Assessor, Co-Assessors
+- PPT Cover slide includes sponsor in the lines list
+- PPT per-process findings show `[practiceId]` (e.g., `[MAN.3.BP1]`) at end of each finding bullet
+- Findings with Practice multi-select store `practiceIds` as node keys in SwEntry, but PPT doesn't read them
 
 ## Requested Changes (Diff)
 
 ### Add
-- Evidence link button in `RichTextEditor` toolbar (alongside Bold, Italic, Bullet)
-- Clicking the evidence link button opens a picker/popover listing all project evidence items by name; selecting one inserts an inline evidence reference token into the text: `[[ev:ID:Name]]`
-- `renderRichText` parses `[[ev:ID:Name]]` tokens and renders them as clickable blue link spans
-- Clicking an inline evidence link opens a small preview modal showing Evidence Name, Link (clickable URL), and Version
-- PPT export: convert `[[ev:ID:Name]]` tokens to `[Name]` plain text; preserve **bold** and *italic* markers as pptxgenjs bold/italic runs
+- `findingsList` field to `ReportProcess` in `reportData.ts`: deduplicated list of findings per process with `practiceRefs` (short labels like `["BP1", "BP3"]`) read from SwEntry `practiceIds` in `workProductsInspected`
 
 ### Modify
-- `RichTextEditor` component: add a 4th toolbar button (Link/Evidence icon) that opens the evidence picker
-- `renderRichText`: add parsing for `[[ev:ID:Name]]` tokens → render as `<button>` styled as a blue link
-- `collectFindings` in exportPpt: replace `stripHtml` with a function that converts markdown+evidence tokens to pptxgenjs text run arrays (bold, italic, plain, `[Name]` for evidence refs)
-- Add/Edit Finding dialog: remove the separate "Referenced Evidence" checklist section
-- Findings table row: remove the `EvidenceLinkPopover` chain icon and evidence badge renders
+- **AssessmentInfo.tsx**: 
+  - Reorder sections: Project Information FIRST, then Assessment Timeline, Assessment Team, Application Parameters, Standards & Classification, Additional Information
+  - Remove the entire Organization Details section (Assessed Party, Assessed Site, Unit/Department, Project Contact SW Dev, Project Contact SW Quality)
+  - Remove Assessment Sponsor field from Assessment Team
+  - Remove Assessment Class field from Standards & Classification
+  - Lead Assessor: display Name input + ID input side by side on ONE line (grid-cols-2)
+  - Co-Assessors: each entry has Name + ID side by side on ONE line (grid-cols-2)
+- **exportPpt.ts — Assessment Info slide**: Remove Sponsor and Assessed Project fields; reorder to put Project Name/ID first; show Lead Assessor as `Name | ID` on one line; show each co-assessor as `Name | ID` on its own line; parse co-assessors from JSON
+- **exportPpt.ts — Cover slide**: Remove sponsor from the lines list
+- **exportPpt.ts — collectFindings**: Use `proc.findingsList` to collect findings; append short practice refs as `[BP5, BP6]` (not full ID like `[MAN.3.BP1]`); if no practiceIds, fall back to the legacy `[practiceId]` format stripped to short label
+- **reportData.ts**: Add `findingsList` building by scanning all `workProductsInspected` swEntries across all practices for the process, deduplicating by `id`, and converting `practiceIds` nodeKeys to short practice labels
 
 ### Remove
-- `EvidenceLinkPopover` component (chain icon on table row)
-- `referencedEvidenceIds` badge rendering below description in table
-- "Referenced Evidence" checklist section in the Add/Edit Finding dialog
+- Organization Details section from Assessment Info page
+- Assessment Class field from Assessment Info page
+- Assessment Sponsor field from Assessment Info page
+- Sponsor from PPT Assessment Info slide and Cover slide
 
 ## Implementation Plan
-1. Add evidence link token format `[[ev:ID:Name]]` — update `RichTextEditor` to accept `projectEvidence` prop and add a 4th toolbar button that opens a small Popover listing all evidence; clicking an item inserts `[[ev:ID:Name]]` at cursor
-2. Update `renderRichText` to parse `[[ev:ID:Name]]` tokens and render as clickable inline link spans
-3. Add `EvidencePreviewModal` — small dialog showing name, clickable URL link, and version for a given evidence item
-4. Wire `renderRichText` link clicks to open `EvidencePreviewModal` (pass state up via callback)
-5. Remove `EvidenceLinkPopover` component, remove badge rendering from findings table, remove checklist from Add/Edit dialog
-6. Update PPT export: replace `stripHtml` with a rich-text-to-pptx converter that outputs pptxgenjs text run arrays with bold/italic and `[Name]` for evidence tokens
+1. Update `AssessmentInfo.tsx`: reorder sections, remove Organization Details + Sponsor + Assessment Class, put Lead Assessor Name+ID on one line, co-assessors each on one line
+2. Update `reportData.ts`: add `FindingItem` interface with `practiceRefs: string[]`, add `findingsList: FindingItem[]` to `ReportProcess`, build it by parsing `workProductsInspected` swEntries per process, deduplicate by id, extract short labels from practiceIds nodeKeys
+3. Update `exportPpt.ts`:
+   a. Cover slide: remove sponsor line
+   b. Assessment Info slide: remove Sponsor/Assessed Project, reorder, format Lead Assessor/Co-Assessors with Name | ID format
+   c. `collectFindings`: rewrite to use `proc.findingsList`; format ref as `[BP1, BP3]` short labels
+4. Validate

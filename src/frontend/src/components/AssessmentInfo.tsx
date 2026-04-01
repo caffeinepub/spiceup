@@ -35,7 +35,6 @@ interface CoAssessorEntry {
 const defaultFormData = {
   startDate: "",
   endDate: "",
-  sponsor: "",
   leadAssessor: "",
   leadAssessorId: "",
   assessedParty: "",
@@ -51,7 +50,6 @@ const defaultFormData = {
   developmentExternal: false,
   pamVersion: "Automotive SPICE 4.0",
   vdaVersion: "VDA Guideline 2.0",
-  assessmentClass: "",
   targetCapabilityLevel: "",
   functionalSafetyLevel: "",
   cybersecurityLevel: "",
@@ -117,7 +115,6 @@ export function AssessmentInfo() {
       setFormData({
         startDate: infoData.startDate || "",
         endDate: infoData.endDate || "",
-        sponsor: infoData.sponsor || "",
         leadAssessor: infoData.leadAssessor || "",
         leadAssessorId,
         assessedParty: infoData.assessedParty || "",
@@ -133,7 +130,6 @@ export function AssessmentInfo() {
         developmentExternal: infoData.developmentExternal || false,
         pamVersion: infoData.pamVersion || "Automotive SPICE 4.0",
         vdaVersion: infoData.vdaVersion || "VDA Guideline 2.0",
-        assessmentClass: infoData.assessmentClass || "",
         targetCapabilityLevel: infoData.targetCapabilityLevel || "",
         functionalSafetyLevel: infoData.functionalSafetyLevel || "",
         cybersecurityLevel: infoData.cybersecurityLevel || "",
@@ -173,7 +169,7 @@ export function AssessmentInfo() {
       assessmentId: currentAssessmentId!,
       startDate: formData.startDate,
       endDate: formData.endDate,
-      sponsor: formData.sponsor,
+      sponsor: "",
       leadAssessor: formData.leadAssessor,
       coAssessor: JSON.stringify(
         coAssessors.map(({ name, id }) => ({ name, id })),
@@ -192,7 +188,7 @@ export function AssessmentInfo() {
       developmentExternal: formData.developmentExternal,
       pamVersion: formData.pamVersion,
       vdaVersion: formData.vdaVersion,
-      assessmentClass: formData.assessmentClass,
+      assessmentClass: "",
       targetCapabilityLevel: formData.targetCapabilityLevel,
       functionalSafetyLevel: formData.functionalSafetyLevel,
       cybersecurityLevel: formData.cybersecurityLevel,
@@ -274,7 +270,53 @@ export function AssessmentInfo() {
           </div>
         ) : (
           <div className="space-y-6">
-            {/* Section 1: Assessment Timeline */}
+            {/* Section 1: Project Information */}
+            <Card className="border-border/60">
+              <CardHeader className="pb-4">
+                <CardTitle className="text-sm font-semibold text-foreground">
+                  Project Information
+                </CardTitle>
+                <Separator />
+              </CardHeader>
+              <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="font-body font-medium">Project Name</Label>
+                  <Input
+                    value={formData.projectName}
+                    onChange={(e) => update("projectName", e.target.value)}
+                    placeholder="Enter project name"
+                    className="font-body"
+                    disabled={isCompleted}
+                    data-ocid="assessment_info.project_name_input"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="font-body font-medium">Project ID</Label>
+                  <Input
+                    value={formData.projectId}
+                    onChange={(e) => update("projectId", e.target.value)}
+                    placeholder="Enter project ID"
+                    className="font-body"
+                    disabled={isCompleted}
+                    data-ocid="assessment_info.project_id_input"
+                  />
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label className="font-body font-medium">Project Scope</Label>
+                  <Textarea
+                    value={formData.projectScope}
+                    onChange={(e) => update("projectScope", e.target.value)}
+                    placeholder="Describe the project scope..."
+                    rows={4}
+                    className="font-body"
+                    disabled={isCompleted}
+                    data-ocid="assessment_info.project_scope_textarea"
+                  />
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Section 2: Assessment Timeline */}
             <FormSection title="Assessment Timeline">
               <div className="space-y-2">
                 <Label className="font-body font-medium">
@@ -304,7 +346,7 @@ export function AssessmentInfo() {
               </div>
             </FormSection>
 
-            {/* Section 2: Assessment Team */}
+            {/* Section 3: Assessment Team */}
             <Card className="border-border/60">
               <CardHeader className="pb-4">
                 <CardTitle className="text-sm font-semibold text-foreground">
@@ -313,21 +355,7 @@ export function AssessmentInfo() {
                 <Separator />
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label className="font-body font-medium">
-                      Assessment Sponsor
-                    </Label>
-                    <Input
-                      value={formData.sponsor}
-                      onChange={(e) => update("sponsor", e.target.value)}
-                      placeholder="Enter sponsor name"
-                      className="font-body"
-                      disabled={isCompleted}
-                      data-ocid="assessment_info.sponsor_input"
-                    />
-                  </div>
-
+                <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label className="font-body font-medium">
                       Lead Assessor
@@ -388,7 +416,7 @@ export function AssessmentInfo() {
                       className="flex items-start gap-2 p-3 rounded-lg bg-muted/30 border border-border/40"
                       data-ocid={`assessment_info.co_assessor_item.${idx + 1}`}
                     >
-                      <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div className="flex-1 grid grid-cols-2 gap-2">
                         <div className="space-y-1">
                           <Label className="text-xs font-body text-muted-foreground">
                             Co-Assessor {idx + 1} Name
@@ -438,122 +466,7 @@ export function AssessmentInfo() {
               </CardContent>
             </Card>
 
-            {/* Section 3: Organization Details */}
-            <FormSection title="Organization Details">
-              <div className="space-y-2">
-                <Label className="font-body font-medium">Assessed Party</Label>
-                <Input
-                  value={formData.assessedParty}
-                  onChange={(e) => update("assessedParty", e.target.value)}
-                  placeholder="Enter assessed party"
-                  className="font-body"
-                  disabled={isCompleted}
-                  data-ocid="assessment_info.assessed_party_input"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label className="font-body font-medium">Assessed Site</Label>
-                <Input
-                  value={formData.assessedSite}
-                  onChange={(e) => update("assessedSite", e.target.value)}
-                  placeholder="Enter assessed site"
-                  className="font-body"
-                  disabled={isCompleted}
-                  data-ocid="assessment_info.assessed_site_input"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label className="font-body font-medium">
-                  Unit / Department
-                </Label>
-                <Input
-                  value={formData.unitDepartment}
-                  onChange={(e) => update("unitDepartment", e.target.value)}
-                  placeholder="Enter unit or department"
-                  className="font-body"
-                  disabled={isCompleted}
-                  data-ocid="assessment_info.unit_dept_input"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label className="font-body font-medium">
-                  Project Contact (SW Development)
-                </Label>
-                <Input
-                  value={formData.projectContactSWDev}
-                  onChange={(e) =>
-                    update("projectContactSWDev", e.target.value)
-                  }
-                  placeholder="Enter contact name"
-                  className="font-body"
-                  disabled={isCompleted}
-                  data-ocid="assessment_info.contact_sw_dev_input"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label className="font-body font-medium">
-                  Project Contact (SW Quality)
-                </Label>
-                <Input
-                  value={formData.projectContactSWQuality}
-                  onChange={(e) =>
-                    update("projectContactSWQuality", e.target.value)
-                  }
-                  placeholder="Enter contact name"
-                  className="font-body"
-                  disabled={isCompleted}
-                  data-ocid="assessment_info.contact_sw_quality_input"
-                />
-              </div>
-            </FormSection>
-
-            {/* Section 4: Project Information */}
-            <Card className="border-border/60">
-              <CardHeader className="pb-4">
-                <CardTitle className="text-sm font-semibold text-foreground">
-                  Project Information
-                </CardTitle>
-                <Separator />
-              </CardHeader>
-              <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label className="font-body font-medium">Project Name</Label>
-                  <Input
-                    value={formData.projectName}
-                    onChange={(e) => update("projectName", e.target.value)}
-                    placeholder="Enter project name"
-                    className="font-body"
-                    disabled={isCompleted}
-                    data-ocid="assessment_info.project_name_input"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label className="font-body font-medium">Project ID</Label>
-                  <Input
-                    value={formData.projectId}
-                    onChange={(e) => update("projectId", e.target.value)}
-                    placeholder="Enter project ID"
-                    className="font-body"
-                    disabled={isCompleted}
-                    data-ocid="assessment_info.project_id_input"
-                  />
-                </div>
-                <div className="space-y-2 md:col-span-2">
-                  <Label className="font-body font-medium">Project Scope</Label>
-                  <Textarea
-                    value={formData.projectScope}
-                    onChange={(e) => update("projectScope", e.target.value)}
-                    placeholder="Describe the project scope..."
-                    rows={4}
-                    className="font-body"
-                    disabled={isCompleted}
-                    data-ocid="assessment_info.project_scope_textarea"
-                  />
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Section 4b: Application Parameters */}
+            {/* Section 4: Application Parameters */}
             <Card className="border-border/60">
               <CardHeader className="pb-4">
                 <CardTitle className="text-sm font-semibold text-foreground">
@@ -660,19 +573,6 @@ export function AssessmentInfo() {
               </div>
               <div className="space-y-2">
                 <Label className="font-body font-medium">
-                  Assessment Class
-                </Label>
-                <Input
-                  value={formData.assessmentClass}
-                  onChange={(e) => update("assessmentClass", e.target.value)}
-                  placeholder="e.g., Class 1, Class 2"
-                  className="font-body"
-                  disabled={isCompleted}
-                  data-ocid="assessment_info.assessment_class_input"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label className="font-body font-medium">
                   Target Capability Level
                 </Label>
                 <Input
@@ -708,7 +608,7 @@ export function AssessmentInfo() {
                 <Input
                   value={formData.cybersecurityLevel}
                   onChange={(e) => update("cybersecurityLevel", e.target.value)}
-                  placeholder="e.g., CAL 3"
+                  placeholder="e.g., CAL 2"
                   className="font-body"
                   disabled={isCompleted}
                   data-ocid="assessment_info.cybersecurity_level_input"
