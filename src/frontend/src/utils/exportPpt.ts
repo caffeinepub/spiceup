@@ -70,18 +70,6 @@ async function fetchBase64(url: string): Promise<string> {
 }
 
 // ─── Shared helpers ──────────────────────────────────────────
-function addLogo(
-  slide: any,
-  b64: string,
-  x = 11.2,
-  y = 0.1,
-  w = 2.0,
-  h = 0.65,
-) {
-  if (!b64) return;
-  slide.addImage({ data: b64, x, y, w, h });
-}
-
 function addFooter(slide: any, dateStr: string, pageNum: number) {
   slide.addText(dateStr, {
     x: 0.25,
@@ -141,12 +129,7 @@ function addSlideTitle(slide: any, title: string) {
 }
 
 // ─── Slide 1 — Cover ──────────────────────────────────────────
-function addCoverSlide(
-  pptx: any,
-  data: ReportData,
-  bgBase64: string,
-  logoBase64: string,
-) {
+function addCoverSlide(pptx: any, data: ReportData, bgBase64: string) {
   const slide = pptx.addSlide();
   const info = data.info;
 
@@ -231,10 +214,6 @@ function addCoverSlide(
     });
   });
 
-  if (logoBase64) {
-    slide.addImage({ data: logoBase64, x: 10.3, y: 5.8, w: 2.7, h: 0.95 });
-  }
-
   slide.addText("restricted", {
     x: 5.5,
     y: 7.1,
@@ -248,17 +227,11 @@ function addCoverSlide(
 }
 
 // ─── Slide 2 — Assessment Information ───────────────────────────
-function addAssessmentInfoSlide(
-  pptx: any,
-  data: ReportData,
-  logoBase64: string,
-  pageNum: number,
-) {
+function addAssessmentInfoSlide(pptx: any, data: ReportData, pageNum: number) {
   const slide = pptx.addSlide();
   const info = data.info;
 
   addSlideTitle(slide, "Assessment Information");
-  addLogo(slide, logoBase64);
 
   const dateStr = info?.startDate
     ? new Date(info.startDate).toLocaleDateString("en-GB", {
@@ -376,15 +349,9 @@ function addAssessmentInfoSlide(
 }
 
 // ─── Slide 3 — Assessment Scope ───────────────────────────────
-function addAssessmentScopeSlide(
-  pptx: any,
-  data: ReportData,
-  logoBase64: string,
-  pageNum: number,
-) {
+function addAssessmentScopeSlide(pptx: any, data: ReportData, pageNum: number) {
   const slide = pptx.addSlide();
   addSlideTitle(slide, "Assessment Scope");
-  addLogo(slide, logoBase64);
 
   const dateStr = data.info?.startDate || "";
 
@@ -442,12 +409,10 @@ function addAssessmentScopeSlide(
 function addAssessmentResultsSlide(
   pptx: any,
   data: ReportData,
-  logoBase64: string,
   pageNum: number,
 ) {
   const slide = pptx.addSlide();
   addSlideTitle(slide, "Assessment Results");
-  addLogo(slide, logoBase64);
 
   const dateStr = data.info?.startDate || "";
 
@@ -568,16 +533,10 @@ function addAssessmentResultsSlide(
 }
 
 // ─── Slide 5 — Full Results Matrix ──────────────────────────────
-function addFullMatrixSlide(
-  pptx: any,
-  data: ReportData,
-  logoBase64: string,
-  pageNum: number,
-) {
+function addFullMatrixSlide(pptx: any, data: ReportData, pageNum: number) {
   if (data.processes.length === 0) return;
   const slide = pptx.addSlide();
   addSlideTitle(slide, "Full Results Matrix");
-  addLogo(slide, logoBase64);
 
   const dateStr = data.info?.startDate || "";
 
@@ -750,15 +709,9 @@ function addFullMatrixSlide(
 }
 
 // ─── Slide 6 — Global Strengths ───────────────────────────────
-function addGlobalStrengthsSlide(
-  pptx: any,
-  data: ReportData,
-  logoBase64: string,
-  pageNum: number,
-) {
+function addGlobalStrengthsSlide(pptx: any, data: ReportData, pageNum: number) {
   const slide = pptx.addSlide();
   addSlideTitle(slide, "Global Strengths");
-  addLogo(slide, logoBase64);
 
   const dateStr = data.info?.startDate || "";
   const items = data.globalStrengths.filter((s) => s.trim());
@@ -804,12 +757,10 @@ function addGlobalStrengthsSlide(
 function addGlobalWeaknessesSlide(
   pptx: any,
   data: ReportData,
-  logoBase64: string,
   pageNum: number,
 ) {
   const slide = pptx.addSlide();
   addSlideTitle(slide, "Global Weakness");
-  addLogo(slide, logoBase64);
 
   const dateStr = data.info?.startDate || "";
   const items = data.globalWeaknesses.filter((s) => s.trim());
@@ -942,7 +893,6 @@ function collectFindings(
 function addProcessSlides(
   pptx: any,
   proc: ReportData["processes"][0],
-  logoBase64: string,
   dateStr: string,
   startPageNum: number,
   evidenceMap: Record<
@@ -970,7 +920,6 @@ function addProcessSlides(
         : `${proc.id}: ${proc.label}`;
 
     addSlideTitle(slide, pageTitle);
-    addLogo(slide, logoBase64);
 
     const strengths = pageFindings.filter((f) => f.type === "strength");
     const weaknesses = pageFindings.filter((f) => f.type === "weakness");
@@ -1076,10 +1025,9 @@ export async function exportToPpt(data: ReportData): Promise<void> {
   pptx.subject = `Assessment Report: ${data.assessmentName}`;
   pptx.title = data.assessmentName;
 
-  const [bgBase64, logoBase64] = await Promise.all([
-    fetchBase64("/assets/generated/cover-bg.dim_1280x960.jpg"),
-    fetchBase64("/assets/uploads/Slide9-8.JPG"),
-  ]);
+  const bgBase64 = await fetchBase64(
+    "/assets/generated/cover-bg.dim_1280x960.jpg",
+  );
 
   const dateStr = data.info?.startDate
     ? new Date(data.info.startDate).toLocaleDateString("en-GB", {
@@ -1093,24 +1041,18 @@ export async function exportToPpt(data: ReportData): Promise<void> {
         year: "numeric",
       });
 
-  addCoverSlide(pptx, data, bgBase64, logoBase64);
+  addCoverSlide(pptx, data, bgBase64);
 
   let pageNum = 2;
-  addAssessmentInfoSlide(pptx, data, logoBase64, pageNum++);
-  addAssessmentScopeSlide(pptx, data, logoBase64, pageNum++);
-  addAssessmentResultsSlide(pptx, data, logoBase64, pageNum++);
-  addFullMatrixSlide(pptx, data, logoBase64, pageNum++);
-  addGlobalStrengthsSlide(pptx, data, logoBase64, pageNum++);
-  addGlobalWeaknessesSlide(pptx, data, logoBase64, pageNum++);
+  addAssessmentInfoSlide(pptx, data, pageNum++);
+  addAssessmentScopeSlide(pptx, data, pageNum++);
+  addAssessmentResultsSlide(pptx, data, pageNum++);
+  addFullMatrixSlide(pptx, data, pageNum++);
+  addGlobalStrengthsSlide(pptx, data, pageNum++);
+  addGlobalWeaknessesSlide(pptx, data, pageNum++);
 
   for (const proc of data.processes) {
-    const pagesAdded = addProcessSlides(
-      pptx,
-      proc,
-      logoBase64,
-      dateStr,
-      pageNum,
-    );
+    const pagesAdded = addProcessSlides(pptx, proc, dateStr, pageNum);
     pageNum += pagesAdded;
   }
 

@@ -2186,6 +2186,7 @@ function PASummaryView({
   onEdit,
   isCompleted,
   onRatingChange,
+  onAddEntry,
   projectEvidence,
   assessmentId,
   enabledProcessIds,
@@ -2197,6 +2198,7 @@ function PASummaryView({
   onEdit: (practiceId: string, level: number, entry: SwEntry) => void;
   isCompleted?: boolean;
   onRatingChange?: (rating: Rating) => void;
+  onAddEntry?: () => void;
   projectEvidence?: ProjectEvidence[];
   assessmentId?: bigint | null;
   enabledProcessIds?: string[];
@@ -2378,36 +2380,48 @@ function PASummaryView({
             value={filter}
             onValueChange={(v) => setFilter(v as typeof filter)}
           >
-            <TabsList className="h-8">
-              <TabsTrigger
-                value="all"
-                className="font-body text-xs h-6 px-3"
-                data-ocid="perform.pa_sw_filter_all_tab"
-              >
-                All ({allEntries.length})
-              </TabsTrigger>
-              <TabsTrigger
-                value="strengths"
-                className="font-body text-xs h-6 px-3"
-                data-ocid="perform.pa_sw_filter_strengths_tab"
-              >
-                Strengths ({strengthsCount})
-              </TabsTrigger>
-              <TabsTrigger
-                value="weaknesses"
-                className="font-body text-xs h-6 px-3"
-                data-ocid="perform.pa_sw_filter_weaknesses_tab"
-              >
-                Weaknesses ({weaknessesCount})
-              </TabsTrigger>
-              <TabsTrigger
-                value="observations"
-                className="font-body text-xs h-6 px-3"
-                data-ocid="perform.pa_sw_filter_observations_tab"
-              >
-                Suggestions ({observationsCount})
-              </TabsTrigger>
-            </TabsList>
+            <div className="flex items-center justify-between mb-2">
+              <TabsList className="h-8">
+                <TabsTrigger
+                  value="all"
+                  className="font-body text-xs h-6 px-3"
+                  data-ocid="perform.pa_sw_filter_all_tab"
+                >
+                  All ({allEntries.length})
+                </TabsTrigger>
+                <TabsTrigger
+                  value="strengths"
+                  className="font-body text-xs h-6 px-3"
+                  data-ocid="perform.pa_sw_filter_strengths_tab"
+                >
+                  Strengths ({strengthsCount})
+                </TabsTrigger>
+                <TabsTrigger
+                  value="weaknesses"
+                  className="font-body text-xs h-6 px-3"
+                  data-ocid="perform.pa_sw_filter_weaknesses_tab"
+                >
+                  Weaknesses ({weaknessesCount})
+                </TabsTrigger>
+                <TabsTrigger
+                  value="observations"
+                  className="font-body text-xs h-6 px-3"
+                  data-ocid="perform.pa_sw_filter_observations_tab"
+                >
+                  Suggestions ({observationsCount})
+                </TabsTrigger>
+              </TabsList>
+              {!isCompleted && onAddEntry && (
+                <Button
+                  size="sm"
+                  className="spice-gradient text-white border-0 gap-1 font-body text-xs h-7 px-3 shrink-0"
+                  onClick={onAddEntry}
+                  data-ocid="perform.pa_add_entry_button"
+                >
+                  <Plus className="h-3.5 w-3.5" /> Add Entry
+                </Button>
+              )}
+            </div>
 
             <TabsContent value={filter} className="mt-3">
               {filtered.length === 0 ? (
@@ -2417,12 +2431,8 @@ function PASummaryView({
                 >
                   <p className="text-sm text-muted-foreground font-body italic">
                     {allEntries.length === 0
-                      ? "No strengths or weaknesses recorded for this PA level yet."
+                      ? "No findings recorded for this PA level yet."
                       : "No entries match this filter."}
-                  </p>
-                  <p className="text-xs text-muted-foreground font-body mt-1">
-                    Select individual Base Practices or Generic Practices from
-                    the tree to add entries.
                   </p>
                 </div>
               ) : (
@@ -2578,6 +2588,7 @@ function ProcessOverviewView({
   isCompleted,
   onEdit,
   onRatingChange,
+  onAddEntry,
   projectEvidence,
   assessmentId,
   enabledProcessIds,
@@ -2589,6 +2600,7 @@ function ProcessOverviewView({
   isCompleted?: boolean;
   onEdit: (practiceId: string, level: number, entry: SwEntry) => void;
   onRatingChange: (rating: Rating) => void;
+  onAddEntry?: () => void;
   projectEvidence?: ProjectEvidence[];
   assessmentId?: bigint | null;
   enabledProcessIds?: string[];
@@ -2845,36 +2857,48 @@ function ProcessOverviewView({
                 value={filter}
                 onValueChange={(v) => setFilter(v as typeof filter)}
               >
-                <TabsList className="h-8">
-                  <TabsTrigger
-                    value="all"
-                    className="font-body text-xs h-6 px-3"
-                    data-ocid="perform.process_sw_filter_all_tab"
-                  >
-                    All ({allEntries.length})
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="strengths"
-                    className="font-body text-xs h-6 px-3"
-                    data-ocid="perform.process_sw_filter_strengths_tab"
-                  >
-                    Strengths ({strengthsCount})
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="weaknesses"
-                    className="font-body text-xs h-6 px-3"
-                    data-ocid="perform.process_sw_filter_weaknesses_tab"
-                  >
-                    Weaknesses ({weaknessesCount})
-                  </TabsTrigger>
-                  <TabsTrigger
-                    value="observations"
-                    className="font-body text-xs h-6 px-3"
-                    data-ocid="perform.process_sw_filter_observations_tab"
-                  >
-                    Suggestions ({observationsCount})
-                  </TabsTrigger>
-                </TabsList>
+                <div className="flex items-center justify-between mb-2">
+                  <TabsList className="h-8">
+                    <TabsTrigger
+                      value="all"
+                      className="font-body text-xs h-6 px-3"
+                      data-ocid="perform.process_sw_filter_all_tab"
+                    >
+                      All ({allEntries.length})
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value="strengths"
+                      className="font-body text-xs h-6 px-3"
+                      data-ocid="perform.process_sw_filter_strengths_tab"
+                    >
+                      Strengths ({strengthsCount})
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value="weaknesses"
+                      className="font-body text-xs h-6 px-3"
+                      data-ocid="perform.process_sw_filter_weaknesses_tab"
+                    >
+                      Weaknesses ({weaknessesCount})
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value="observations"
+                      className="font-body text-xs h-6 px-3"
+                      data-ocid="perform.process_sw_filter_observations_tab"
+                    >
+                      Suggestions ({observationsCount})
+                    </TabsTrigger>
+                  </TabsList>
+                  {!isCompleted && onAddEntry && (
+                    <Button
+                      size="sm"
+                      className="spice-gradient text-white border-0 gap-1 font-body text-xs h-7 px-3 shrink-0"
+                      onClick={onAddEntry}
+                      data-ocid="perform.process_add_entry_button"
+                    >
+                      <Plus className="h-3.5 w-3.5" /> Add Entry
+                    </Button>
+                  )}
+                </div>
 
                 <TabsContent value={filter} className="mt-3">
                   {filtered.length === 0 ? (
@@ -2884,12 +2908,8 @@ function ProcessOverviewView({
                     >
                       <p className="text-xs text-muted-foreground font-body italic">
                         {allEntries.length === 0
-                          ? "No strengths or weaknesses recorded for this process yet."
+                          ? "No findings recorded for this process yet."
                           : "No entries match this filter."}
-                      </p>
-                      <p className="text-xs text-muted-foreground font-body mt-1">
-                        Select individual Base Practices or Generic Practices
-                        from the tree to add entries.
                       </p>
                     </div>
                   ) : (
@@ -3791,7 +3811,7 @@ export function PerformAssessment() {
           setAutosaveStatus("idle");
           toast.error("Autosave failed — please save manually");
         }
-      }, 2000);
+      }, 300);
     },
     [
       currentAssessmentId,
@@ -4110,6 +4130,7 @@ export function PerformAssessment() {
           updatePracticeState={updatePracticeState}
           editSwEntryForPractice={editSwEntryForPractice}
           currentBpGpOpenDialog={currentBpGpOpenDialog}
+          openSwDialogRaw={openSwDialog}
           projectEvidence={projectEvidence}
           assessmentId={assessmentId}
           onEvidenceChange={onEvidenceChange}
@@ -4159,6 +4180,7 @@ function DraggableThreePanelLayout({
   updatePracticeState,
   editSwEntryForPractice,
   currentBpGpOpenDialog,
+  openSwDialogRaw,
   projectEvidence,
   assessmentId,
   onEvidenceChange,
@@ -4189,6 +4211,12 @@ function DraggableThreePanelLayout({
     level: number,
     practiceId: string,
     patch: Partial<PracticeState>,
+  ) => void;
+  openSwDialogRaw: (
+    processId: string,
+    level: number,
+    practiceId: string,
+    entry?: SwEntry,
   ) => void;
   editSwEntryForPractice: (
     processId: string,
@@ -4521,6 +4549,13 @@ function DraggableThreePanelLayout({
                     assessmentId={assessmentId}
                     enabledProcessIds={enabledProcesses.map((p) => p.id)}
                     onEvidenceChange={onEvidenceChange}
+                    onAddEntry={() =>
+                      openSwDialogRaw(
+                        selectedNode.processId,
+                        0,
+                        selectedNode.processId,
+                      )
+                    }
                     onEdit={(practiceId, level, updated) =>
                       editSwEntryForPractice(
                         selectedNode.processId,
@@ -4554,6 +4589,13 @@ function DraggableThreePanelLayout({
                   );
                 }}
                 isCompleted={!!isCompleted}
+                onAddEntry={() =>
+                  openSwDialogRaw(
+                    selectedNode.processId,
+                    5,
+                    selectedNode.paId ?? selectedNode.id,
+                  )
+                }
                 projectEvidence={projectEvidence}
                 assessmentId={assessmentId}
                 enabledProcessIds={enabledProcesses.map((p) => p.id)}
