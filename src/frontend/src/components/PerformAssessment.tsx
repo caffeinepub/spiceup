@@ -934,11 +934,12 @@ function AddEntryDialog({
     }
   }, [open, initialEntry, initialPracticeIds]);
 
-  const filteredPractices = practiceSearch.trim()
-    ? allPractices.filter((p) =>
-        p.label.toLowerCase().includes(practiceSearch.toLowerCase()),
-      )
-    : allPractices;
+  const filteredPractices =
+    practiceSearch.trim().length >= 2
+      ? allPractices.filter((p) =>
+          p.label.toLowerCase().includes(practiceSearch.toLowerCase()),
+        )
+      : [];
 
   function togglePractice(key: string) {
     setSelectedPracticeIds((prev) =>
@@ -985,18 +986,24 @@ function AddEntryDialog({
               Practices
             </Label>
             <Input
-              placeholder="Search practices…"
+              placeholder="Search Practices"
               value={practiceSearch}
               onChange={(e) => setPracticeSearch(e.target.value)}
               className="font-body text-xs h-8"
               data-ocid="perform.entry_practice_search_input"
             />
-            {/* Scrollable list */}
+            {/* Hint / scrollable list */}
+            {practiceSearch.trim().length < 2 && (
+              <p className="text-xs text-slate-400 font-body mt-1">
+                Type at least 2 characters to search
+              </p>
+            )}
             <div
               className="border border-border/60 rounded-md overflow-y-auto bg-background"
               style={{ maxHeight: 200 }}
             >
-              {filteredPractices.length === 0 ? (
+              {practiceSearch.trim().length >= 2 &&
+              filteredPractices.length === 0 ? (
                 <p className="text-xs text-muted-foreground font-body p-3 text-center italic">
                   No practices found.
                 </p>
