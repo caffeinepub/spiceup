@@ -178,6 +178,89 @@ function Sidebar({
   );
 }
 
+// ─── Presence system (localStorage-based) ───────────────────────────────────
+
+function avatarColor(username: string): string {
+  const colors = [
+    "#7C3AED",
+    "#DB2777",
+    "#059669",
+    "#D97706",
+    "#DC2626",
+    "#2563EB",
+    "#0891B2",
+  ];
+  let hash = 0;
+  for (let i = 0; i < username.length; i++)
+    hash = username.charCodeAt(i) + ((hash << 5) - hash);
+  return colors[Math.abs(hash) % colors.length];
+}
+
+function usePresenceHeartbeat(
+  userId: string | undefined,
+  username: string | undefined,
+  assessmentId: bigint | null,
+) {
+  useEffect(() => {
+    if (!userId || !username || !assessmentId) return;
+    const key = `qi_presence_${assessmentId}_${userId}`;
+    const write = () => {
+      localStorage.setItem(
+        key,
+        JSON.stringify({
+          userId,
+          username,
+          assessmentId: assessmentId.toString(),
+          timestamp: Date.now(),
+        }),
+      );
+    };
+    write();
+    const interval = setInterval(write, 2000);
+    return () => {
+      clearInterval(interval);
+      localStorage.removeItem(key);
+    };
+  }, [userId, username, assessmentId]);
+}
+
+function useOtherPresences(
+  currentUserId: string | undefined,
+  assessmentId: bigint | null,
+): { userId: string; username: string }[] {
+  const [others, setOthers] = useState<{ userId: string; username: string }[]>(
+    [],
+  );
+  useEffect(() => {
+    if (!assessmentId) {
+      setOthers([]);
+      return;
+    }
+    const read = () => {
+      const prefix = `qi_presence_${assessmentId}_`;
+      const now = Date.now();
+      const found: { userId: string; username: string }[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (!k?.startsWith(prefix)) continue;
+        try {
+          const val = JSON.parse(localStorage.getItem(k) ?? "");
+          if (val.userId === currentUserId) continue;
+          if (now - val.timestamp > 5000) continue;
+          found.push({ userId: val.userId, username: val.username });
+        } catch {
+          /* ignore */
+        }
+      }
+      setOthers(found);
+    };
+    read();
+    const interval = setInterval(read, 2000);
+    return () => clearInterval(interval);
+  }, [currentUserId, assessmentId]);
+  return others;
+}
+
 function AutosaveIndicator() {
   const { autosaveStatus } = useAppContext();
   const [visible, setVisible] = useState(false);
@@ -214,7 +297,15 @@ function AutosaveIndicator() {
 function AssessmentHeaderBar({ active }: { active: string }) {
   const { currentAssessmentId, currentAssessmentTitle, setCurrentAssessment } =
     useAppContext();
+  const { currentUser } = useAuth();
   const { data: assessments } = useGetAllAssessments();
+  // Presence: register self and read others
+  usePresenceHeartbeat(
+    currentUser?.username,
+    currentUser?.username,
+    currentAssessmentId,
+  );
+  const others = useOtherPresences(currentUser?.username, currentAssessmentId);
 
   const currentAssessment = assessments?.find(
     (a) => a.id === currentAssessmentId,
@@ -272,6 +363,34 @@ function AssessmentHeaderBar({ active }: { active: string }) {
             </Badge>
           )}
         </>
+      )}
+
+      {/* Other users' presence avatars */}
+      {others.length > 0 && (
+        <div className="flex items-center gap-1">
+          {others.slice(0, 5).map((u) => (
+            <div
+              key={u.userId}
+              className="h-8 w-8 rounded-full flex items-center justify-center shrink-0 font-body font-bold text-sm text-white select-none ring-2 ring-white"
+              style={{ backgroundColor: avatarColor(u.username) }}
+              title={`${u.username} is viewing this assessment`}
+              data-ocid="header.presence_avatar"
+            >
+              {u.username[0].toUpperCase()}
+            </div>
+          ))}
+        </div>
+      )}
+      {/* Presence indicator: current user avatar */}
+      {currentUser?.username && (
+        <div
+          className="h-8 w-8 rounded-full flex items-center justify-center shrink-0 font-body font-bold text-sm text-white select-none"
+          style={{ backgroundColor: "#2563EB" }}
+          title={currentUser.username}
+          data-ocid="header.user_avatar"
+        >
+          {currentUser.username[0].toUpperCase()}
+        </div>
       )}
     </div>
   );

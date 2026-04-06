@@ -1,5 +1,11 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAppContext } from "@/context/AppContext";
 import {
@@ -15,6 +21,8 @@ import {
 import { exportToPpt } from "@/utils/exportPpt";
 import { buildReportData } from "@/utils/reportData";
 import {
+  ChevronLeft,
+  ChevronRight as ChevronRightIcon,
   ClipboardX,
   FileText,
   Import,
@@ -37,6 +45,7 @@ interface SwEntry {
   status?: "draft" | "final";
   createdBy?: string;
   practiceIds?: string[];
+  isGlobal?: boolean;
 }
 
 // ─── Helper ──────────────────────────────────────────────────────
@@ -109,6 +118,7 @@ export function GenerateReport() {
   const [newStrength, setNewStrength] = useState("");
   const [newWeakness, setNewWeakness] = useState("");
   const [pptLoading, setPptLoading] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">(
     "idle",
   );
@@ -200,7 +210,7 @@ export function GenerateReport() {
           },
         },
       );
-    }, 600);
+    }, 100);
     return () => clearTimeout(timer);
   }, [globalStrengths, globalWeaknesses, isDirty, currentAssessmentId]);
 
@@ -233,8 +243,12 @@ export function GenerateReport() {
 
   // All SW entries from the current assessment's ratings
   const allSwEntries: SwEntry[] = getAllSwEntriesFromRatings(ratings ?? []);
-  const allStrengthFindings = allSwEntries.filter((e) => e.type === "strength");
-  const allWeaknessFindings = allSwEntries.filter((e) => e.type === "weakness");
+  const allStrengthFindings = allSwEntries.filter(
+    (e) => e.type === "strength" && e.isGlobal === true,
+  );
+  const allWeaknessFindings = allSwEntries.filter(
+    (e) => e.type === "weakness" && e.isGlobal === true,
+  );
 
   function addStrength() {
     const text = newStrength.trim();
@@ -471,7 +485,32 @@ export function GenerateReport() {
           )}
           {pptLoading ? "Generating..." : "Export PowerPoint (.pptx)"}
         </button>
+        <Button
+          variant="outline"
+          onClick={() => setPreviewOpen(true)}
+          className="gap-2 font-body"
+          data-ocid="report.preview_button"
+          disabled={!config || !ratings}
+        >
+          <Monitor className="h-4 w-4" />
+          Preview Slides
+        </Button>
       </div>
+
+      {previewOpen && config && ratings && (
+        <SlidePreviewModal
+          open={previewOpen}
+          onClose={() => setPreviewOpen(false)}
+          assessmentName={assessmentName}
+          info={info ?? null}
+          config={config}
+          ratings={ratings ?? []}
+          days={days ?? []}
+          globalStrengths={globalStrengths}
+          globalWeaknesses={globalWeaknesses}
+          projectEvidence={projectEvidence ?? []}
+        />
+      )}
       <p className="text-xs text-muted-foreground font-body -mt-3">
         Includes all slides with ratings, findings, global strengths &amp;
         weaknesses
@@ -550,6 +589,7 @@ interface SwEntry {
   status?: "draft" | "final";
   createdBy?: string;
   practiceIds?: string[];
+  isGlobal?: boolean;
 }
 
 interface GlobalInputSectionProps {
@@ -721,11 +761,9 @@ function GlobalInputSection({
                 <div className="overflow-y-auto" style={{ maxHeight: 260 }}>
                   {findingOptions.length === 0 ? (
                     <p className="text-xs text-muted-foreground font-body px-3 py-4 text-center italic">
-                      No{" "}
                       {title.toLowerCase().includes("strength")
-                        ? "strength"
-                        : "weakness"}{" "}
-                      findings found in Perform Assessment.
+                        ? "No global strength findings. Mark findings as Global in Perform Assessment."
+                        : "No global weakness findings. Mark findings as Global in Perform Assessment."}
                     </p>
                   ) : (
                     findingOptions.map((entry) => {
@@ -788,5 +826,486 @@ function GlobalInputSection({
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+// ─── Slide Preview Modal ─────────────────────────────────────────
+
+interface SlidePreviewModalProps {
+  open: boolean;
+  onClose: () => void;
+  assessmentName: string;
+  info: import("../backend.d").AssessmentInfoData | null;
+  config: import("../backend.d").ProcessGroupConfig;
+  ratings: import("../backend.d").PracticeRating[];
+  days: import("../backend.d").AssessmentDay[];
+  globalStrengths: string[];
+  globalWeaknesses: string[];
+  projectEvidence: import("../backend.d").ProjectEvidence[];
+}
+
+function SlidePreviewModal({
+  open,
+  onClose,
+  assessmentName,
+  info,
+  config,
+  ratings,
+  days,
+  globalStrengths,
+  globalWeaknesses,
+  projectEvidence,
+}: SlidePreviewModalProps) {
+  const [slideIndex, setSlideIndex] = useState(0);
+
+  const evidenceMap: Record<
+    string,
+    { name: string; link: string; version: string }
+  > = {};
+  for (const ev of projectEvidence) {
+    evidenceMap[ev.id.toString()] = {
+      name: ev.name,
+      link: ev.link,
+      version: ev.version,
+    };
+  }
+
+  const reportData = buildReportData(
+    assessmentName,
+    info,
+    config,
+    ratings,
+    days,
+    globalStrengths,
+    globalWeaknesses,
+    evidenceMap,
+  );
+
+  // Build slide descriptors
+  interface SlideDesc {
+    title: string;
+    content: React.ReactNode;
+  }
+
+  const slides: SlideDesc[] = [];
+
+  // Slide 1: Cover
+  slides.push({
+    title: "Cover",
+    content: (
+      <div
+        className="w-full h-full flex flex-col items-center justify-center text-white relative overflow-hidden"
+        style={{
+          background:
+            "linear-gradient(135deg, #0f172a 0%, #1e3a5f 60%, #2563eb 100%)",
+        }}
+      >
+        <div
+          className="absolute inset-0 opacity-10"
+          style={{
+            backgroundImage:
+              "radial-gradient(circle at 70% 30%, #60a5fa 0%, transparent 60%)",
+          }}
+        />
+        <div className="relative z-10 text-center px-8 space-y-3">
+          <p className="text-xs uppercase tracking-widest text-blue-300 font-body">
+            Assessment Report
+          </p>
+          <h1 className="text-2xl font-bold font-heading leading-tight">
+            {reportData.assessmentName}
+          </h1>
+          {info?.projectName && (
+            <p className="text-base text-blue-200 font-body">
+              {info.projectName}
+            </p>
+          )}
+          {info?.leadAssessor && (
+            <p className="text-sm text-blue-200 font-body mt-2">
+              Lead: {info.leadAssessor}
+              {info.assessorBody ? ` (${info.assessorBody})` : ""}
+            </p>
+          )}
+          {info?.coAssessor && (
+            <p className="text-xs text-blue-300 font-body">
+              Co-Assessors: {info.coAssessor}
+            </p>
+          )}
+          <p className="text-xs text-blue-400 font-body mt-4">
+            {reportData.generatedAt}
+          </p>
+        </div>
+      </div>
+    ),
+  });
+
+  // Slide 2: Assessment Information
+  slides.push({
+    title: "Assessment Information",
+    content: (
+      <div className="w-full h-full p-8 overflow-auto bg-white">
+        <h2 className="text-base font-bold font-heading text-gray-900 mb-4 border-b border-gray-200 pb-2">
+          Assessment Information
+        </h2>
+        <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-xs font-body">
+          {[
+            ["Project Name", info?.projectName],
+            ["Project ID", info?.intacsId],
+            ["Project Version", info?.pamVersion],
+            ["Assessment Date", info?.startDate],
+            ["Assessment Version", info?.vdaVersion],
+            [
+              "Lead Assessor",
+              [info?.leadAssessor, info?.assessorBody]
+                .filter(Boolean)
+                .join(" | "),
+            ],
+            ["Co-Assessors", info?.coAssessor],
+            ["Project Scope", info?.projectScope],
+            ["Model Based Dev", info?.modelBasedDev ? "Yes" : ""],
+            ["Agile Environments", info?.agileEnvironments ? "Yes" : ""],
+            ["Dev External", info?.developmentExternal ? "Yes" : ""],
+            ["Additional Remarks", info?.additionalRemarks],
+          ]
+            .filter(([, v]) => v)
+            .map(([label, value]) => (
+              <div key={String(label)} className="space-y-0.5">
+                <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider">
+                  {label}
+                </span>
+                <p className="text-gray-800 leading-snug">
+                  {String(value ?? "")}
+                </p>
+              </div>
+            ))}
+        </div>
+      </div>
+    ),
+  });
+
+  // Slide 3: Assessment Scope
+  slides.push({
+    title: "Assessment Scope",
+    content: (
+      <div className="w-full h-full p-8 overflow-auto bg-white">
+        <h2 className="text-base font-bold font-heading text-gray-900 mb-4 border-b border-gray-200 pb-2">
+          Assessment Scope
+        </h2>
+        <table className="w-full text-xs font-body border-collapse">
+          <thead>
+            <tr className="bg-gray-100">
+              <th className="text-left px-3 py-2 font-semibold text-gray-700 border border-gray-200">
+                Process ID
+              </th>
+              <th className="text-left px-3 py-2 font-semibold text-gray-700 border border-gray-200">
+                Process Name
+              </th>
+              <th className="text-left px-3 py-2 font-semibold text-gray-700 border border-gray-200">
+                Target Level
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {reportData.processesInScope.map((proc, i) => (
+              <tr key={proc.id} className={i % 2 === 1 ? "bg-gray-50" : ""}>
+                <td className="px-3 py-1.5 border border-gray-200 font-mono">
+                  {proc.id}
+                </td>
+                <td className="px-3 py-1.5 border border-gray-200">
+                  {proc.name}
+                </td>
+                <td className="px-3 py-1.5 border border-gray-200 font-semibold">
+                  {proc.targetLevel}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    ),
+  });
+
+  // Slide 4: Results Summary
+  slides.push({
+    title: "Assessment Results Summary",
+    content: (
+      <div className="w-full h-full p-8 overflow-auto bg-white">
+        <h2 className="text-base font-bold font-heading text-gray-900 mb-4 border-b border-gray-200 pb-2">
+          Assessment Results Summary
+        </h2>
+        <table className="w-full text-xs font-body border-collapse">
+          <thead>
+            <tr className="bg-gray-100">
+              <th className="text-left px-3 py-2 font-semibold text-gray-700 border border-gray-200">
+                Process
+              </th>
+              <th className="text-center px-2 py-2 font-semibold text-gray-700 border border-gray-200">
+                CL
+              </th>
+              {["PA1.1", "PA2.1", "PA2.2", "PA3.1", "PA3.2"].map((pa) => (
+                <th
+                  key={pa}
+                  className="text-center px-2 py-2 font-semibold text-gray-700 border border-gray-200"
+                >
+                  {pa}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {reportData.processes.map((proc, i) => {
+              const NPLF_BG: Record<string, string> = {
+                N: "#990000",
+                P: "#ffff00",
+                L: "#92d050",
+                F: "#00b04f",
+              };
+              const NPLF_COLOR: Record<string, string> = {
+                N: "#fff",
+                P: "#000",
+                L: "#000",
+                F: "#000",
+              };
+              const ratingCell = (r: string | null) =>
+                r ? (
+                  <span
+                    className="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold"
+                    style={{
+                      backgroundColor: NPLF_BG[r] ?? "#e5e7eb",
+                      color: NPLF_COLOR[r] ?? "#000",
+                    }}
+                  >
+                    {r}
+                  </span>
+                ) : (
+                  <span className="text-gray-300">—</span>
+                );
+              return (
+                <tr key={proc.id} className={i % 2 === 1 ? "bg-gray-50" : ""}>
+                  <td className="px-3 py-1.5 border border-gray-200 font-mono">
+                    {proc.id}
+                  </td>
+                  <td className="px-2 py-1.5 border border-gray-200 text-center font-bold">
+                    {proc.capabilityLevel !== null ? proc.capabilityLevel : "—"}
+                  </td>
+                  {["PA1.1", "PA2.1", "PA2.2", "PA3.1", "PA3.2"].map((pa) => (
+                    <td
+                      key={pa}
+                      className="px-2 py-1.5 border border-gray-200 text-center"
+                    >
+                      {ratingCell(proc.paRatings[pa] ?? null)}
+                    </td>
+                  ))}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    ),
+  });
+
+  // Slide 5: Global Strengths
+  slides.push({
+    title: "Global Strengths",
+    content: (
+      <div className="w-full h-full p-8 overflow-auto bg-white">
+        <h2 className="text-base font-bold font-heading text-emerald-700 mb-4 border-b border-emerald-200 pb-2">
+          Global Strengths
+        </h2>
+        {reportData.globalStrengths.length === 0 ? (
+          <p className="text-xs text-gray-400 italic font-body">
+            No global strengths recorded.
+          </p>
+        ) : (
+          <ol className="space-y-2 list-decimal list-inside">
+            {reportData.globalStrengths.map((s) => (
+              <li
+                key={s.slice(0, 40)}
+                className="text-sm font-body text-gray-800 leading-relaxed"
+              >
+                {s}
+              </li>
+            ))}
+          </ol>
+        )}
+      </div>
+    ),
+  });
+
+  // Slide 6: Global Weaknesses
+  slides.push({
+    title: "Global Weaknesses",
+    content: (
+      <div className="w-full h-full p-8 overflow-auto bg-white">
+        <h2 className="text-base font-bold font-heading text-red-700 mb-4 border-b border-red-200 pb-2">
+          Global Weaknesses
+        </h2>
+        {reportData.globalWeaknesses.length === 0 ? (
+          <p className="text-xs text-gray-400 italic font-body">
+            No global weaknesses recorded.
+          </p>
+        ) : (
+          <ol className="space-y-2 list-decimal list-inside">
+            {reportData.globalWeaknesses.map((s) => (
+              <li
+                key={s.slice(0, 40)}
+                className="text-sm font-body text-gray-800 leading-relaxed"
+              >
+                {s}
+              </li>
+            ))}
+          </ol>
+        )}
+      </div>
+    ),
+  });
+
+  // Per-process slides
+  for (const proc of reportData.processes) {
+    const strengths = proc.findingsList.filter((f) => f.type === "strength");
+    const weaknesses = proc.findingsList.filter((f) => f.type === "weakness");
+    const suggestions = proc.findingsList.filter(
+      (f) => f.type === "suggestion",
+    );
+
+    slides.push({
+      title: `${proc.id} — ${proc.label}`,
+      content: (
+        <div className="w-full h-full p-8 overflow-auto bg-white">
+          <div className="flex items-baseline gap-2 mb-4 border-b border-gray-200 pb-2">
+            <h2 className="text-base font-bold font-heading text-gray-900">
+              {proc.id}
+            </h2>
+            <span className="text-sm text-gray-600 font-body">
+              {proc.label}
+            </span>
+            <span className="ml-auto text-xs text-gray-500 font-body">
+              Target CL{proc.targetLevel} → Achieved CL
+              {proc.capabilityLevel ?? "?"}
+            </span>
+          </div>
+          <div className="space-y-3 text-xs font-body">
+            {[
+              {
+                label: "Strengths",
+                items: strengths,
+                color: "text-emerald-700",
+              },
+              { label: "Weaknesses", items: weaknesses, color: "text-red-700" },
+              {
+                label: "Suggestions",
+                items: suggestions,
+                color: "text-blue-700",
+              },
+            ].map(({ label, items, color }) => (
+              <div key={label}>
+                <p className={`font-bold text-xs mb-1 ${color}`}>{label}</p>
+                {items.length === 0 ? (
+                  <p className="text-gray-400 italic">None</p>
+                ) : (
+                  <ul className="space-y-0.5 list-disc list-inside">
+                    {items.map((f) => (
+                      <li key={f.id} className="text-gray-800 leading-relaxed">
+                        {f.text}
+                        {f.practiceRefs.length > 0 && (
+                          <span className="text-gray-500 ml-1">
+                            [{f.practiceRefs.join(", ")}]
+                          </span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      ),
+    });
+  }
+
+  const totalSlides = slides.length;
+  const current = slides[Math.min(slideIndex, totalSlides - 1)];
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!v) onClose();
+      }}
+    >
+      <DialogContent
+        className="max-w-4xl w-full p-0 gap-0 overflow-hidden"
+        data-ocid="report.preview_modal"
+      >
+        <DialogHeader className="px-4 py-3 border-b border-border/40 flex flex-row items-center justify-between">
+          <DialogTitle className="font-heading text-sm text-foreground">
+            Slide Preview — {current?.title ?? ""}
+          </DialogTitle>
+          <div className="flex items-center gap-2 text-xs font-body text-muted-foreground">
+            Slide {slideIndex + 1} of {totalSlides}
+          </div>
+        </DialogHeader>
+
+        {/* Slide canvas — 16:9 aspect ratio */}
+        <div
+          className="p-4 bg-gray-100 flex items-center justify-center"
+          style={{ minHeight: 400 }}
+        >
+          <div
+            className="w-full rounded-lg shadow-lg overflow-hidden border border-gray-200"
+            style={{ aspectRatio: "16/9", maxWidth: 760 }}
+          >
+            {current?.content}
+          </div>
+        </div>
+
+        {/* Navigation */}
+        <div className="flex items-center justify-between gap-3 px-4 py-3 border-t border-border/40 bg-background">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setSlideIndex((i) => Math.max(0, i - 1))}
+            disabled={slideIndex === 0}
+            className="gap-1.5 font-body"
+            data-ocid="report.preview_prev_button"
+          >
+            <ChevronLeft className="h-3.5 w-3.5" />
+            Previous
+          </Button>
+
+          {/* Slide pills */}
+          <div className="flex items-center gap-1 overflow-x-auto max-w-sm">
+            {slides.map((_slide, i) => (
+              <button
+                // biome-ignore lint/suspicious/noArrayIndexKey: slide index is the only stable key here
+                key={`slide-pill-${i}`}
+                type="button"
+                onClick={() => setSlideIndex(i)}
+                className={`h-1.5 rounded-full transition-all shrink-0 ${
+                  i === slideIndex
+                    ? "w-6 bg-blue-600"
+                    : "w-1.5 bg-gray-300 hover:bg-gray-400"
+                }`}
+              />
+            ))}
+          </div>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              setSlideIndex((i) => Math.min(totalSlides - 1, i + 1))
+            }
+            disabled={slideIndex === totalSlides - 1}
+            className="gap-1.5 font-body"
+            data-ocid="report.preview_next_button"
+          >
+            Next
+            <ChevronRightIcon className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

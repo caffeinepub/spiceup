@@ -70,6 +70,7 @@ import {
   ChevronsDownUp,
   ChevronsUpDown,
   ExternalLink,
+  Globe,
   Italic,
   LayoutDashboard,
   Link,
@@ -102,6 +103,7 @@ interface SwEntry {
   createdBy?: string;
   referencedEvidenceIds?: string[];
   practiceIds?: string[]; // array of node keys e.g. ["MAN.3_1_MAN.3.BP1"]
+  isGlobal?: boolean;
 }
 
 interface PracticeState {
@@ -897,6 +899,7 @@ function AddEntryDialog({
   projectEvidence,
   allPractices,
   initialPracticeIds,
+  allExistingEntries,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -906,6 +909,7 @@ function AddEntryDialog({
   projectEvidence?: ProjectEvidence[];
   allPractices: { key: string; label: string }[];
   initialPracticeIds?: string[];
+  allExistingEntries?: SwEntry[];
 }) {
   const [entryType, setEntryType] = useState<
     "strength" | "weakness" | "observation" | "suggestion"
@@ -919,6 +923,46 @@ function AddEntryDialog({
     initialEntry?.practiceIds ?? initialPracticeIds ?? [],
   );
   const [practiceSearch, setPracticeSearch] = useState("");
+  const [isGlobal, setIsGlobal] = useState<boolean>(
+    initialEntry?.isGlobal ?? false,
+  );
+
+  // Duplicate detection
+  function findSimilar(
+    inputText: string,
+    entries: SwEntry[],
+    editingId?: string,
+  ): SwEntry | null {
+    if (inputText.trim().length < 20) return null;
+    const words = (t: string) =>
+      new Set(
+        t
+          .toLowerCase()
+          .replace(/[^\w\s]/g, "")
+          .split(/\s+/)
+          .filter((w) => w.length > 3),
+      );
+    const a = words(inputText);
+    for (const e of entries) {
+      if (e.id === editingId) continue;
+      // Strip rich text markup before comparing
+      const cleanText = e.text
+        .replace(/\*\*(.*?)\*\*/g, "$1")
+        .replace(/\*(.*?)\*/g, "$1")
+        .replace(/\[\[ev:[^\]]+\]\]/g, "")
+        .trim();
+      const b = words(cleanText);
+      const intersection = [...a].filter((w) => b.has(w)).length;
+      const union = new Set([...a, ...b]).size;
+      if (union > 0 && intersection / union >= 0.4) return e;
+    }
+    return null;
+  }
+
+  const similarEntry =
+    text.trim().length >= 20
+      ? findSimilar(text, allExistingEntries ?? [], initialEntry?.id)
+      : null;
 
   // Reset when dialog opens or initialEntry changes
   useEffect(() => {
@@ -931,6 +975,7 @@ function AddEntryDialog({
         initialEntry?.practiceIds ?? initialPracticeIds ?? [],
       );
       setPracticeSearch("");
+      setIsGlobal(initialEntry?.isGlobal ?? false);
     }
   }, [open, initialEntry, initialPracticeIds]);
 
@@ -964,6 +1009,7 @@ function AddEntryDialog({
       status: entryStatus,
       createdBy: initialEntry?.createdBy ?? currentUser ?? "Unknown",
       practiceIds: selectedPracticeIds,
+      isGlobal,
     });
     onOpenChange(false);
   }
@@ -1122,10 +1168,46 @@ function AddEntryDialog({
               </SelectContent>
             </Select>
           </div>
+          <div className="flex items-center gap-2">
+            <Checkbox
+              id="mark-global"
+              checked={isGlobal}
+              onCheckedChange={(v) => setIsGlobal(v === true)}
+              data-ocid="perform.entry_global_checkbox"
+            />
+            <Label
+              htmlFor="mark-global"
+              className="font-body text-xs font-medium cursor-pointer"
+            >
+              Mark as Global
+            </Label>
+          </div>
           <div className="space-y-1.5">
             <Label className="font-body text-xs font-medium text-muted-foreground">
               Description <span className="text-destructive">*</span>
             </Label>
+            {similarEntry && (
+              <div
+                className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-body text-amber-800"
+                data-ocid="perform.entry_duplicate_warning"
+              >
+                <span className="font-semibold">
+                  Similar finding already exists:
+                </span>{" "}
+                <span className="italic">
+                  &ldquo;
+                  {similarEntry.text
+                    .replace(/\*\*(.*?)\*\*/g, "$1")
+                    .replace(/\*(.*?)\*/g, "$1")
+                    .replace(/\[\[ev:[^\]]+\]\]/g, "")
+                    .slice(0, 100)}
+                  {similarEntry.text.length > 100 ? "…" : ""}&rdquo;
+                </span>
+                <span className="block text-amber-600 mt-0.5">
+                  You can still save — this is just a warning.
+                </span>
+              </div>
+            )}
             <RichTextEditor
               value={text}
               onChange={(v) => {
@@ -1348,7 +1430,7 @@ function BPPracticePanel({
       <div
         style={{
           width: findingsPanelWidth,
-          minWidth: 220,
+          minWidth: 50,
           flexShrink: 0,
           overflow: "hidden",
           display: "flex",
@@ -1495,23 +1577,33 @@ function BPPracticePanel({
                       </Badge>
                     </td>
                     <td className="px-3 py-2 align-top">
-                      <Badge
-                        variant="outline"
-                        className={cn(
-                          "font-body text-[11px] whitespace-nowrap",
-                          entry.type === "strength"
-                            ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                      <div className="inline-flex items-center gap-1">
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            "font-body text-[11px] whitespace-nowrap",
+                            entry.type === "strength"
+                              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                              : entry.type === "weakness"
+                                ? "bg-red-50 text-red-700 border-red-200"
+                                : "bg-blue-50 text-blue-700 border-blue-200",
+                          )}
+                        >
+                          {entry.type === "strength"
+                            ? "Strength"
                             : entry.type === "weakness"
-                              ? "bg-red-50 text-red-700 border-red-200"
-                              : "bg-blue-50 text-blue-700 border-blue-200",
+                              ? "Weakness"
+                              : "Suggestion"}
+                        </Badge>
+                        {entry.isGlobal && (
+                          <span
+                            title="Global finding"
+                            className="inline-flex items-center ml-1"
+                          >
+                            <Globe className="h-3 w-3 text-blue-500" />
+                          </span>
                         )}
-                      >
-                        {entry.type === "strength"
-                          ? "Strength"
-                          : entry.type === "weakness"
-                            ? "Weakness"
-                            : "Suggestion"}
-                      </Badge>
+                      </div>
                     </td>
                     <td
                       className="px-3 py-2 align-top"
@@ -1614,10 +1706,7 @@ function BPPracticePanel({
             const startX = e.clientX;
             const startWidth = findingsPanelWidth;
             const onMove = (me: MouseEvent) => {
-              const newWidth = Math.max(
-                220,
-                Math.min(800, startWidth + (me.clientX - startX)),
-              );
+              const newWidth = Math.max(50, startWidth + (me.clientX - startX));
               setFindingsPanelWidth(newWidth);
             };
             const onUp = () => {
@@ -1634,7 +1723,7 @@ function BPPracticePanel({
       <div
         style={{
           flex: 1,
-          minWidth: 180,
+          minWidth: 50,
           overflow: "hidden",
           display: "flex",
           flexDirection: "column",
@@ -1826,6 +1915,8 @@ function TreeNode({
   index,
   ratings,
   searchQuery,
+  bulkSelectedKeys,
+  onBulkToggle,
 }: {
   node: TreeNodeData;
   depth: number;
@@ -1836,6 +1927,8 @@ function TreeNode({
   index: number;
   ratings: RatingsMap;
   searchQuery?: string;
+  bulkSelectedKeys?: Set<string>;
+  onBulkToggle?: (key: string) => void;
 }) {
   const nodeKey = `${node.type}:${node.processId}:${node.id}`;
   const isSearching = !!(searchQuery && searchQuery.trim().length > 0);
@@ -1916,6 +2009,28 @@ function TreeNode({
         )}
         style={{ paddingLeft }}
       >
+        {/* Bulk checkbox — only visible on BP/GP nodes */}
+        {(node.type === "bp" || node.type === "gp") && onBulkToggle && (
+          <span
+            className={cn(
+              "shrink-0 transition-opacity",
+              bulkSelectedKeys?.has(nodeKey)
+                ? "opacity-100"
+                : "opacity-0 group-hover:opacity-100",
+            )}
+          >
+            <Checkbox
+              checked={bulkSelectedKeys?.has(nodeKey) ?? false}
+              onCheckedChange={(checked) => {
+                if (checked !== "indeterminate") {
+                  onBulkToggle(nodeKey);
+                }
+              }}
+              className="h-3.5 w-3.5 ml-1"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </span>
+        )}
         {/* Expand/collapse chevron — separate click target */}
         {!isLeaf ? (
           <button
@@ -1995,6 +2110,8 @@ function TreeNode({
               index={i + 1}
               ratings={ratings}
               searchQuery={searchQuery}
+              bulkSelectedKeys={bulkSelectedKeys}
+              onBulkToggle={onBulkToggle}
             />
           ))}
         </div>
@@ -2489,23 +2606,33 @@ function PASummaryView({
                               )}
                             </TableCell>
                             <TableCell className="py-2">
-                              <Badge
-                                variant="outline"
-                                className={cn(
-                                  "font-body text-xs",
-                                  entry.type === "strength"
-                                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                              <div className="inline-flex items-center gap-1">
+                                <Badge
+                                  variant="outline"
+                                  className={cn(
+                                    "font-body text-xs",
+                                    entry.type === "strength"
+                                      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                      : entry.type === "weakness"
+                                        ? "bg-red-50 text-red-700 border-red-200"
+                                        : "bg-blue-50 text-blue-700 border-blue-200",
+                                  )}
+                                >
+                                  {entry.type === "strength"
+                                    ? "Strength"
                                     : entry.type === "weakness"
-                                      ? "bg-red-50 text-red-700 border-red-200"
-                                      : "bg-blue-50 text-blue-700 border-blue-200",
+                                      ? "Weakness"
+                                      : "Suggestion"}
+                                </Badge>
+                                {entry.isGlobal && (
+                                  <span
+                                    title="Global finding"
+                                    className="inline-flex items-center ml-1"
+                                  >
+                                    <Globe className="h-3 w-3 text-blue-500" />
+                                  </span>
                                 )}
-                              >
-                                {entry.type === "strength"
-                                  ? "Strength"
-                                  : entry.type === "weakness"
-                                    ? "Weakness"
-                                    : "Suggestion"}
-                              </Badge>
+                              </div>
                             </TableCell>
                             <TableCell className="py-2 max-w-xs">
                               <div className="text-xs font-body text-foreground leading-relaxed">
@@ -2966,23 +3093,33 @@ function ProcessOverviewView({
                                   )}
                                 </TableCell>
                                 <TableCell className="py-2">
-                                  <Badge
-                                    variant="outline"
-                                    className={cn(
-                                      "font-body text-xs",
-                                      entry.type === "strength"
-                                        ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                  <div className="inline-flex items-center gap-1">
+                                    <Badge
+                                      variant="outline"
+                                      className={cn(
+                                        "font-body text-xs",
+                                        entry.type === "strength"
+                                          ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                          : entry.type === "weakness"
+                                            ? "bg-red-50 text-red-700 border-red-200"
+                                            : "bg-blue-50 text-blue-700 border-blue-200",
+                                      )}
+                                    >
+                                      {entry.type === "strength"
+                                        ? "Strength"
                                         : entry.type === "weakness"
-                                          ? "bg-red-50 text-red-700 border-red-200"
-                                          : "bg-blue-50 text-blue-700 border-blue-200",
+                                          ? "Weakness"
+                                          : "Suggestion"}
+                                    </Badge>
+                                    {entry.isGlobal && (
+                                      <span
+                                        title="Global finding"
+                                        className="inline-flex items-center ml-1"
+                                      >
+                                        <Globe className="h-3 w-3 text-blue-500" />
+                                      </span>
                                     )}
-                                  >
-                                    {entry.type === "strength"
-                                      ? "Strength"
-                                      : entry.type === "weakness"
-                                        ? "Weakness"
-                                        : "Suggestion"}
-                                  </Badge>
+                                  </div>
                                 </TableCell>
                                 <TableCell className="py-2 max-w-xs">
                                   <div className="text-xs font-body text-foreground leading-relaxed">
@@ -3372,6 +3509,23 @@ export function PerformAssessment() {
     });
   }, [queryClient, currentAssessmentId]);
 
+  // ─── Real-time polling (1s interval) ────────────────────────────────────
+  // Skips invalidation while autosave is pending (user is actively editing)
+  useEffect(() => {
+    if (!currentAssessmentId) return;
+    const interval = setInterval(() => {
+      // Skip if user has a pending autosave — don't overwrite in-progress edits
+      if (autosaveTimerRef.current !== null) return;
+      queryClient.invalidateQueries({
+        queryKey: ["practiceRatings", currentAssessmentId.toString()],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["projectEvidence", currentAssessmentId.toString()],
+      });
+    }, 100);
+    return () => clearInterval(interval);
+  }, [currentAssessmentId, queryClient]);
+
   const [selectedNode, setSelectedNode] = useState<SelectedNode | null>(null);
   const [ratings, setRatings] = useState<RatingsMap>({});
 
@@ -3442,30 +3596,78 @@ export function PerformAssessment() {
     return list;
   }, [enabledProcesses]);
 
+  // ─── All existing entries for duplicate detection ──────────────────────────
+  const allExistingEntries = useMemo(() => {
+    const seen = new Set<string>();
+    const result: SwEntry[] = [];
+    for (const state of Object.values(ratings)) {
+      for (const e of state.swEntries ?? []) {
+        if (!seen.has(e.id)) {
+          seen.add(e.id);
+          result.push(e);
+        }
+      }
+    }
+    return result;
+  }, [ratings]);
+
   // ─── Tree expand/collapse logic ───────────────────────────────────────────
   // Use a ref to store the toggle function so TreeNode always gets the latest
   // version without needing to be re-rendered.
   const expandedNodesRef = useRef<Set<string>>(new Set());
   expandedNodesRef.current = expandedNodes;
 
-  const toggleNode = useCallback((key: string) => {
-    setExpandedNodes((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) {
-        next.delete(key);
-      } else {
-        next.add(key);
-      }
-      return next;
-    });
-  }, []); // stable — only uses setExpandedNodes functional form
+  const toggleNode = useCallback(
+    (key: string) => {
+      setExpandedNodes((prev) => {
+        const next = new Set(prev);
+        if (next.has(key)) {
+          next.delete(key);
+        } else {
+          next.add(key);
+        }
+        // Persist to localStorage
+        if (currentAssessmentId) {
+          try {
+            localStorage.setItem(
+              `qinsight_tree_expanded_${currentAssessmentId}`,
+              JSON.stringify([...next]),
+            );
+          } catch {
+            /* ignore */
+          }
+        }
+        return next;
+      });
+    },
+    [currentAssessmentId],
+  ); // reads currentAssessmentId for persistence
 
-  // Default: expand all process and PA nodes on first load
+  // Default: expand all process and PA nodes on first load (or restore from localStorage)
   const hasInitialized = useRef(false);
   useEffect(() => {
     if (enabledProcesses.length === 0) return;
     if (hasInitialized.current) return; // only run once
     hasInitialized.current = true;
+
+    // Try to restore from localStorage
+    if (currentAssessmentId) {
+      try {
+        const saved = localStorage.getItem(
+          `qinsight_tree_expanded_${currentAssessmentId}`,
+        );
+        if (saved) {
+          const arr = JSON.parse(saved) as string[];
+          if (Array.isArray(arr)) {
+            setExpandedNodes(new Set(arr));
+            return; // skip default expand-all
+          }
+        }
+      } catch {
+        /* ignore, fall through to default */
+      }
+    }
+
     const keys = new Set<string>();
     keys.add("root:root:root");
     for (const proc of enabledProcesses) {
@@ -3478,7 +3680,7 @@ export function PerformAssessment() {
       }
     }
     setExpandedNodes(keys);
-  }, [enabledProcesses]);
+  }, [enabledProcesses, currentAssessmentId]);
 
   // Default selection: first enabled process
   useEffect(() => {
@@ -3615,13 +3817,15 @@ export function PerformAssessment() {
     // If editing an existing entry, update across all keys (multi-practice support)
     if (swDialogEntry) {
       updateEntryInRatings(entry);
+      setSwDialogOpen(false);
       return;
     }
+    // New entry: compute next ratings synchronously, set state, then autosave
     setRatings((prev) => {
       const existing = prev[key] ?? defaultPracticeState();
       const existingEntries = existing.swEntries ?? [];
       const isEdit = existingEntries.some((e) => e.id === entry.id);
-      return {
+      const next = {
         ...prev,
         [key]: {
           ...existing,
@@ -3630,6 +3834,8 @@ export function PerformAssessment() {
             : [...existingEntries, entry],
         },
       };
+      scheduleAutosave(next);
+      return next;
     });
     setSwDialogOpen(false);
   }
@@ -3810,8 +4016,10 @@ export function PerformAssessment() {
         } catch {
           setAutosaveStatus("idle");
           toast.error("Autosave failed — please save manually");
+        } finally {
+          autosaveTimerRef.current = null;
         }
-      }, 300);
+      }, 100);
     },
     [
       currentAssessmentId,
@@ -3972,11 +4180,31 @@ export function PerformAssessment() {
     }
     collect(treeDataRef.current);
     setExpandedNodes(keys);
-  }, []); // stable — reads treeData via ref
+    if (currentAssessmentId) {
+      try {
+        localStorage.setItem(
+          `qinsight_tree_expanded_${currentAssessmentId}`,
+          JSON.stringify([...keys]),
+        );
+      } catch {
+        /* ignore */
+      }
+    }
+  }, [currentAssessmentId]); // reads treeData via ref
 
   const collapseAll = useCallback(() => {
     setExpandedNodes(new Set());
-  }, []);
+    if (currentAssessmentId) {
+      try {
+        localStorage.setItem(
+          `qinsight_tree_expanded_${currentAssessmentId}`,
+          JSON.stringify([]),
+        );
+      } catch {
+        /* ignore */
+      }
+    }
+  }, [currentAssessmentId]);
 
   // ─── Description panel content ───────────────────────────────
 
@@ -4150,6 +4378,7 @@ export function PerformAssessment() {
           currentUser={currentUser?.username}
           projectEvidence={projectEvidence}
           allPractices={allPracticesForAssessment}
+          allExistingEntries={allExistingEntries}
           initialPracticeIds={
             swDialogEntry?.practiceIds ??
             (swDialogPracticeKey ? [swDialogPracticeKey.nodeKey] : [])
@@ -4232,6 +4461,11 @@ function DraggableThreePanelLayout({
   onDeleteEntryGlobal: (id: string) => void;
   onEditEntryGlobal: (entry: SwEntry) => void;
 }) {
+  // Bulk rating state — checkboxes on BP/GP nodes
+  const [bulkSelectedKeys, setBulkSelectedKeys] = useState<Set<string>>(
+    new Set(),
+  );
+
   // Resizable panel widths — persisted in localStorage
   const STORAGE_KEY = "qinsight-perform-col-widths";
   const savedWidths = (() => {
@@ -4251,6 +4485,56 @@ function DraggableThreePanelLayout({
   const [isDragging, setIsDragging] = useState(false);
   // Tree search
   const [treeSearch, setTreeSearch] = useState("");
+
+  // Bulk toggle callback
+  function handleBulkToggle(key: string) {
+    setBulkSelectedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  }
+
+  // Bulk rating apply
+  function handleBulkRate(rating: Rating) {
+    for (const key of bulkSelectedKeys) {
+      // key format: "bp:processId:practiceId" or "gp:processId:practiceId"
+      const colonParts = key.split(":");
+      if (colonParts.length < 3) continue;
+      const nodeType = colonParts[0]; // "bp" or "gp"
+      const processId = colonParts[1];
+      const practiceId = colonParts.slice(2).join(":"); // handle colons in practiceId
+      // Determine level from node type
+      let level = 1;
+      if (nodeType === "gp") {
+        // Check if it's PA2 or PA3 from the practice ID
+        const attrs2 = LEVEL2_ATTRIBUTES;
+        const attrs3 = LEVEL3_ATTRIBUTES;
+        let found = false;
+        for (const attr of attrs2) {
+          if (attr.practices.some((p) => p.id === practiceId)) {
+            level = 2;
+            found = true;
+            break;
+          }
+        }
+        if (!found) {
+          for (const attr of attrs3) {
+            if (attr.practices.some((p) => p.id === practiceId)) {
+              level = 3;
+              break;
+            }
+          }
+        }
+      }
+      updatePracticeState(processId, level, practiceId, { rating });
+    }
+    setBulkSelectedKeys(new Set());
+  }
 
   function setLeftPanelWidth(w: number) {
     setLeftPanelWidthRaw(w);
@@ -4284,10 +4568,7 @@ function DraggableThreePanelLayout({
     const startWidth = leftPanelWidth;
 
     const onMove = (me: MouseEvent) => {
-      const newWidth = Math.max(
-        180,
-        Math.min(500, startWidth + (me.clientX - startX)),
-      );
+      const newWidth = Math.max(50, startWidth + (me.clientX - startX));
       setLeftPanelWidth(newWidth);
     };
 
@@ -4318,8 +4599,7 @@ function DraggableThreePanelLayout({
       <div
         style={{
           width: leftPanelWidth,
-          minWidth: 180,
-          maxWidth: 500,
+          minWidth: 50,
           flexShrink: 0,
           display: "flex",
           flexDirection: "column",
@@ -4387,9 +4667,50 @@ function DraggableThreePanelLayout({
               index={0}
               ratings={ratings}
               searchQuery={treeSearch}
+              bulkSelectedKeys={bulkSelectedKeys}
+              onBulkToggle={handleBulkToggle}
             />
           </div>
         </div>
+
+        {/* ── Bulk Rating Toolbar ── */}
+        {bulkSelectedKeys.size > 0 && (
+          <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 border-t border-blue-200 shrink-0 flex-wrap">
+            <span className="text-xs font-semibold font-body text-blue-800">
+              {bulkSelectedKeys.size} selected
+            </span>
+            <div className="flex items-center gap-1">
+              {(["N", "P", "L", "F"] as const).map((v) => {
+                const nplf = NPLF_COLORS[v];
+                return (
+                  <button
+                    key={v}
+                    type="button"
+                    onClick={() => handleBulkRate(v)}
+                    className="w-7 h-7 rounded text-xs font-bold font-heading border-2 transition-all hover:opacity-90"
+                    style={{
+                      backgroundColor: nplf.bg,
+                      color: nplf.color,
+                      borderColor: nplf.border,
+                    }}
+                    title={`Set all selected to ${v}`}
+                    data-ocid={`perform.bulk_rate_${v.toLowerCase()}_button`}
+                  >
+                    {v}
+                  </button>
+                );
+              })}
+            </div>
+            <button
+              type="button"
+              onClick={() => setBulkSelectedKeys(new Set())}
+              className="text-xs font-body text-blue-600 hover:text-blue-800 border border-blue-300 rounded px-2 py-0.5 hover:bg-blue-100 transition-colors"
+              data-ocid="perform.bulk_clear_button"
+            >
+              Clear
+            </button>
+          </div>
+        )}
 
         {/* ── Process Description panel (below tree) ── */}
         <div
